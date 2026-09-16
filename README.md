@@ -31,7 +31,12 @@ pm2 start ecosystem.config.cjs     # app "trilharm", PORT=8790
 pm2 save
 ```
 
-Depois de mudar código: `npm run build && pm2 restart trilharm`. Decks novos **não** precisam de restart —
+Depois de mudar código: `npm run build && pm2 restart trilharm`. No celular (Termux/PRoot) instale com o
+cache dentro do projeto — `npm ci --cache ./.npmcache --maxsockets 3` — porque o cache global do npm
+corrompe no PRoot e deixa a instalação pela metade (o PM2 sobe, a URL responde 502 e o log mostra
+`MODULE_NOT_FOUND` dentro do express). O `scripts/deploy-celular.sh` já faz isso.
+
+Decks novos **não** precisam de restart —
 o servidor recarrega `content/` quando o mtime muda.
 
 ## Scripts
@@ -73,6 +78,21 @@ Nos modos **Explique** e **Praticar (texto)**, um modelo gratuito do OpenRouter 
 sua resposta, compara com o gabarito e sugere nível, o que faltou e uma pergunta de aprofundamento.
 Cole a key em **Config** (fica só em `data/config.json`, gitignored) ou exporte `OPENROUTER_API_KEY`
 (`.env` na raiz também é lido). Sem key, o resto do app funciona normalmente.
+
+## Cursos em Markdown
+
+Um arquivo `.md` em `content/cursos/` vira um curso no app: `#` é o curso, `##` um módulo, `###`
+uma lição. Dentro da lição valem tabelas, código, citações, os wikilinks `[[deckId/termoId]]` (viram
+link para o glossário) e as caixas `:::objetivo`, `:::nota`, `:::alerta`, `:::exemplo` e
+`:::atividade`.
+
+A `:::atividade` é um exercício no meio da aula, com os mesmos cinco tipos de entrega das práticas, e
+a nota dela também vira revisão espaçada no termo principal.
+
+Para gerar um curso novo em qualquer IA, copie o prompt de
+[`content/cursos/COMO-PEDIR-PARA-UMA-IA.md`](content/cursos/COMO-PEDIR-PARA-UMA-IA.md), salve a resposta
+na pasta e rode o validador. A especificação completa está em
+[`content/cursos/README.md`](content/cursos/README.md). O formato JSON antigo continua sendo aceito.
 
 ## Conteúdo hoje (16/09/2026)
 
@@ -135,11 +155,6 @@ Regras:
 
 Se o arquivo não existir, o app agrupa os decks pelo campo `fase`. Decks que existem mas não estão em
 nenhuma fase declarada são anexados à fase do próprio campo `fase`.
-
-## Como adicionar um curso (futuro)
-
-`content/cursos/` já existe com um `README.md` descrevendo o formato
-(`{ id, titulo, licoes: [{ id, titulo, markdown }] }`). A tela ainda é um placeholder "em breve" no menu.
 
 ## Modos de estudo
 

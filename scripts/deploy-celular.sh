@@ -21,7 +21,7 @@ case "${1:-}" in
   --primeira)
     "${SSH[@]}" "set -e
       if [ ! -d $DIR/.git ]; then git clone $REPO $DIR; fi
-      cd $DIR && npm ci --no-audit --no-fund && npm run build
+      cd $DIR && npm ci --no-audit --no-fund --maxsockets 3 --cache $DIR/.npmcache && npm run build
       pm2 start ecosystem.config.cjs && pm2 save
       sleep 6; pm2 ls; cat data/tunnel-url.txt 2>/dev/null || echo '(túnel ainda subindo - rode --status daqui a pouco)'"
     ;;
@@ -29,7 +29,7 @@ case "${1:-}" in
     "${SSH[@]}" "set -e
       cd $DIR
       git pull --ff-only
-      npm ci --no-audit --no-fund
+      npm ci --no-audit --no-fund --maxsockets 3 --cache $DIR/.npmcache
       npm run build
       pm2 restart trilharm --update-env
       sleep 2; pm2 ls; curl -s localhost:8790/api/saude; echo; cat data/tunnel-url.txt 2>/dev/null || true"

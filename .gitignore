@@ -12,3 +12,4 @@ data/*.txt
 # transcricao pessoal do chat que originou o app (fica so local; o repo e publico)
 HistoricoChat.txt
 .claude/
+.npmcache/
