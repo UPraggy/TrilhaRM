@@ -1,0 +1,399 @@
+{
+  "id": "ingles-de-entrevista-30-dias",
+  "titulo": "Inglês de entrevista em 30 dias",
+  "subtitulo": "30 days of technical English — a pitch, STAR answers, system design out loud and one recorded review",
+  "objetivo": "Sustentar uma entrevista técnica inteira em inglês: abrir com um pitch de 90 segundos, responder perguntas comportamentais no formato STAR, explicar um sistema pensando alto com o vocabulário do deck e defender um trade-off sem travar.",
+  "nivel": 4,
+  "duracaoDias": 30,
+  "tempoTotalMin": 267,
+  "decks": [
+    "vocabulario-entrevista-en"
+  ],
+  "termos": [
+    "let-me-think-out-loud",
+    "i-would-start-by",
+    "the-trade-off-here-is"
+  ],
+  "tags": [
+    "ingles",
+    "entrevista",
+    "comunicacao",
+    "carreira"
+  ],
+  "preRequisitos": [
+    "Um gravador de voz no celular (o app nativo serve)",
+    "Fone com microfone, para ouvir a própria gravação sem eco",
+    "Deck vocabulario-entrevista-en visto ao menos uma vez",
+    "20 minutos por dia, em voz alta - fones no ouvido não contam"
+  ],
+  "recompensa": "Você tem um pitch de 90 segundos gravado e revisado, três respostas STAR prontas, uma explicação de sistema em inglês de 5 minutos gravada, e a retrospectiva em vídeo que mostra a diferença entre o dia 1 e o dia 30.",
+  "etapas": [
+    {
+      "id": "d1-warm-up-vocabulary",
+      "tipo": "aquecimento",
+      "titulo": "Warm up the interview vocabulary",
+      "dia": 1,
+      "tempoMin": 20,
+      "resumo": "Twenty cards from the EN deck, said out loud. (Em PT: fale cada expressão em voz alta antes de virar a carta.)",
+      "termos": [
+        "let-me-think-out-loud",
+        "i-would-start-by"
+      ],
+      "aquecimento": {
+        "modo": "flashcards",
+        "fonte": "deck:vocabulario-entrevista-en",
+        "quantidade": 20,
+        "soVencidos": false,
+        "meta": "Say every expression OUT LOUD and use it in a sentence about your own work before flipping the card. (Em PT: reconhecer a expressão não conta; só conta se você conseguiu usá-la numa frase sobre o seu próprio trabalho.)"
+      }
+    },
+    {
+      "id": "d2-how-a-pitch-works",
+      "tipo": "leitura",
+      "titulo": "Read the three moves of a technical answer",
+      "dia": 2,
+      "tempoMin": 20,
+      "resumo": "Framing, trade-off and measurement. (Em PT: leia em voz alta; é o mapa que estrutura todas as outras etapas.)",
+      "termos": [
+        "the-trade-off-here-is",
+        "it-depends-on"
+      ],
+      "leitura": {
+        "markdown": "Technical English in an interview is not about vocabulary size. It is about **three moves** you repeat under pressure: framing the question before answering, naming the trade-off out loud, and closing with how you would measure it.\n\n(Em PT: leia este texto uma vez em voz alta. Ele descreve os três movimentos que estruturam qualquer resposta técnica em inglês.)\n\n**Move 1 — buy yourself five seconds, out loud.** Silence reads as \"I do not know\"; a framing sentence reads as seniority. The phrases that do this work are fixed, so you do not improvise them: `Let me think out loud for a second.` · `Before I answer, can I clarify the requirements?` · `What are the constraints here — traffic, team size, or latency?` · `I would start by separating the read path from the write path.` Say one of them and your brain gets the five seconds it needs.\n\n**Move 2 — name the trade-off before they ask.** Junior answers give a solution. Senior answers give a solution **and** its cost, in the same breath. The template: `The trade-off here is X: we get A, but we pay B.` Then position yourself without sounding dogmatic: `I would lean towards keyset pagination, because the cost stays constant per page — but it is a harder API to consume.` The phrase `it depends on…` is only acceptable when you immediately say **on what**: `It depends on whether the page size is fixed and whether users need to jump to page 37.`\n\n**Move 3 — close with the measurement.** Every strong answer ends with evidence, not opinion: `I would measure the p99, not the average, because the pain lives in the tail.` · `I would look at pool saturation first — it is the only leading indicator.` This is the single habit that separates \"he knows the words\" from \"he has run this in production\".\n\nTwo mechanics that sink Brazilian engineers more often than grammar. First, **stress and rhythm beat pronunciation**: English is stress-timed, so `DA-ta-base`, `LA-ten-cy`, `de-PLOY`, `pa-RA-me-ter` carry the meaning. Getting the stressed syllable right makes you understood even with a heavy accent; getting it wrong makes a perfectly pronounced word unintelligible. Second, **speed is the enemy**: you are not being graded on fluency, you are being graded on clarity. Slow down, finish the sentence, then pause.\n\n(Em PT: a regra prática que vale mais do que estudar lista de palavras — grave a si mesmo respondendo, ouça e conte quantas vezes você acelerou, engoliu o fim de uma frase ou usou uma muleta em português. Esse número é a sua métrica das próximas quatro semanas.)\n\nFinally, a warning about memorised scripts. Recruiters can tell in ten seconds. Memorise **the connectors** (`the trade-off here is`, `I would start by`, `let me push back on that`), never whole answers: the connectors give you structure while the content stays honest and specific to your own work.",
+        "fonte": "Destilado de entrevistas técnicas em inglês — estrutura de resposta, não gramática",
+        "perguntas": [
+          "What are the three moves, in order?",
+          "Why is \"it depends\" only acceptable when followed by something specific?",
+          "Em PT: qual é a métrica que você vai contar nas suas gravações durante as próximas quatro semanas?"
+        ]
+      }
+    },
+    {
+      "id": "d4-write-your-pitch",
+      "tipo": "desafio",
+      "titulo": "Write and record your 90-second pitch",
+      "dia": 4,
+      "tempoMin": 40,
+      "resumo": "Ninety seconds, four beats, recorded twice. (Em PT: escreva o pitch, grave, ouça, corte 20% e grave de novo.)",
+      "termos": [
+        "to-own-a-feature",
+        "to-ship",
+        "i-would-start-by"
+      ],
+      "desafio": {
+        "ambiente": "papel",
+        "nivel": 3,
+        "enunciado": "**Task (EN).** Write a 90-second answer to \"So, tell me about yourself.\" Record it, listen to it, cut twenty percent, and record it again.\n\n*(Em PT: escreva o seu pitch de 90 segundos, grave, ouça, corte 20% e grave de novo. Entregue o texto final da segunda gravação.)*\n\nUse exactly four beats, in this order:\n\n1. **Who you are now, in one sentence.** `I am a full stack engineer, mostly Node and React, with the last three years on systems that run in production and get paged.`\n2. **One thing you own, with a number.** Not a list of technologies — one system, one number. `I run a crypto trading bot on an Android phone under Termux; it has been live since August, and the measured return is 2.1 percent a month.`\n3. **One thing you fixed, with a mechanism.** The moment that shows how you think. `The bot had a phantom position blocking a slot because a manual sale outside the bot left state behind — and Number(null) turned an unread balance into a confirmed zero.`\n4. **What you are looking for, pointing at them.** `I am looking for a senior role where I own a service end to end — which is why this team caught my attention.`\n\nRules that make it work: no adjectives about yourself (`hard-working`, `passionate` are noise); at least two numbers; present perfect for what is still true (`I have been running…`), simple past for what is finished (`I fixed…`); and it must fit in 90 seconds **at a slow pace**, which is roughly 200 words, not 300.\n\n**Deliver:** the final text, plus the two durations (first take and second take) written at the end.",
+        "passos": [
+          "Write the four beats in Portuguese first, if that is faster — then translate, never the other way around during the recording",
+          "Record take one without stopping, even if you stumble",
+          "Listen and mark: every filler, every Portuguese word, every sentence you rushed",
+          "Cut twenty percent of the words and record take two",
+          "Write down both durations"
+        ],
+        "entrega": {
+          "tipo": "texto",
+          "rotulo": "Paste your final pitch, with both durations at the end",
+          "minimoChars": 600
+        },
+        "dicas": [
+          "If it does not fit in 90 seconds at a slow pace, the problem is the number of ideas, not the speed.",
+          "Em PT: números são o que impede o pitch de soar genérico. Dois números concretos valem mais que cinco adjetivos."
+        ],
+        "solucao": "A model pitch, for calibration — yours must use **your** numbers, not these:\n\n*\"I am a full stack engineer, mostly Node and React. For the last three years I have worked on systems that actually run in production — the kind that page you at three in the morning.\n\nThe project I own end to end is a crypto trading bot that runs on an Android phone under Termux and PM2. It has been live since August, with a hard cap of eighty dollars across four slots, and the measured return is around two percent a month — measured, not projected; I wrote down the method so I could repeat it.\n\nThe part I am proud of is not the strategy, it is a bug. A slot stayed blocked forever because a sale made outside the bot left a phantom position behind, and a null balance was being coerced to zero — so the system was confident about a number it had never read. I found it by comparing the events table with what the process printed, which turned out to be two different stories.\n\nWhat I am looking for now is a senior role where I own a service end to end, in a team that measures things. That is exactly why this role caught my attention.\"*\n\n**Why this works.** It has four beats and nothing else. It gives two numbers in the first thirty seconds. The third beat is the one that gets you hired: it shows a **mechanism** (`a null balance coerced to zero`) and a **method** (`comparing the events table with stdout`), which is what \"senior\" means in practice. And it closes by pointing at them, which invites the next question instead of ending in silence.\n\n**What to check in your own recording.** Count the fillers. Count the Portuguese words. Check whether you finished every sentence or let the last three words dissolve — that is the single most common problem, and it is fixed by slowing down, not by studying more vocabulary. If take two is longer than take one, you did not cut: you explained more. Cut again.",
+        "criterios": [
+          "Has exactly four beats, in order, with no list of technologies",
+          "Contains at least two concrete numbers from your own work",
+          "The third beat shows a mechanism and a method, not just a result",
+          "Fits in 90 seconds at a slow pace, and both durations are written down",
+          "No adjectives about yourself and no memorised-sounding sentences"
+        ]
+      }
+    },
+    {
+      "id": "d8-vocabulary-sprint",
+      "tipo": "cronometrado",
+      "titulo": "Ten expressions in ten minutes",
+      "dia": 8,
+      "tempoMin": 12,
+      "resumo": "No notes, answer out loud. (Em PT: responda em voz alta, sem consultar nada, e marque honestamente o que acertou.)",
+      "cronometrado": {
+        "minutos": 10,
+        "acertosMin": 7,
+        "criterio": "7 out of 10, said out loud, with no notes open.",
+        "perguntas": [
+          {
+            "id": "q-gargalo",
+            "pergunta": "Your service is slow and the database is the limiting factor. Say it in one interview sentence. (Em PT: diga que o banco é o gargalo.)",
+            "resposta": "The database is the bottleneck / right now the database is the bottleneck for the whole read path.",
+            "termos": [
+              "to-be-the-bottleneck"
+            ]
+          },
+          {
+            "id": "q-trade-off",
+            "pergunta": "Introduce the cost of the solution you just proposed, in one fixed phrase. (Em PT: introduza o custo da solução.)",
+            "resposta": "The trade-off here is… — for example: the trade-off here is write amplification.",
+            "termos": [
+              "the-trade-off-here-is"
+            ]
+          },
+          {
+            "id": "q-buy-time",
+            "pergunta": "Buy yourself five seconds without sounding lost. (Em PT: ganhe cinco segundos sem parecer perdido.)",
+            "resposta": "Let me think out loud for a second. / Can I clarify the requirements first?",
+            "termos": [
+              "let-me-think-out-loud"
+            ]
+          },
+          {
+            "id": "q-disagree",
+            "pergunta": "Disagree with the interviewer politely and technically. (Em PT: discorde do entrevistador com educação.)",
+            "resposta": "I would like to push back on that a little — in my experience… / Let me push back on that: the constraint is X, not Y.",
+            "termos": [
+              "to-push-back-on"
+            ]
+          },
+          {
+            "id": "q-tail",
+            "pergunta": "Explain that the average is fine but two percent of users wait two seconds. (Em PT: explique o problema de cauda.)",
+            "resposta": "The average looks fine, but we have a tail latency problem — the p99 is two seconds.",
+            "termos": [
+              "tail-latency"
+            ]
+          },
+          {
+            "id": "q-retry",
+            "pergunta": "Describe your retry policy in one phrase. (Em PT: descreva a política de retry.)",
+            "resposta": "We retry with exponential backoff and jitter, and only for idempotent calls.",
+            "termos": [
+              "to-retry-with-backoff"
+            ]
+          },
+          {
+            "id": "q-idempotent",
+            "pergunta": "Say that calling the endpoint twice is safe, using the technical adjective. (Em PT: diga que chamar duas vezes é seguro.)",
+            "resposta": "The endpoint is idempotent, so a retry cannot create a second order.",
+            "termos": [
+              "to-be-idempotent"
+            ]
+          },
+          {
+            "id": "q-degradation",
+            "pergunta": "Say that the system keeps working with reduced features when a dependency is down. (Em PT: o sistema segue com menos recursos quando a dependência cai.)",
+            "resposta": "It degrades gracefully — graceful degradation: we serve stale data from cache instead of failing the request.",
+            "termos": [
+              "graceful-degradation"
+            ]
+          },
+          {
+            "id": "q-drain",
+            "pergunta": "Say that you stop sending new traffic to an instance and let the current requests finish. (Em PT: pare o tráfego novo e deixe terminar o que está em curso.)",
+            "resposta": "We drain the instance first, then restart it.",
+            "termos": [
+              "to-drain"
+            ]
+          },
+          {
+            "id": "q-hindsight",
+            "pergunta": "Start the sentence where you say what you would do differently. (Em PT: comece a frase do que você faria diferente.)",
+            "resposta": "In hindsight, I would have measured before changing the code.",
+            "termos": [
+              "in-hindsight"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "d12-star-interview",
+      "tipo": "simulado",
+      "titulo": "Answer four behavioural questions in STAR format",
+      "dia": 12,
+      "tempoMin": 45,
+      "resumo": "Situation, Task, Action, Result — out loud, in English. (Em PT: responda em voz alta e só depois leia o gabarito para se dar a nota.)",
+      "simulado": {
+        "idioma": "en",
+        "minutosPorPergunta": 6,
+        "criterios": [
+          "Answers in under three minutes, with a clear Situation / Task / Action / Result shape",
+          "The Action section says what YOU did, in the first person singular, not what the team did",
+          "The Result has at least one number",
+          "Uses at least one deck expression naturally, not forced",
+          "Ends with what changed afterwards — process, not feelings"
+        ],
+        "perguntas": [
+          {
+            "id": "q-hardest-bug",
+            "idioma": "en",
+            "pergunta": "Tell me about the hardest bug you have debugged. How did you find it? (Em PT: conte o bug mais difícil que você já caçou e como chegou nele.)",
+            "contexto": "Hiring manager, 45-minute call, first behavioural question after the pitch.",
+            "pontosEsperados": [
+              "Concrete symptom first, with numbers or with what the user saw",
+              "The method used to narrow it down, not just the answer",
+              "An explicit moment where a hypothesis was eliminated by evidence",
+              "What changed in the process afterwards, so the class of bug cannot come back silently"
+            ],
+            "respostaModelo": "The situation: my trading bot had a slot that stayed blocked forever, so it stopped buying, and I only noticed because the number of open positions never went back down. The task was to explain the gap between what the dashboard showed and what the process believed. What I did: I stopped trusting stdout and went to the events table instead — those turned out to be two different stories, and that was the key move. From there I found two things. A sale made outside the bot left a phantom position behind, and the balance reader was coercing null to zero, so the system was confident about a number it had never actually read. The result: the slot mechanism went back to working, and I added a check that fails loudly when the balance is unreadable instead of silently treating it as zero. In hindsight, the real lesson was that logs are not the source of truth — the table is.",
+            "seguimento": "How long did it take you, and what would make it faster next time?",
+            "termos": [
+              "root-cause",
+              "under-the-hood",
+              "in-hindsight"
+            ]
+          },
+          {
+            "id": "q-disagreement",
+            "idioma": "en",
+            "pergunta": "Tell me about a time you disagreed with a technical decision. What did you do? (Em PT: uma vez em que você discordou de uma decisão técnica — o que você fez?)",
+            "contexto": "The interviewer is probing for collaboration, not for who was right.",
+            "pontosEsperados": [
+              "States the disagreement as a trade-off, not as right versus wrong",
+              "Describes bringing data or a small experiment into the conversation",
+              "Shows willingness to commit to the decision even if it was not the preferred one",
+              "Says what the outcome was, honestly — including if you were wrong"
+            ],
+            "respostaModelo": "The situation was a proposal to add a cache in front of a listing endpoint that was slow. My concern was that we were about to hide the problem rather than fix it, because the endpoint was doing one query per row. I did not want to make it a debate about opinions, so I asked for a day to measure: I counted the database calls and it was a hundred and one queries for a hundred rows. I brought that number to the discussion and framed it as a trade-off — the cache buys us latency today, but we pay with stale data and we still carry the N plus one when the cache misses. We agreed to batch the query first and then decide about the cache; after batching, the endpoint was fast enough that the cache was not needed. If the measurement had shown the opposite, I would have shipped the cache and said so. The process change was small but permanent: any performance ticket now starts with a count of calls before we discuss a solution.",
+            "seguimento": "And if the team had decided to ship the cache anyway?",
+            "termos": [
+              "the-trade-off-here-is",
+              "to-push-back-on",
+              "concorrencia-performance/n-mais-1"
+            ]
+          },
+          {
+            "id": "q-production-incident",
+            "idioma": "en",
+            "pergunta": "Walk me through an incident you handled in production. (Em PT: conte um incidente de produção que você conduziu, do alerta ao postmortem.)",
+            "contexto": "Senior interview; they want to hear the sequence, not the heroism.",
+            "pontosEsperados": [
+              "Separates stopping the bleeding from fixing the root cause",
+              "Mentions how the problem was detected, and how long that took",
+              "Uses on-call vocabulary correctly",
+              "Ends with a process change, not with \"we were more careful after that\""
+            ],
+            "respostaModelo": "The bot stopped reporting to Telegram, and the interesting part is that nothing looked broken — the process was up and the logs looked normal. The symptom was silence, which is the worst kind of symptom because nothing pages you. What I did first was to stop guessing and go to the events table, where I found repeated conflict errors: a second instance was running with the same token, so the two were fighting over the same connection. The immediate fix was to kill the duplicate instance — that stopped the bleeding in a couple of minutes. The real fix was structural: the deployment was able to leave an orphan process behind, so I made the start path check for an existing instance and fail loudly instead of starting a second one. The process change is what matters: silence is now an alert. If no heartbeat arrives within fifteen minutes, I get paged — because the first version of this incident cost me days of not knowing.",
+            "seguimento": "What was your time to detection, and how did you reduce it?",
+            "termos": [
+              "to-be-on-call",
+              "postmortem",
+              "root-cause"
+            ]
+          },
+          {
+            "id": "q-scope-and-ship",
+            "idioma": "en",
+            "pergunta": "Tell me about something you shipped under a tight deadline. What did you cut? (Em PT: algo que você entregou com prazo curto — o que você cortou?)",
+            "contexto": "They are testing judgement about scope, not speed.",
+            "pontosEsperados": [
+              "Names what was explicitly cut and why that was the right cut",
+              "Shows the decision was made with the user or the risk in mind",
+              "Mentions tech debt consciously taken and written down, not hidden",
+              "Has a result with a number or a date"
+            ],
+            "respostaModelo": "I was building a spaced repetition app for myself and I wanted it running on my phone before the end of the week, because an app I cannot open on the bus is an app I will not use. The task was to get the full loop working — content, study modes, progress — under a hard deadline of a few evenings. What I cut was deliberate: no user accounts, no cloud sync, no test coverage on the UI. What I refused to cut was the data model and the scheduling algorithm, because those are the parts that are expensive to change later and that everything else depends on. The result was that it went live on the phone that week with nineteen decks, and I have used it since. I wrote the cuts down as explicit tech debt with a note about what would force me to pay it — sync becomes necessary the day I want to study on two devices. The trade-off here was reach versus getting it into my own hands, and for a personal tool that is an easy call to make out loud.",
+            "seguimento": "Which of those cuts came back to bite you?",
+            "termos": [
+              "to-ship",
+              "tech-debt",
+              "the-trade-off-here-is"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "d18-think-out-loud",
+      "tipo": "mao-na-massa",
+      "titulo": "Explain a system out loud, in English, for five minutes",
+      "dia": 18,
+      "tempoMin": 60,
+      "resumo": "Whiteboard-style, recorded, no script. (Em PT: explique um sistema seu pensando alto, gravando, sem ler nada.)",
+      "termos": [
+        "let-me-think-out-loud",
+        "to-scale-horizontally",
+        "single-point-of-failure"
+      ],
+      "mao-na-massa": {
+        "contexto": "Pick one of your own systems — the trading bot or the Trilha RM running on the phone with cloudflared. You are going to explain it to an interviewer who knows nothing about it, in English, thinking out loud, without reading.",
+        "stack": [
+          "node",
+          "express",
+          "pm2",
+          "papel"
+        ],
+        "tempoCaixa": 60,
+        "entregavel": "Two recordings (take one and take three) plus a one-page diagram you drew while talking.",
+        "passos": [
+          "Draw the system on paper in under two minutes, naming the boxes in English as you draw",
+          "Record take one, five minutes, no script and no pausing, following the order: what it does, the data flow, where state lives, what breaks first",
+          "Listen to take one and mark every filler, every Portuguese word and every sentence you did not finish",
+          "Force three deck expressions into take two: a single point of failure, a trade-off, and how you would measure it",
+          "Record take three and compare with take one: length, fillers, and whether you answered \"what breaks first\" with a mechanism",
+          "Write down the three sentences you kept stumbling on and drill them alone"
+        ],
+        "criterioPronto": [
+          "Take three is five minutes or less and has no Portuguese words",
+          "You named at least one single point of failure and said what you would do about it",
+          "You stated one trade-off using the fixed phrase, without reading it",
+          "You ended with how you would measure the system in production",
+          "The diagram matches what you said, and you drew it while talking, not before",
+          "Take three has fewer fillers than take one, counted by you"
+        ]
+      }
+    },
+    {
+      "id": "d25-teach-it-in-english",
+      "tipo": "ensinar",
+      "titulo": "Teach one concept in English, on video",
+      "dia": 25,
+      "tempoMin": 45,
+      "resumo": "Five minutes, a camera, a junior audience. (Em PT: ensinar é o degrau 5 — se você não consegue explicar em inglês, você ainda não tem o conceito em inglês.)",
+      "termos": [
+        "to-clarify-the-requirements",
+        "edge-case",
+        "happy-path"
+      ],
+      "ensinar": {
+        "publico": "a junior developer who speaks English and has never heard of the concept — no shared Portuguese, no shortcuts",
+        "formato": "video",
+        "duracaoMin": 5,
+        "roteiro": [
+          "Open with the problem the concept solves, before naming the concept",
+          "One analogy of your own, not one you read",
+          "The mechanism, step by step, in the present simple",
+          "The happy path first, then one edge case where it breaks",
+          "A number from your own measurements",
+          "Close with \"here is how I would prove this to you\""
+        ],
+        "criterios": [
+          "No jargon used before it is defined, in English",
+          "The analogy survives the question \"and what happens if it takes eight seconds?\"",
+          "At least one number from your own work",
+          "Present simple used consistently for the mechanism, without tense slips",
+          "Ends with a concrete way to prove the claim"
+        ],
+        "minimoChars": 600
+      }
+    },
+    {
+      "id": "d30-retrospective",
+      "tipo": "retrospectiva",
+      "titulo": "Record the day-30 review and compare it with day 1",
+      "dia": 30,
+      "tempoMin": 25,
+      "resumo": "Record a final two-minute review in English, then answer these. (Em PT: grave a retrospectiva em inglês e depois responda às perguntas.)",
+      "retrospectiva": {
+        "perguntas": [
+          "Listen to the day-4 pitch and the day-30 recording back to back: what changed that you can actually hear?",
+          "Which expressions came out naturally under pressure, and which ones you still have to fetch?",
+          "Em PT: quantas vezes você engoliu o fim de uma frase na última gravação, comparado com a primeira?",
+          "Which question still makes you switch to Portuguese in your head before answering?",
+          "What would you say in English, today, if the interviewer asked why the p99 is eight seconds with the CPU at thirty percent?"
+        ],
+        "proximoPasso": "Nota abaixo de 3: refaça as etapas d12 e d18, porque são as duas que treinam resposta sob pressão. Nota 4 ou 5: marque uma conversa de 30 minutos em inglês com alguém de verdade, e use o pitch do dia 4 para abrir.",
+        "notaFinal": true
+      }
+    }
+  ]
+}

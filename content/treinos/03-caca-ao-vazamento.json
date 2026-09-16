@@ -1,0 +1,321 @@
+{
+  "id": "caca-ao-vazamento",
+  "titulo": "Caça ao vazamento",
+  "subtitulo": "5 dias atrás de uma memória que sobe e de um endpoint que arrasta",
+  "objetivo": "Diagnosticar um vazamento de memória e um endpoint lento com evidência: medir o estado inicial, achar a retenção num heap snapshot, achar o frame largo num flame graph, corrigir e provar a correção com o mesmo método de medição.",
+  "nivel": 4,
+  "duracaoDias": 5,
+  "tempoTotalMin": 247,
+  "decks": [
+    "node-internals",
+    "concorrencia-performance"
+  ],
+  "termos": [
+    "memory-leak",
+    "heap-snapshot",
+    "profiling"
+  ],
+  "tags": [
+    "node",
+    "memoria",
+    "performance",
+    "diagnostico",
+    "producao"
+  ],
+  "preRequisitos": [
+    "Node 22 no PATH (node -v)",
+    "Chrome ou Edge instalado, para abrir o DevTools em chrome://inspect",
+    "npx autocannon disponível (npx autocannon --help baixa na hora)",
+    "Uma pasta vazia para o laboratório da semana"
+  ],
+  "recompensa": "Você abre um heap snapshot, aponta o objeto que está segurando a memória e diz por que ele está vivo — e faz o mesmo com um flame graph para o endpoint lento, com número antes e depois.",
+  "etapas": [
+    {
+      "id": "d1-aquecimento",
+      "tipo": "aquecimento",
+      "titulo": "Reconhecer o vocabulário da caçada",
+      "dia": 1,
+      "tempoMin": 15,
+      "resumo": "14 termos do deck node-internals em flashcards, antes de abrir qualquer ferramenta.",
+      "termos": [
+        "memory-leak",
+        "heap-snapshot"
+      ],
+      "aquecimento": {
+        "modo": "flashcards",
+        "fonte": "deck:node-internals",
+        "quantidade": 14,
+        "soVencidos": false,
+        "meta": "Responda em voz alta antes de virar a carta. Em heap, garbage-collector e memory-leak, tente dizer também COMO você mediria aquilo."
+      }
+    },
+    {
+      "id": "d1-medir-antes-de-mexer",
+      "tipo": "leitura",
+      "titulo": "Separar memória que sobe de memória que vaza",
+      "dia": 1,
+      "tempoMin": 20,
+      "resumo": "rss, heapTotal, heapUsed e external — e por que o piso é o que importa.",
+      "termos": [
+        "memory-leak",
+        "garbage-collector"
+      ],
+      "leitura": {
+        "markdown": "Antes de abrir qualquer ferramenta, decore a diferença entre três números que todo mundo confunde — e que o `process.memoryUsage()` devolve juntos:\n\n**rss** é tudo o que o processo ocupa na RAM, incluindo código, stacks e buffers do sistema. **heapTotal** é o quanto o V8 reservou para o heap de JavaScript. **heapUsed** é o quanto desse heap está ocupado por objetos vivos. **external** é memória fora do heap presa a objetos JS — o caso mais comum são `Buffer`, que quase não pesam no `heapUsed` e pesam no `rss`.\n\nDaí a primeira regra da caçada: **memória subindo não é vazamento**. O coletor do V8 só roda quando precisa; um processo com 1 GB disponível vai simplesmente usar mais antes de se dar ao trabalho de coletar. O que caracteriza vazamento é o **piso** subir: o `heapUsed` logo depois de cada coleta maior fica mais alto a cada ciclo, e nunca volta.\n\nPara enxergar o piso, ou você roda com `--expose-gc` e mede depois de um `global.gc()`, ou observa a série ao longo do tempo:\n\n```\nnode --expose-gc app.js\n// e, a cada 30 s:\nglobal.gc()\nconsole.log(JSON.stringify(process.memoryUsage()))\n```\n\nA segunda regra é sobre o que realmente vaza em Node. Não é \"esqueci de dar free\": é **referência viva**. As quatro fontes que respondem pela maioria absoluta dos casos reais: (1) um `Map`, `Set` ou array no escopo de módulo que só cresce; (2) listeners de `EventEmitter` registrados por requisição e nunca removidos — cada closure segura tudo o que estava no escopo dela; (3) closures presas em `setInterval` que ninguém limpou; (4) cache sem `TTL` e sem limite de tamanho, que é o item 1 com nome bonito.\n\nA terceira regra é a que salva tempo: **meça antes de mexer**. Um vazamento e um endpoint lento têm sintomas parecidos (o processo fica ruim depois de um tempo) e causas opostas. Sem uma medição antes da mudança, você não consegue provar que a correção funcionou — e \"parece melhor\" não passa em code review nem em entrevista.",
+        "fonte": "Node.js docs — process.memoryUsage() e Diagnostics / Memory",
+        "link": "https://nodejs.org/en/learn/diagnostics/memory",
+        "perguntas": [
+          "Qual dos quatro números sobe quando você aloca 200 MB em Buffers?",
+          "Por que \"a memória subiu depois do deploy\" não prova vazamento?",
+          "Cite duas das quatro fontes clássicas de retenção em Node."
+        ]
+      }
+    },
+    {
+      "id": "d2-vazamento-de-listener",
+      "tipo": "desafio",
+      "titulo": "Medir a retenção de um listener esquecido",
+      "dia": 2,
+      "tempoMin": 30,
+      "resumo": "O vazamento mais comum de Node em 30 linhas — e o número que prova que ele existe.",
+      "termos": [
+        "memory-leak",
+        "heap",
+        "garbage-collector"
+      ],
+      "desafio": {
+        "ambiente": "node",
+        "nivel": 3,
+        "enunciado": "Salve como `vazamento.js` e rode com `node vazamento.js`. O script simula 500 requisições de duas formas: uma que registra um listener no barramento e nunca o remove (guardando o payload num `Map` de módulo) e outra que faz a desmontagem com `off()`.\n\n```\nconst { EventEmitter } = require('node:events')\n\nconst barramento = new EventEmitter()\nbarramento.setMaxListeners(0)\nconst cache = new Map()\n\n// handler que \"esquece\" de remover o listener e guarda o payload num Map global\nfunction requisicaoComVazamento(id) {\n  const payload = Buffer.alloc(1024, id % 256)\n  const aoAtualizar = () => cache.set(id, payload)\n  barramento.on('atualizou', aoAtualizar)\n  barramento.emit('atualizou')\n}\n\n// mesma coisa, com desmontagem\nfunction requisicaoLimpa(id) {\n  const payload = Buffer.alloc(1024, id % 256)\n  const aoAtualizar = () => payload.length\n  barramento.on('atualizou', aoAtualizar)\n  barramento.emit('atualizou')\n  barramento.off('atualizou', aoAtualizar)\n}\n\nfor (let i = 0; i < 500; i++) requisicaoComVazamento(i)\nconsole.log('listeners apos 500 requisicoes:', barramento.listenerCount('atualizou'))\nconsole.log('entradas retidas no Map:', cache.size)\nconsole.log('bytes retidos pelo Map:', cache.size * 1024)\n\nbarramento.removeAllListeners('atualizou')\ncache.clear()\n\nfor (let i = 0; i < 500; i++) requisicaoLimpa(i)\nconsole.log('listeners com off():', barramento.listenerCount('atualizou'))\nconsole.log('entradas retidas no Map:', cache.size)\n```\n\nAntes de rodar, escreva no papel os cinco números que você espera. Repare que o `Map` e o `EventEmitter` vivem no escopo do módulo — é isso que os torna raiz de retenção.\n\nEntregue: as cinco linhas exatas da saída.",
+        "passos": [
+          "Escreva a previsão dos cinco números no papel, sem rodar",
+          "Rode o script e compare",
+          "Responda em uma frase: qual das duas estruturas (o Map ou a lista de listeners) seguraria mais memória num servidor real, e por quê"
+        ],
+        "entrega": {
+          "tipo": "saida",
+          "rotulo": "Cole as cinco linhas da saída",
+          "esperado": "listeners apos 500 requisicoes: 500\nentradas retidas no Map: 500\nbytes retidos pelo Map: 512000\nlisteners com off(): 0\nentradas retidas no Map: 0"
+        },
+        "dicas": [
+          "listenerCount conta quantas funções continuam registradas naquele evento — cada uma é uma closure viva.",
+          "O Buffer de 1 KB não está no Map: quem está no Map é a referência a ele. Uma referência basta para o coletor não liberar nada."
+        ],
+        "solucao": "A saída é:\n\n```\nlisteners apos 500 requisicoes: 500\nentradas retidas no Map: 500\nbytes retidos pelo Map: 512000\nlisteners com off(): 0\nentradas retidas no Map: 0\n```\n\nCada requisição deixou duas raízes de retenção: a closure registrada no `EventEmitter` e a entrada no `Map`. O coletor não tem o que fazer — os objetos estão **alcançáveis** a partir do escopo do módulo, e alcançável nunca é coletado, por mais inútil que seja.\n\nMeio megabyte parece nada. Escale para o mundo real: 300 requisições por segundo, 1 KB retido por requisição, sem reinício, dá **1 GB em pouco mais de uma hora**. E o custo não é só memória: cada `emit` passa a percorrer uma lista de 500, depois 5.000, depois 50.000 closures — o vazamento vira também uma queda de throughput, e é comum o serviço ficar lento antes de morrer por OOM.\n\nDois sinais que o Node dá de graça e quase todo mundo silencia: o aviso `MaxListenersExceededWarning` (que o `setMaxListeners(0)` do exercício desligou de propósito) e o `--max-old-space-size` sendo atingido com `FATAL ERROR: Reached heap limit`. O primeiro aparece no dia do bug; o segundo, na madrugada de domingo.\n\nA correção é sempre a mesma forma: **quem registra, desmonta**. `off()` no fim do ciclo de vida, `AbortController` com `{ signal }` quando o Node suporta, `WeakMap`/`WeakRef` quando a chave é o próprio objeto de domínio, e cache com limite de tamanho e TTL — nunca `Map` puro.",
+        "criterios": [
+          "Explica a retenção em termos de alcançabilidade a partir de uma raiz, não em termos de \"esqueceu de limpar\"",
+          "Relaciona a contagem de listeners com a queda de desempenho do emit, além do consumo de memória"
+        ]
+      }
+    },
+    {
+      "id": "d2-relampago-do-heap",
+      "tipo": "cronometrado",
+      "titulo": "Responder 8 perguntas de memória em 8 minutos",
+      "dia": 2,
+      "tempoMin": 12,
+      "resumo": "Sem consultar nada. No fim, marque honestamente o que acertou.",
+      "cronometrado": {
+        "minutos": 8,
+        "acertosMin": 6,
+        "criterio": "6 de 8 sem abrir nenhuma aba.",
+        "perguntas": [
+          {
+            "id": "q-rss-vs-heapused",
+            "pergunta": "Qual a diferença entre rss e heapUsed no process.memoryUsage()?",
+            "resposta": "rss é tudo que o processo ocupa na RAM (código, stacks, buffers, heap); heapUsed é só a parte do heap do V8 ocupada por objetos JavaScript vivos.",
+            "termos": [
+              "heap"
+            ]
+          },
+          {
+            "id": "q-buffer-onde-aparece",
+            "pergunta": "Você aloca 200 MB em Buffers. Em qual dos números isso aparece?",
+            "resposta": "Em rss e em external; quase nada em heapUsed, porque o Buffer mora fora do heap do V8.",
+            "termos": [
+              "buffer"
+            ]
+          },
+          {
+            "id": "q-piso-do-heap",
+            "pergunta": "Qual evidência distingue \"memória subindo\" de vazamento de verdade?",
+            "resposta": "O piso: o heapUsed medido logo depois de uma coleta maior sobe a cada ciclo e nunca volta ao patamar anterior.",
+            "termos": [
+              "memory-leak"
+            ]
+          },
+          {
+            "id": "q-geracoes",
+            "pergunta": "Por que o V8 divide o heap em new space e old space?",
+            "resposta": "Hipótese geracional: a maioria dos objetos morre jovem. O scavenge do new space é rápido e frequente; só os sobreviventes são promovidos para o old space, coletado com mark-sweep-compact, bem mais caro.",
+            "termos": [
+              "garbage-collector"
+            ]
+          },
+          {
+            "id": "q-tres-snapshots",
+            "pergunta": "Por que a técnica do heap snapshot pede três capturas, e não duas?",
+            "resposta": "A primeira estabiliza o processo depois do warm-up; comparando a segunda com a terceira você vê só o que foi alocado entre elas e sobreviveu — o que elimina o ruído do aquecimento.",
+            "termos": [
+              "heap-snapshot"
+            ]
+          },
+          {
+            "id": "q-retained-size",
+            "pergunta": "No DevTools, qual a diferença entre shallow size e retained size?",
+            "resposta": "Shallow é a memória do objeto em si; retained é tudo que seria liberado se ele morresse — é o retained size que aponta o culpado.",
+            "termos": [
+              "heap-snapshot"
+            ]
+          },
+          {
+            "id": "q-flame-graph-largura",
+            "pergunta": "Num flame graph, o que significa a LARGURA de um frame — e o que não significa?",
+            "resposta": "Largura é a fração das amostras em que aquela função estava na pilha (tempo de CPU, incluindo os filhos). Não significa número de chamadas, e não significa tempo de espera de I/O.",
+            "termos": [
+              "concorrencia-performance/flame-graph"
+            ]
+          },
+          {
+            "id": "q-lento-sem-cpu",
+            "pergunta": "Um endpoint está lento e o flame graph está achatado, sem frame largo. O que isso sugere?",
+            "resposta": "Que o tempo não é de CPU: é espera — I/O, fila do pool de conexões, lock ou dependência externa. O próximo passo é medir lag do loop e tempo de espera na fila, não otimizar função.",
+            "termos": [
+              "concorrencia-performance/bottleneck-analysis"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "d3-heap-snapshot",
+      "tipo": "mao-na-massa",
+      "titulo": "Achar o culpado num heap snapshot",
+      "dia": 3,
+      "tempoMin": 70,
+      "resumo": "Três capturas, uma comparação, um nome de construtor — e a cadeia que prova por que ele está vivo.",
+      "termos": [
+        "heap-snapshot",
+        "memory-leak",
+        "profiling"
+      ],
+      "mao-na-massa": {
+        "contexto": "Você vai construir o vazamento de propósito para aprender a achá-lo. A meta não é consertar (o conserto é óbvio): é sair sabendo navegar a comparação de snapshots sem tutorial aberto.",
+        "stack": [
+          "node",
+          "express"
+        ],
+        "tempoCaixa": 70,
+        "entregavel": "Uma pasta lab-memoria/ com server.js, três arquivos .heapsnapshot e um README de 10 linhas.",
+        "passos": [
+          "Suba um Express com GET /sessao, que cria um objeto de ~50 KB e o guarda num Map de módulo com chave aleatória, e GET /ping, que só responde ok",
+          "Rode com node --inspect server.js e abra chrome://inspect, aba Memory",
+          "Capture o snapshot 1, dispare 2000 requisições em /sessao com npx autocannon -c 20 -a 2000, capture o snapshot 2, repita a carga e capture o snapshot 3",
+          "Compare o 3 com o 2 no modo Comparison, ordene por Size Delta e anote o construtor do topo",
+          "Selecione um objeto desse construtor e leia a aba Retainers de baixo para cima até chegar numa raiz de GC; escreva a cadeia completa no README",
+          "Anote no README o Retained Size total do Map e quantos bytes por requisição isso representa"
+        ],
+        "criterioPronto": [
+          "O README nomeia o construtor que cresce entre o snapshot 2 e o 3",
+          "O README escreve a cadeia de retenção do objeto até a raiz, com pelo menos três elos",
+          "O README traz retained size total e bytes por requisição, calculados por você",
+          "Você consegue explicar por que /ping não faz o número subir",
+          "Você repetiu a captura depois de trocar o Map por um cache com limite e viu o delta parar de crescer"
+        ]
+      }
+    },
+    {
+      "id": "d4-endpoint-lento",
+      "tipo": "desafio",
+      "titulo": "Provar o custo do N+1 contando idas ao banco",
+      "dia": 4,
+      "tempoMin": 35,
+      "resumo": "O endpoint lento quase nunca é CPU: é repetição. Conte as chamadas antes de otimizar código.",
+      "termos": [
+        "concorrencia-performance/n-mais-1",
+        "concorrencia-performance/hot-path",
+        "concorrencia-performance/batching"
+      ],
+      "desafio": {
+        "ambiente": "node",
+        "nivel": 3,
+        "enunciado": "Salve como `nmais1.js` e rode com `node nmais1.js`. O \"banco\" é falso de propósito: ele só conta quantas consultas foram feitas e cobra 2 ms de ida e volta em cada uma. Duas implementações do mesmo endpoint produzem exatamente o mesmo JSON.\n\n```\n// \"banco\" falso que so conta consultas e cobra 2 ms de ida e volta\nlet consultas = 0\nconst espera = (ms) => new Promise((r) => setTimeout(r, ms))\nconst PEDIDOS = Array.from({ length: 100 }, (_, i) => ({ id: i + 1, clienteId: (i % 20) + 1 }))\nconst CLIENTES = Array.from({ length: 20 }, (_, i) => ({ id: i + 1, nome: 'cliente-' + (i + 1) }))\n\nasync function query(fn) {\n  consultas += 1\n  await espera(2)\n  return fn()\n}\n\nasync function listarNMais1() {\n  const pedidos = await query(() => PEDIDOS)\n  const saida = []\n  for (const p of pedidos) {\n    const c = await query(() => CLIENTES.find((x) => x.id === p.clienteId))\n    saida.push({ ...p, cliente: c.nome })\n  }\n  return saida\n}\n\nasync function listarEmLote() {\n  const pedidos = await query(() => PEDIDOS)\n  const ids = [...new Set(pedidos.map((p) => p.clienteId))]\n  const clientes = await query(() => CLIENTES.filter((c) => ids.includes(c.id)))\n  const porId = new Map(clientes.map((c) => [c.id, c]))\n  return pedidos.map((p) => ({ ...p, cliente: porId.get(p.clienteId).nome }))\n}\n\nasync function main() {\n  consultas = 0\n  const a = await listarNMais1()\n  const consultasA = consultas\n  consultas = 0\n  const b = await listarEmLote()\n  const consultasB = consultas\n  console.log('n+1 consultas:', consultasA)\n  console.log('lote consultas:', consultasB)\n  console.log('mesmo resultado:', JSON.stringify(a) === JSON.stringify(b))\n  console.log('idas ao banco evitadas:', consultasA - consultasB)\n}\nmain()\n```\n\nAntes de rodar, calcule no papel quanto tempo cada versão gasta só de ida e volta ao banco (consultas × 2 ms) e qual seria o ganho com 1000 pedidos em vez de 100.\n\nEntregue: as quatro linhas exatas da saída.",
+        "passos": [
+          "Calcule no papel o tempo de rede de cada versão antes de rodar",
+          "Rode o script e confira se a contagem bate com a sua previsão",
+          "Refaça a conta para 1000 pedidos e escreva quantos milissegundos o lote economiza"
+        ],
+        "entrega": {
+          "tipo": "saida",
+          "rotulo": "Cole as quatro linhas da saída",
+          "esperado": "n+1 consultas: 101\nlote consultas: 2\nmesmo resultado: true\nidas ao banco evitadas: 99"
+        },
+        "dicas": [
+          "Uma consulta para a lista e uma por item: é daí que vem o nome N+1.",
+          "A versão em lote busca os ids distintos primeiro; repare que 100 pedidos citam apenas 20 clientes."
+        ],
+        "solucao": "A saída é:\n\n```\nn+1 consultas: 101\nlote consultas: 2\nmesmo resultado: true\nidas ao banco evitadas: 99\n```\n\nCom 2 ms por ida e volta, a versão N+1 gasta **202 ms só de rede** e a versão em lote gasta **4 ms** — mesma resposta, mesmo banco, mesmo servidor. Com 1000 pedidos seriam 1001 consultas (2 s) contra 2 (4 ms). O custo cresce linearmente com o tamanho da página, o que explica o padrão clássico: o endpoint está ótimo em homologação com 10 registros e inaceitável em produção com 500.\n\nPor que isso importa para a caçada: um flame graph desse endpoint fica **achatado**. Não há função quente, porque o processo passa o tempo esperando. Se você começar pelo perfil de CPU, vai passar a tarde otimizando um `map` que custa 0,1 % do tempo. O sinal certo é contar as chamadas — no ORM, com o log de query ligado; no Postgres, com `pg_stat_statements` ordenado por `calls`; no serviço, com um counter por dependência.\n\nA forma canônica da correção é sempre a mesma: coletar os ids, fazer **uma** consulta com `WHERE id = ANY($1)` e resolver em memória com um `Map`. É o mesmo raciocínio do DataLoader do GraphQL, que faz batching automático por tick do event loop. E note o terceiro número da saída: `mesmo resultado: true` é parte do exercício — otimização que muda a resposta não é otimização, é bug novo.",
+        "criterios": [
+          "Converte a contagem de consultas em tempo, usando o custo por ida e volta",
+          "Explica por que o flame graph não acusaria esse problema"
+        ]
+      }
+    },
+    {
+      "id": "d5-provar-a-correcao",
+      "tipo": "mao-na-massa",
+      "titulo": "Corrigir e provar a correção com o mesmo método",
+      "dia": 5,
+      "tempoMin": 45,
+      "resumo": "Correção sem medição repetida é fé. Mesma carga, mesma métrica, dois números.",
+      "termos": [
+        "concorrencia-performance/benchmark-load-stress-soak",
+        "concorrencia-performance/percentis",
+        "memory-leak"
+      ],
+      "mao-na-massa": {
+        "contexto": "Você tem as duas causas (retenção no Map e N+1 no endpoint) e 45 minutos. O entregável não é o código corrigido: é o par de números que prova a correção, medido do mesmo jeito antes e depois.",
+        "stack": [
+          "node",
+          "express",
+          "pm2"
+        ],
+        "tempoCaixa": 45,
+        "entregavel": "Um README de 15 linhas com a tabela antes/depois e o comando exato usado em cada medição.",
+        "passos": [
+          "Escreva o protocolo de medição ANTES de mexer no código: qual comando, quantas conexões, quanto tempo, qual métrica anotada",
+          "Meça o estado ruim: p99 do endpoint com npx autocannon -c 20 -d 30 e heapUsed depois de global.gc() ao fim da carga",
+          "Corrija as duas causas: cache com limite e TTL no lugar do Map, e uma consulta em lote no lugar do loop",
+          "Meça de novo, com o comando idêntico, sem mudar nada no protocolo",
+          "Rode um soak curto: 10 minutos de carga leve, medindo heapUsed a cada minuto, e confirme que o piso ficou plano",
+          "Escreva a tabela antes/depois e uma frase de causa para cada linha"
+        ],
+        "criterioPronto": [
+          "O protocolo de medição foi escrito antes da correção e não mudou entre as duas medidas",
+          "A tabela tem p99 antes, p99 depois, heapUsed antes e heapUsed depois, com unidade",
+          "O soak de 10 minutos mostra o piso de heapUsed estável, e não apenas mais baixo",
+          "Cada número tem uma frase de causa ao lado, e nenhuma delas é \"ficou mais rápido\"",
+          "Você consegue defender por que essa medição não é enganosa (warm-up descartado, mesma máquina, mesma carga)"
+        ]
+      }
+    },
+    {
+      "id": "d5-retrospectiva",
+      "tipo": "retrospectiva",
+      "titulo": "Fechar a caçada com a frase que serve na entrevista",
+      "dia": 5,
+      "tempoMin": 20,
+      "retrospectiva": {
+        "perguntas": [
+          "Qual foi a primeira medição que você fez, e o que ela eliminou como hipótese?",
+          "Qual número te surpreendeu, e o que você esperava antes de medir?",
+          "Se um entrevistador disser \"nosso serviço Node come memória até reiniciar\", qual é a sua resposta de 90 segundos?",
+          "Qual das duas ferramentas (heap snapshot e flame graph) você ainda não usaria sem tutorial aberto?",
+          "O que você mudaria no seu bot de trading ou no Trilha RM já na semana que vem por causa desta semana?"
+        ],
+        "proximoPasso": "Nota abaixo de 3: refaça só as etapas d3 e d5, capturando os snapshots de novo — é a parte que só entra com repetição. Nota 4 ou 5: aplique o protocolo de medição num serviço seu de verdade e guarde a tabela antes/depois.",
+        "notaFinal": true
+      }
+    }
+  ]
+}

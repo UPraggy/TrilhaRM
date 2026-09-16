@@ -1,0 +1,301 @@
+{
+  "id": "blindagem-de-producao",
+  "titulo": "Blindagem de produção",
+  "subtitulo": "7 dias entre o que um atacante tentaria e o que você faz às 3h da manhã",
+  "objetivo": "Defender um serviço Node em produção de ponta a ponta: fazer o threat model de uma funcionalidade, corrigir as falhas de OWASP que existem no seu próprio código, escrever um postmortem que gera aprendizado e subir uma mudança arriscada com feature flag e runbook.",
+  "nivel": 4,
+  "duracaoDias": 7,
+  "tempoTotalMin": 325,
+  "decks": [
+    "seguranca",
+    "producao-equipe"
+  ],
+  "termos": [
+    "threat-modeling",
+    "owasp-top-10",
+    "defense-in-depth"
+  ],
+  "tags": [
+    "seguranca",
+    "producao",
+    "node",
+    "operacao",
+    "incidente"
+  ],
+  "preRequisitos": [
+    "Node 22 no PATH (node -v)",
+    "Um serviço seu de verdade para usar de alvo (o bot, o Trilha RM ou a API do portfólio)",
+    "Papel e caneta para o diagrama do threat model",
+    "Acesso ao histórico de um incidente seu, mesmo que pequeno"
+  ],
+  "recompensa": "Você sai com o threat model de uma funcionalidade real, um endpoint seu blindado com evidência do antes e depois, um postmortem escrito no formato da casa e um runbook que outra pessoa conseguiria seguir às 3h da manhã.",
+  "etapas": [
+    {
+      "id": "d1-aquecimento",
+      "tipo": "aquecimento",
+      "titulo": "Reconhecer o vocabulário de ataque e de defesa",
+      "dia": 1,
+      "tempoMin": 15,
+      "resumo": "16 termos do deck seguranca em flashcards, antes de olhar para o próprio código.",
+      "termos": [
+        "threat-modeling",
+        "owasp-top-10"
+      ],
+      "aquecimento": {
+        "modo": "flashcards",
+        "fonte": "deck:seguranca",
+        "quantidade": 16,
+        "soVencidos": false,
+        "meta": "Em cada termo, tente dizer também qual controle você já tem (ou não tem) no seu serviço. Nota honesta: 2 é \"explico\", não \"já ouvi falar\"."
+      }
+    },
+    {
+      "id": "d1-stride",
+      "tipo": "leitura",
+      "titulo": "Ler o método antes de aplicar",
+      "dia": 1,
+      "tempoMin": 20,
+      "resumo": "As quatro perguntas do threat model e as seis letras do STRIDE, com a técnica de percorrer seta por seta.",
+      "termos": [
+        "threat-modeling",
+        "defense-in-depth"
+      ],
+      "leitura": {
+        "markdown": "Threat model não é documento de compliance: é uma hora de conversa que responde quatro perguntas, na ordem. **O que estamos construindo? O que pode dar errado? O que vamos fazer a respeito? Fizemos um trabalho bom?**\n\nA primeira pergunta é um desenho, não um texto: caixas para os processos, cilindros para os armazenamentos, setas para os fluxos e — o item que quase todo mundo esquece — **as fronteiras de confiança**. Fronteira de confiança é toda linha em que o dado passa de um dono para outro: a borda da internet, a chamada para um serviço de terceiro, a leitura de um arquivo enviado pelo usuário, a fila que outro time escreve. Ameaça mora em fronteira; o resto do diagrama é contexto.\n\nA segunda pergunta usa o STRIDE, que é só um lembrete de seis categorias, cada uma sendo a negação de uma propriedade:\n\n```\nS  Spoofing                 quebra autenticidade   -> \"consigo me passar por outro?\"\nT  Tampering                quebra integridade     -> \"consigo alterar em trânsito ou em repouso?\"\nR  Repudiation              quebra rastreabilidade -> \"consigo negar que fiz?\"\nI  Information disclosure   quebra confidencialidade -> \"consigo ler o que não é meu?\"\nD  Denial of service        quebra disponibilidade -> \"consigo derrubar ou tornar caro?\"\nE  Elevation of privilege   quebra autorização     -> \"consigo virar admin?\"\n```\n\nA técnica prática: pegue **uma seta por vez** do diagrama e percorra as seis letras perguntando \"e se?\". A maioria das combinações não se aplica em 10 segundos — e é justamente isso que torna o método barato. O valor não está em achar a ameaça exótica: está em descobrir, de forma sistemática, que a seta entre o worker e o banco usa uma credencial com permissão de `DROP TABLE` porque um dia foi mais fácil assim.\n\nA terceira pergunta força a escolha explícita entre quatro respostas: **mitigar** (colocar um controle), **transferir** (empurrar para quem tem mais condição, como usar um provedor de identidade), **aceitar** (registrar a decisão e quem decidiu) ou **eliminar** (parar de fazer aquilo). \"Aceitar\" com nome e data é uma resposta profissional; ameaça sem resposta nenhuma é dívida escondida.\n\nA quarta pergunta é a que fecha: cada mitigação vira um item verificável — teste automatizado, alerta, item de runbook ou linha de checklist de deploy. Ameaça que não virou verificação volta na próxima release, com outro nome.\n\nDuas ideias fecham o método. **Least privilege**: toda credencial responde \"o que ela pode fazer que não precisa?\" — e a resposta honesta quase sempre é \"quase tudo\". **Defense in depth**: nenhum controle é a última linha. Rate limiting não substitui validação, validação não substitui parametrização de query, e nada disso substitui a permissão restrita no banco.",
+        "fonte": "Adam Shostack — Threat Modeling: as quatro perguntas, e o STRIDE da Microsoft",
+        "link": "https://owasp.org/www-community/Threat_Modeling_Process",
+        "perguntas": [
+          "O que é uma fronteira de confiança, e por que ela é onde a ameaça mora?",
+          "Quais são as quatro respostas possíveis para uma ameaça identificada?",
+          "Por que \"aceitar\" pode ser uma resposta profissional, e o que precisa acompanhá-la?"
+        ]
+      }
+    },
+    {
+      "id": "d2-threat-model",
+      "tipo": "desafio",
+      "titulo": "Fazer o threat model de uma funcionalidade sua",
+      "dia": 2,
+      "tempoMin": 50,
+      "resumo": "Um diagrama, as fronteiras marcadas, STRIDE seta por seta e uma decisão explícita por ameaça.",
+      "termos": [
+        "threat-modeling",
+        "least-privilege",
+        "defense-in-depth"
+      ],
+      "desafio": {
+        "ambiente": "papel",
+        "nivel": 4,
+        "enunciado": "Escolha **uma** funcionalidade real de um serviço seu — o endpoint de ordem do bot de trading, o upload de conteúdo do Trilha RM, o login, o que for — e faça o threat model dela em 50 minutos, no papel.\n\nA regra que faz o exercício funcionar: **uma funcionalidade, não o sistema inteiro**. Threat model de \"o sistema\" produz trinta ameaças genéricas; threat model de \"enviar uma ordem de compra\" produz cinco ameaças específicas e acionáveis.\n\nO que precisa estar no papel:\n\n1. o diagrama com processos, armazenamentos, fluxos e **as fronteiras de confiança marcadas com uma linha tracejada**;\n2. para cada seta que cruza fronteira, as seis letras do STRIDE percorridas — a maioria você elimina em segundos, e tudo bem;\n3. cada ameaça sobrevivente com uma decisão: mitigar, transferir, aceitar (com data e dono) ou eliminar;\n4. cada mitigação convertida em algo verificável — teste, alerta, item de runbook ou linha do checklist de deploy;\n5. a pergunta de least privilege respondida para **cada credencial** que aparece no diagrama.\n\nEntregue: marque no checklist o que você realmente produziu.",
+        "passos": [
+          "Desenhe o diagrama da funcionalidade e marque as fronteiras de confiança",
+          "Percorra STRIDE em cada seta que cruza fronteira, anotando só o que sobrevive a \"e se?\"",
+          "Decida mitigar, transferir, aceitar ou eliminar para cada ameaça",
+          "Converta cada mitigação em um item verificável",
+          "Responda \"o que esta credencial pode fazer que não precisa?\" para cada credencial do diagrama"
+        ],
+        "entrega": {
+          "tipo": "checklist",
+          "rotulo": "Marque o que você produziu de verdade",
+          "itens": [
+            "Escolhi UMA funcionalidade e desenhei o diagrama com as fronteiras de confiança tracejadas",
+            "Percorri as seis letras do STRIDE em cada seta que cruza fronteira",
+            "Anotei pelo menos quatro ameaças específicas, não genéricas",
+            "Cada ameaça tem uma decisão explícita: mitigar, transferir, aceitar ou eliminar",
+            "Cada mitigação virou um item verificável (teste, alerta, runbook ou checklist)",
+            "Respondi a pergunta de least privilege para cada credencial do diagrama",
+            "Achei pelo menos uma coisa que eu não sabia que estava exposta"
+          ]
+        },
+        "dicas": [
+          "Comece pelas setas que entram, não pelas que saem: é por onde o atacante fala com você.",
+          "Se uma ameaça não tem um \"como\" concreto, ela ainda não é uma ameaça - é um medo. Escreva o passo a passo do ataque."
+        ],
+        "solucao": "Um threat model bom cabe numa folha e tem o formato de uma tabela com quatro colunas: **seta → letra do STRIDE → ataque concreto → decisão verificável**.\n\nExemplo do endpoint de ordem do bot, para calibrar o seu:\n\n- *Seta: painel → API de ordem.* **S (spoofing)** — a sessão de 12 h é a única credencial e o `API_TOKEN` está vazio no aparelho; quem pegar o cookie envia ordem. Decisão: **mitigar** — token separado por origem e expiração curta; verificável por um teste que rejeita requisição sem o segundo fator.\n- *Mesma seta.* **T (tampering)** — o tamanho da ordem vem do cliente. Decisão: **mitigar** — teto de valor validado no servidor, nunca no painel; verificável por teste que envia 10× o teto e espera 400.\n- *Seta: API → exchange.* **E (elevation)** — a chave da exchange tem permissão de saque. Decisão: **eliminar** — chave só com permissão de trade; verificável na conferência mensal de credenciais.\n- *Seta: API → log.* **I (information disclosure)** — `source .env` já ecoou credencial no terminal, e o log de erro imprime o objeto de configuração inteiro. Decisão: **mitigar** — lista explícita de campos logados e redact na serialização; verificável por teste que procura o prefixo da chave na saída do logger.\n- *Seta: internet → API.* **D (denial of service)** — sem rate limit, um laço de `curl` consome o pool. Decisão: **mitigar** — rate limit por IP e por conta, com o alerta ligado ao 429; verificável por carga com autocannon.\n\nRepare no padrão: nenhuma linha diz \"melhorar a segurança\". Cada uma diz **o que o atacante faz**, **o que muda** e **como você saberá que continua valendo daqui a seis meses**. É essa última coluna que separa threat model de reunião.\n\nE a descoberta mais comum na primeira vez: o inventário de credenciais. Quase todo serviço tem uma credencial com permissão muito maior do que usa, porque um dia foi mais rápido criar assim — e ninguém voltou. Least privilege não é um princípio abstrato; é essa lista.",
+        "criterios": [
+          "Escolheu uma funcionalidade específica, não o sistema inteiro",
+          "Marcou fronteiras de confiança no diagrama",
+          "Cada ameaça descreve um ataque concreto, com passos",
+          "Cada mitigação virou algo verificável",
+          "Respondeu least privilege por credencial"
+        ]
+      }
+    },
+    {
+      "id": "d3-path-traversal",
+      "tipo": "desafio",
+      "titulo": "Medir quantas entradas escapam da raiz",
+      "dia": 3,
+      "tempoMin": 30,
+      "resumo": "Path traversal em 20 linhas — e a demonstração de que path.join não é validação.",
+      "termos": [
+        "path-traversal",
+        "input-validation-sanitization",
+        "ssrf"
+      ],
+      "desafio": {
+        "ambiente": "node",
+        "nivel": 3,
+        "enunciado": "Salve como `traversal.js` e rode com `node traversal.js`. Ele testa cinco nomes de arquivo contra três formas de montar o caminho de um upload: concatenação crua, `path.join` e `resolve` com verificação de prefixo. Usa `path.posix` de propósito, para o resultado ser o mesmo no Windows, no Linux e no Termux.\n\n```\nconst path = require('node:path').posix\n\nconst RAIZ = '/srv/app/uploads'\nconst entradas = ['nota.pdf', '../../etc/passwd', 'sub/../nota.pdf', '/etc/shadow', '..%2f..%2fetc%2fpasswd']\n\nconst foraDaRaiz = (p) => p !== 'RECUSADO' && !(p === RAIZ || p.startsWith(RAIZ + '/'))\n\nconst concatenar = (nome) => path.resolve(RAIZ + '/' + decodeURIComponent(nome))\nconst comJoin = (nome) => path.resolve(path.join(RAIZ, decodeURIComponent(nome)))\nconst comGuarda = (nome) => {\n  const alvo = path.resolve(RAIZ, decodeURIComponent(nome))\n  return alvo === RAIZ || alvo.startsWith(RAIZ + '/') ? alvo : 'RECUSADO'\n}\n\nconst conta = (fn) => entradas.map(fn).filter(foraDaRaiz).length\nconsole.log('fora da raiz com concatenacao:', conta(concatenar))\nconsole.log('fora da raiz com path.join:', conta(comJoin))\nconsole.log('fora da raiz com resolve+prefixo:', conta(comGuarda))\nconsole.log('recusados pelo guarda:', entradas.map(comGuarda).filter((p) => p === 'RECUSADO').length)\n```\n\nAntes de rodar, escreva no papel quantas entradas você acha que escapam em cada estratégia. Preste atenção especial na quinta entrada, que chega codificada como viria numa URL.\n\nEntregue: as quatro linhas exatas da saída.",
+        "passos": [
+          "Anote sua previsão para as quatro linhas antes de rodar",
+          "Rode e confira, prestando atenção na entrada codificada",
+          "Responda em uma frase por que decodificar ANTES de validar é obrigatório - e o que acontece se você decodificar depois"
+        ],
+        "entrega": {
+          "tipo": "saida",
+          "rotulo": "Cole as quatro linhas da saída",
+          "esperado": "fora da raiz com concatenacao: 2\nfora da raiz com path.join: 2\nfora da raiz com resolve+prefixo: 0\nrecusados pelo guarda: 3"
+        },
+        "dicas": [
+          "path.join normaliza os \"..\" em relação ao caminho montado, mas isso não impede que o resultado caia fora da raiz.",
+          "Compare o que acontece com \"/etc/shadow\" nas três estratégias: caminho absoluto na segunda posição muda tudo em resolve."
+        ],
+        "solucao": "A saída é:\n\n```\nfora da raiz com concatenacao: 2\nfora da raiz com path.join: 2\nfora da raiz com resolve+prefixo: 0\nrecusados pelo guarda: 3\n```\n\nAs duas que escapam são `../../etc/passwd` e a versão codificada `..%2f..%2fetc%2fpasswd` — que vira a mesma coisa depois do `decodeURIComponent`. O detalhe que derruba código de produção: **se a validação acontece antes de decodificar, a entrada codificada passa ilesa**, porque `..%2f..` não contém nenhum `..` seguido de barra. Decodifique primeiro, valide depois, e uma vez só (decodificação dupla é outra família de bug).\n\nO ponto central é o segundo número: **`path.join` não é validação**. Ele é uma função de normalização de string, e normalizar `/srv/app/uploads` com `../../etc/passwd` produz `/srv/etc/passwd` obedientemente. Muita gente usa `path.join` achando que está se defendendo — a defesa só existe quando há uma **decisão** depois: resolver o caminho final e recusar o que não começa com a raiz.\n\nRepare também no caso `/etc/shadow`, que é instrutivo: com `path.join` ele vira `/srv/app/uploads/etc/shadow` (dentro da raiz, inofensivo), e com `path.resolve` ele vira `/etc/shadow` (fora, recusado). Um caminho absoluto na segunda posição faz o `resolve` descartar a primeira — por isso o guarda precisa do teste de prefixo, e não pode confiar em \"eu passei a raiz como primeiro argumento\".\n\nDuas coisas que este exercício não cobre e que fazem parte da mesma defesa: o prefixo tem que terminar com separador (`RAIZ + '/'`), senão `/srv/app/uploads-malicioso` passa no `startsWith`; e em disco real ainda existem links simbólicos, que só `fs.realpath` resolve antes da verificação.\n\nA mesma estrutura de raciocínio vale para SSRF, que é path traversal com URL no lugar de caminho: monte, resolva e **compare com uma lista de permitidos** — nunca com uma lista de proibidos.",
+        "criterios": [
+          "Explica por que path.join não é um controle de segurança",
+          "Identifica a decodificação antes da validação como requisito, e não como detalhe"
+        ]
+      }
+    },
+    {
+      "id": "d4-blindar-endpoint",
+      "tipo": "mao-na-massa",
+      "titulo": "Blindar um endpoint seu de verdade",
+      "dia": 4,
+      "tempoMin": 80,
+      "resumo": "Quatro controles em um endpoint real, com evidência de antes e depois para cada um.",
+      "termos": [
+        "rate-limiting-defesa",
+        "input-validation-sanitization",
+        "secrets-management"
+      ],
+      "mao-na-massa": {
+        "contexto": "Pegue o endpoint que saiu pior no threat model do dia 2. Você tem 80 minutos. A meta não é deixá-lo perfeito: é ter quatro controles funcionando e uma prova de que cada um funciona.",
+        "stack": [
+          "node",
+          "express",
+          "nginx",
+          "pm2"
+        ],
+        "tempoCaixa": 80,
+        "entregavel": "O endpoint corrigido no repositório e um arquivo SEGURANCA.md de 15 linhas com o ataque, o controle e o comando que prova cada um.",
+        "passos": [
+          "Antes de mexer, execute o ataque e guarde a evidência: o comando curl e a resposta que mostra o problema",
+          "Validação de entrada por lista de permitidos no servidor: tipo, tamanho e formato de cada campo, com 400 para o resto",
+          "Rate limiting por IP e por conta, com resposta 429 e header Retry-After, e um alerta ligado ao volume de 429",
+          "Segredos fora do código e fora do log: variável de ambiente lida uma vez, lista explícita de campos logados e redact na serialização do erro",
+          "Permissão mínima na credencial usada pelo endpoint, conferida no provedor ou no banco",
+          "Repita cada ataque e cole a nova resposta ao lado da antiga no SEGURANCA.md"
+        ],
+        "criterioPronto": [
+          "Existe a evidência do ataque funcionando ANTES da correção, com comando e saída",
+          "A validação recusa tipo, tamanho e formato inválidos com 400, e o teste automatizado cobre pelo menos três casos ruins",
+          "O rate limit devolve 429 com Retry-After e foi comprovado com autocannon ou um laço de curl",
+          "Nenhum segredo aparece no log de erro, comprovado por um grep do prefixo da credencial na saída do logger",
+          "A credencial usada perdeu pelo menos uma permissão que não precisava",
+          "O SEGURANCA.md tem, para cada controle, o ataque, a correção e o comando que prova"
+        ]
+      }
+    },
+    {
+      "id": "d5-postmortem",
+      "tipo": "desafio",
+      "titulo": "Escrever o postmortem de um incidente real seu",
+      "dia": 5,
+      "tempoMin": 45,
+      "resumo": "Sintoma, evidência, causa, correção e processo — sem culpado e sem \"ter mais atenção\".",
+      "termos": [
+        "producao-equipe/postmortem-blameless",
+        "logging-sem-vazar",
+        "producao-equipe/incident-response"
+      ],
+      "desafio": {
+        "ambiente": "papel",
+        "nivel": 4,
+        "postmortem": true,
+        "enunciado": "Escolha um incidente **seu**, de verdade — a venda fora do bot que deixou posição fantasma travando a vaga, o 409 do Telegram com duas instâncias no mesmo token, o deploy que subiu sem o `hunter/garimpeiro.json`, o 401 da sessão de 12 h — e escreva o postmortem no formato da casa.\n\nSe nenhum incidente seu servir, use este: **um token de API apareceu em texto puro no log de erro de produção e ficou lá por 11 dias**, porque o handler de erro serializava o objeto de configuração inteiro. O log ia para um arquivo com retenção de 30 dias, lido por três pessoas. Ninguém percebeu; a descoberta veio de uma revisão de código não relacionada.\n\nEstrutura obrigatória:\n\n**sintoma → evidência (números e horários) → causa → correção → o que muda no processo**\n\nRegras do formato blameless: descreva **o sistema que permitiu**, não a pessoa que digitou. Toda frase que começa com um nome próprio deveria começar com \"o processo não tinha\". E a linha do tempo precisa de dois relógios: quando começou e **quando alguém percebeu** — a distância entre os dois é frequentemente o achado mais valioso do documento.\n\nEntregue: o texto completo do postmortem, com pelo menos um número calculado por você (por exemplo, quantas horas de exposição, ou quantas pessoas-cópia do segredo existem se o log é replicado em três lugares).",
+        "passos": [
+          "Monte a linha do tempo com dois relógios: início do problema e momento da detecção",
+          "Separe sintoma (o que se viu) de evidência (o número) e de causa (o mecanismo)",
+          "Escreva a correção imediata e a estrutural, separadas",
+          "Termine com a mudança de processo, verificável, com dono"
+        ],
+        "entrega": {
+          "tipo": "texto",
+          "rotulo": "Cole o postmortem",
+          "minimoChars": 700
+        },
+        "dicas": [
+          "A pergunta mais produtiva de um postmortem não é \"por que quebrou?\", é \"por que demoramos para saber?\".",
+          "Correção imediata (parar o sangramento) e correção estrutural (impedir a classe do problema) são coisas diferentes - escreva as duas."
+        ],
+        "solucao": "Um postmortem que passa nos critérios, no caso do token vazado, diz em substância:\n\n**Sintoma.** Um token de API com permissão de escrita ficou legível em texto puro no log de produção por 11 dias. Nenhum usuário foi afetado; nenhum alerta disparou.\n\n**Evidência.** Primeira ocorrência às 14h22 do dia 3, na primeira exceção depois do deploy das 14h05. 11 dias de exposição = **264 horas**. O arquivo é replicado em três lugares (aparelho, backup diário e cópia local de depuração), então existem pelo menos **três cópias** do segredo, uma delas com retenção de 30 dias — ou seja, a exposição continua por mais 19 dias mesmo depois da correção. 1.847 linhas de log continham o prefixo do token. Detecção: dia 14, por revisão de código não relacionada — **11 dias entre ocorrência e descoberta**, e esse é o número mais importante do documento.\n\n**Causa.** O handler de erro global serializava `err.config` inteiro com `JSON.stringify` para \"não perder contexto\". O objeto de configuração carrega a credencial porque ela é lida uma vez no boot e guardada ali. Não havia lista de campos permitidos no log nem redact na serialização. O processo não tinha nenhuma barreira entre \"quero contexto no erro\" e \"publiquei a credencial\": nem revisão focada, nem teste, nem varredura. A causa não é a linha de código; é a ausência de qualquer ponto em que o sistema dissesse não.\n\n**Correção imediata.** Rotacionar o token (e só então mexer no código — a ordem importa). Expurgar as três cópias do log. Confirmar no provedor se houve uso a partir de origem desconhecida na janela de 264 horas.\n\n**Correção estrutural.** Logger com lista explícita de campos e redact por padrão; o objeto de erro passa a logar `code`, `status` e `url` — nunca o objeto inteiro. Credencial deixa de morar em objeto de configuração compartilhado e passa a ser lida no ponto de uso. Teste automatizado que provoca uma exceção e falha se o prefixo da credencial aparecer na saída do logger.\n\n**Processo.** Varredura de segredo no log entra no pipeline (falha o build ao encontrar padrão de chave). Rotação de credencial passa a ter prazo fixo, para que exposição longa tenha janela limitada por construção. E entra na checklist de revisão a pergunta: \"este log imprime um objeto inteiro?\". Dono e prazo definidos para cada item.\n\n**O que esse exercício ensina.** Postmortem bom é um documento **operacional**, não um pedido de desculpas: quem lê deveria conseguir prevenir a classe inteira do problema, não só aquela ocorrência. E os 11 dias de detecção rendem mais aprendizado que a linha de código errada — porque a próxima falha será outra linha, mas a cegueira será a mesma.",
+        "criterios": [
+          "A linha do tempo tem início e detecção, e o documento comenta a distância entre os dois",
+          "Usa números calculados como evidência, não adjetivos",
+          "A causa descreve o sistema que permitiu, sem apontar pessoa",
+          "Separa correção imediata de correção estrutural",
+          "A mudança de processo é verificável e tem dono"
+        ]
+      }
+    },
+    {
+      "id": "d6-runbook-e-rollout",
+      "tipo": "mao-na-massa",
+      "titulo": "Subir a mudança arriscada com flag e runbook",
+      "dia": 6,
+      "tempoMin": 65,
+      "resumo": "A correção do dia 4 vai a produção atrás de uma flag, com um runbook que outra pessoa segue às 3h.",
+      "termos": [
+        "producao-equipe/runbook",
+        "producao-equipe/feature-flags",
+        "producao-equipe/rollback-vs-roll-forward"
+      ],
+      "mao-na-massa": {
+        "contexto": "A blindagem do dia 4 muda o comportamento de um endpoint que já está rodando — é exatamente o tipo de mudança que quebra alguém em silêncio. Ela vai subir atrás de uma flag, com plano de volta escrito antes.",
+        "stack": [
+          "node",
+          "express",
+          "pm2"
+        ],
+        "tempoCaixa": 65,
+        "entregavel": "A flag implementada, o runbook em docs/runbook-<endpoint>.md e o registro do rollout com horários.",
+        "passos": [
+          "Implemente a flag: uma variável de ambiente lida em tempo de requisição, com padrão desligado, sem precisar de deploy para mudar de estado",
+          "Escreva o runbook ANTES de ligar: como ligar, como desligar, o que olhar nos primeiros 10 minutos, quando desistir e quem avisar",
+          "Defina o critério de sucesso e o critério de aborto em número, não em sensação",
+          "Ligue para você mesmo primeiro, depois para uma fatia, depois para todos, medindo entre cada passo",
+          "Exercite o rollback de verdade: desligue a flag e confirme o retorno ao comportamento antigo, cronometrando",
+          "Registre no runbook o tempo real de rollback e o que você faria diferente"
+        ],
+        "criterioPronto": [
+          "A flag muda de estado sem deploy e sem reiniciar o processo, comprovado por você",
+          "O runbook tem os comandos exatos, copiáveis, e não descrições do tipo \"reinicie o serviço\"",
+          "Existe critério de aborto numérico escrito antes do rollout",
+          "O rollback foi executado de verdade e o tempo dele está cronometrado no documento",
+          "O runbook responde o que fazer se a flag estiver ligada e o serviço não responder",
+          "Outra pessoa (ou você daqui a três meses, sem contexto) conseguiria seguir o documento sozinha"
+        ]
+      }
+    },
+    {
+      "id": "d7-retrospectiva",
+      "tipo": "retrospectiva",
+      "titulo": "Fechar a semana com o que você consegue defender",
+      "dia": 7,
+      "tempoMin": 20,
+      "retrospectiva": {
+        "perguntas": [
+          "Qual exposição você descobriu no threat model que não sabia que existia?",
+          "Qual controle do dia 4 você conseguiu provar com comando, e qual ficou só na intenção?",
+          "No postmortem, qual foi a distância entre o incidente e a detecção — e o que encurta essa distância?",
+          "Se um entrevistador perguntar \"como você garante que um segredo não vaza no log?\", qual é a sua resposta de 60 segundos?",
+          "O que desta semana entra no seu processo permanente, e o que foi exercício de uma vez só?"
+        ],
+        "proximoPasso": "Nota abaixo de 3: refaça as etapas d2 e d4 em outra funcionalidade, porque threat model só entra com repetição. Nota 4 ou 5: aplique o runbook e a flag no próximo deploy de verdade do bot e meça o tempo de rollback real.",
+        "notaFinal": true
+      }
+    }
+  ]
+}
