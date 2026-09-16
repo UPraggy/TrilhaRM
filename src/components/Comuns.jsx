@@ -192,8 +192,40 @@ export function Confirmar({ titulo, texto, confirmar = 'Confirmar', perigo, onSi
   )
 }
 
-export function Carregando({ texto = 'Carregando…' }) {
-  return <div className="vazio">{texto}</div>
+/** Bloco cinza que pisca no lugar de um pedaço de conteúdo que ainda não chegou. */
+export function Esqueleto({ className = '', style }) {
+  return <span className={`skel ${className}`} style={style} aria-hidden="true" />
+}
+
+/**
+ * Esqueleto do conteúdo (não um spinner solto): mostra a forma do que está vindo.
+ * O texto vai só para o leitor de tela, com aria-live.
+ */
+export function Carregando({ texto = 'Carregando…', cartoes = 3 }) {
+  return (
+    <div className="carregando" role="status" aria-live="polite">
+      <span className="sr-only">{texto}</span>
+      <Esqueleto className="skel--titulo" />
+      {Array.from({ length: cartoes }).map((_, i) => (
+        <div className="skel-card" key={i}>
+          <Esqueleto className="skel--linha" style={{ width: '55%' }} />
+          <Esqueleto className="skel--linha" style={{ width: '90%' }} />
+          <Esqueleto className="skel--barra" />
+        </div>
+      ))}
+    </div>
+  )
+}
+
+/** Lista/seção sem nada dentro: explica o porquê e, quando dá, oferece a saída. */
+export function Vazio({ titulo, children, acao }) {
+  return (
+    <div className="vazio">
+      {titulo && <p className="vazio__t">{titulo}</p>}
+      {children && <div className="small">{children}</div>}
+      {acao && <div className="vazio__acao">{acao}</div>}
+    </div>
+  )
 }
 
 export function Erro({ texto, onRetry }) {

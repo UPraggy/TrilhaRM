@@ -11,6 +11,9 @@ export function StoreProvider({ children }) {
   const [trilhas, setTrilhas] = useState({ fases: [], origem: 'auto' })
   const [progresso, setProgresso] = useState({ termos: {}, praticas: {}, streak: { atual: 0, melhor: 0 }, historico: [] })
   const [praticas, setPraticas] = useState([])
+  // null = ainda carregando (a Home mostra esqueleto); [] = carregou e não tem nada
+  const [cursos, setCursos] = useState(null)
+  const [treinos, setTreinos] = useState(null)
   const [errosConteudo, setErrosConteudo] = useState([])
   const [carregando, setCarregando] = useState(true)
   const [erro, setErro] = useState(null)
@@ -21,13 +24,23 @@ export function StoreProvider({ children }) {
     setCarregando(true)
     setErro(null)
     try {
-      const [d, t, tr, p, pr] = await Promise.all([api.decks(), api.termos(), api.trilhas(), api.progresso(), api.praticas().catch(() => ({ praticas: [], erros: [] }))])
+      const [d, t, tr, p, pr, cs, ts] = await Promise.all([
+        api.decks(),
+        api.termos(),
+        api.trilhas(),
+        api.progresso(),
+        api.praticas().catch(() => ({ praticas: [], erros: [] })),
+        api.cursos().catch(() => ({ cursos: [], erros: [] })),
+        api.treinos().catch(() => ({ treinos: [], erros: [] })),
+      ])
       setDecks(d.decks || [])
-      setErrosConteudo([...(d.erros || []), ...(pr.erros || [])])
+      setErrosConteudo([...(d.erros || []), ...(pr.erros || []), ...(cs.erros || []), ...(ts.erros || [])])
       setTermos(t.termos || [])
       setTrilhas(tr || { fases: [] })
-      setProgresso({ praticas: {}, ...p })
+      setProgresso({ praticas: {}, cursos: {}, ...p })
       setPraticas(pr.praticas || [])
+      setCursos(cs.cursos || [])
+      setTreinos(ts.treinos || [])
     } catch (e) {
       setErro(e.message || 'falha ao carregar')
     } finally {
@@ -43,14 +56,24 @@ export function StoreProvider({ children }) {
   useEffect(() => {
     const onFoco = () => {
       if (document.visibilityState === 'visible') {
-        Promise.all([api.decks(), api.termos(), api.trilhas(), api.praticas().catch(() => ({ praticas: [], erros: [] })), api.progresso()])
-          .then(([d, t, tr, pr, p]) => {
+        Promise.all([
+          api.decks(),
+          api.termos(),
+          api.trilhas(),
+          api.praticas().catch(() => ({ praticas: [], erros: [] })),
+          api.progresso(),
+          api.cursos().catch(() => ({ cursos: [], erros: [] })),
+          api.treinos().catch(() => ({ treinos: [], erros: [] })),
+        ])
+          .then(([d, t, tr, pr, p, cs, ts]) => {
             setDecks(d.decks || [])
-            setErrosConteudo([...(d.erros || []), ...(pr.erros || [])])
+            setErrosConteudo([...(d.erros || []), ...(pr.erros || []), ...(cs.erros || []), ...(ts.erros || [])])
             setTermos(t.termos || [])
             setTrilhas(tr || { fases: [] })
             setPraticas(pr.praticas || [])
-            setProgresso({ praticas: {}, ...p })
+            setProgresso({ praticas: {}, cursos: {}, ...p })
+            setCursos(cs.cursos || [])
+            setTreinos(ts.treinos || [])
           })
           .catch(() => {})
       }
@@ -160,12 +183,65 @@ export function StoreProvider({ children }) {
     return { porDeck, geral }
   }, [praticas, progresso])
 
+  // resumo dos cursos (aulas em Markdown) — null enquanto carrega
+  const resumoCursos = useMemo(() => {
+    if (!cursos) return null
+    const g = { total: cursos.length, licoes: 0, feitas: 0, atividades: 0, emAndamento: 0 }
+    for (const c of cursos) {
+      g.licoes += c.totalLicoes || 0
+      g.feitas += (c.progresso && c.progresso.concluidas) || 0
+      g.atividades += c.totalAtividades || 0
+      if (c.progresso && c.progresso.concluidas > 0 && c.progresso.pct < 100) g.emAndamento += 1
+    }
+    return g
+  }, [cursos])
+
+  // resumo dos treinos especiais (temporadas) — null enquanto carrega
+  const resumoTreinos = useMemo(() => {
+    if (!treinos) return null
+    const g = { total: treinos.length, concluidos: 0, andamento: 0, etapas: 0, etapasFeitas: 0 }
+    for (const t of treinos) {
+      const p = t.progresso || {}
+      if (p.estado === 'concluido') g.concluidos += 1
+      else if (p.estado === 'andamento') g.andamento += 1
+      g.etapas += p.total || t.etapas || 0
+      g.etapasFeitas += p.concluidas || 0
+    }
+    return g
+  }, [treinos])
+
+  /**
+   * Fase atual = a primeira que ainda não passou de 70% dos termos em nível ≥ 3
+   * (o checkpoint do plano 19 §7). Se todas passaram, é a última.
+   */
+  const faseAtual = useMemo(() => {
+    const fases = trilhas.fases || []
+    if (!fases.length) return null
+    for (const f of fases) {
+      let total = 0
+      let n3 = 0
+      for (const id of f.decks) {
+        const r = resumo.porDeck[id]
+        if (!r) continue
+        total += r.total
+        n3 += r.n3
+      }
+      if (!total || n3 / total < 0.7) return f.numero
+    }
+    return fases[fases.length - 1].numero
+  }, [trilhas, resumo])
+
   const valor = {
     decks,
     termos,
     trilhas,
     praticas,
+    cursos,
+    treinos,
     resumoPraticas,
+    resumoCursos,
+    resumoTreinos,
+    faseAtual,
     atualizarPratica,
     aplicarConclusaoPratica,
     progresso,

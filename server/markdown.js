@@ -537,11 +537,14 @@ export function parseCurso(texto, nomeArquivo = 'curso.md') {
   const protegida = new Array(linhas.length).fill(false)
   let emCerca = false
   let profundidade = 0
+  let linhaCerca = -1
+  let linhaContainer = -1
   for (let i = 0; i < linhas.length; i += 1) {
     const l = linhas[i]
     if (RE_CERCA.test(l)) {
       protegida[i] = true
       emCerca = !emCerca
+      if (emCerca) linhaCerca = i
       continue
     }
     if (emCerca) {
@@ -557,7 +560,15 @@ export function parseCurso(texto, nomeArquivo = 'curso.md') {
     if (RE_ABRE_CONTAINER.test(l) && !RE_FECHA_CONTAINER.test(l)) {
       protegida[i] = true
       profundidade = 1
+      linhaContainer = i
     }
+  }
+  // sem esse aviso, um ":::" que falta engole o resto do arquivo em silêncio (lições somem sem erro)
+  if (profundidade > 0) {
+    erros.push(`${nomeArquivo}:${linhaCorpo + linhaContainer}: container ":::" aberto e nunca fechado — feche com uma linha ":::" (o resto do arquivo virou conteúdo dele)`)
+  }
+  if (emCerca) {
+    erros.push(`${nomeArquivo}:${linhaCorpo + linhaCerca}: bloco de código aberto e nunca fechado — feche com "\`\`\`" (o resto do arquivo virou código)`)
   }
 
   // varre títulos de nível 1/2/3 fora de código

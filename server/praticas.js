@@ -234,6 +234,32 @@ export function exercicioPublico(ex) {
 }
 
 /**
+ * Texto → número do jeito que um humano digita: "1,5" (vírgula decimal), "1.900.020" e "1 900 020"
+ * (separador de milhar) e "1.234,56" / "1,234.56" (os dois juntos). Sem nenhum dígito → NaN
+ * (resposta em branco NÃO pode virar zero).
+ */
+export function paraNumero(bruto) {
+  let s = String(bruto ?? '').trim()
+  if (!s) return NaN
+  s = s.replace(/[\s_]/g, '') // \s ja cobre nbsp e espaco estreito
+  const virgula = s.lastIndexOf(',')
+  const ponto = s.lastIndexOf('.')
+  if (virgula > -1 && ponto > -1) {
+    // o separador decimal é o que vem por último; o outro é de milhar
+    const [dec, mil] = virgula > ponto ? [',', '.'] : ['.', ',']
+    s = s.split(mil).join('')
+    s = s.split(dec).join('.')
+  } else if (virgula > -1) {
+    s = /^[+-]?\d{1,3}(,\d{3})+$/.test(s) ? s.split(',').join('') : s.split(',').join('.')
+  } else if (ponto > -1 && /^[+-]?\d{1,3}(\.\d{3})+$/.test(s)) {
+    s = s.split('.').join('')
+  }
+  // primeiro número do texto (deixa a unidade de fora, inclusive as que têm "e": "58bytes")
+  const m = s.match(/[+-]?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?/)
+  return m ? Number(m[0]) : NaN
+}
+
+/**
  * Corrige uma resposta de tipo automático.
  * @returns {{ correto: boolean, detalhe?: string }}
  */
@@ -246,7 +272,7 @@ export function corrigir(ex, resposta) {
     return { correto: ok }
   }
   if (e.tipo === 'numero') {
-    const n = Number(String(resposta ?? '').trim().replace(',', '.').replace(/[^\d.eE+-]/g, ''))
+    const n = paraNumero(resposta)
     if (!Number.isFinite(n)) return { correto: false, detalhe: 'não entendi como número' }
     if (e.min != null && e.max != null) return { correto: n >= e.min && n <= e.max }
     if (e.esperado == null) return { correto: false }

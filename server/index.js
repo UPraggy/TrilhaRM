@@ -131,7 +131,8 @@ api.get('/progresso/revisao', (_req, res) => {
 api.post('/progresso/avaliar', (req, res) => {
   const { deckId, termoId, nota, modo, resposta } = req.body || {}
   if (!deckId || !termoId) return res.status(400).json({ erro: 'deckId e termoId são obrigatórios' })
-  const n = Number(nota)
+  // Number(null) é 0: sem esta guarda, um `nota: null` do cliente viraria "desconheço" e zeraria o termo
+  const n = typeof nota === 'number' || (typeof nota === 'string' && nota.trim() !== '') ? Number(nota) : NaN
   if (!Number.isFinite(n) || n < 0 || n > 5) return res.status(400).json({ erro: 'nota deve ser 0..5' })
   const deck = repo.obter(String(deckId))
   if (!deck) return res.status(404).json({ erro: 'deck não encontrado' })

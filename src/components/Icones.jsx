@@ -77,3 +77,34 @@ export const IcoTerminal = (p) => (
     <path d="M7 9l3 3-3 3M12 15h5" />
   </svg>
 )
+export const IcoCartas = (p) => (
+  <svg {...base} {...p}>
+    <rect x="3" y="7" width="12" height="14" rx="2" />
+    <path d="M8 4h9a2 2 0 0 1 2 2v11" />
+    <path d="M6 12h6M6 16h4" />
+  </svg>
+)
+export const IcoMenu = (p) => (
+  <svg {...base} {...p}>
+    <circle cx="5" cy="12" r="1.6" />
+    <circle cx="12" cy="12" r="1.6" />
+    <circle cx="19" cy="12" r="1.6" />
+  </svg>
+)
+export const IcoChevron = (p) => (
+  <svg {...base} {...p}>
+    <path d="m6 9 6 6 6-6" />
+  </svg>
+)
+export const IcoRelogio = (p) => (
+  <svg {...base} {...p}>
+    <circle cx="12" cy="12" r="9" />
+    <path d="M12 7v5l3 2" />
+  </svg>
+)
+export const IcoRetomar = (p) => (
+  <svg {...base} {...p}>
+    <circle cx="12" cy="12" r="9" />
+    <path d="M10 8.5v7l6-3.5z" />
+  </svg>
+)
