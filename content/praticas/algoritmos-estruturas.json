@@ -1,0 +1,178 @@
+{
+  "deckId": "algoritmos-estruturas",
+  "titulo": "Práticas · Algoritmos e Estruturas de Dados",
+  "exercicios": [
+    {
+      "id": "lru-cache-estado",
+      "titulo": "Implementar um LRU cache e imprimir o estado após cada operação",
+      "termos": ["lru-cache", "hash-table", "array-vs-linked-list"],
+      "nivel": 3,
+      "tempoMin": 25,
+      "ambiente": "node",
+      "enunciado": "Implemente uma classe `LRU` com capacidade fixa, `get(k)` e `set(k, v)` em O(1). `get` de chave ausente devolve `-1`. Quando `set` estoura a capacidade, descarta o item MENOS recentemente usado (o mais antigo em uso, não o mais antigo em inserção). `get` e `set` de chave existente contam como uso.\n\nCrie `new LRU(3)` e execute exatamente estas 11 operações, nesta ordem:\n\n```\nset a=1 · set b=2 · set c=3 · get a · set d=4 · get b · set c=30 · set e=5 · get a · get c · get e\n```\n\nApós CADA operação imprima uma linha no formato `set <k>=<v> -> [<chaves do menos ao mais recente>]` ou `get <k>=<retorno> -> [<chaves>]`. Exemplo da primeira linha: `set a=1 -> [a]`.\n\nAntes de rodar, preencha as 11 linhas no papel. Depois rode e compare.\n\nEntregue: as 11 linhas exatas da saída.",
+      "passos": [
+        "Em JS, `Map` preserva ordem de inserção: `delete` + `set` de novo move a chave para o fim (mais recente); `map.keys().next().value` é a mais antiga",
+        "Estado = `[...map.keys()].join(',')` — do menos recente (início) ao mais recente (fim)",
+        "Rode `node lru.js` e confira a linha do `set d=4`: quem saiu tem que ser `b`, não `a`"
+      ],
+      "entrega": {
+        "tipo": "saida",
+        "esperado": "set a=1 -> [a]\nset b=2 -> [a,b]\nset c=3 -> [a,b,c]\nget a=1 -> [b,c,a]\nset d=4 -> [c,a,d]\nget b=-1 -> [c,a,d]\nset c=30 -> [a,d,c]\nset e=5 -> [d,c,e]\nget a=-1 -> [d,c,e]\nget c=30 -> [d,e,c]\nget e=5 -> [d,c,e]",
+        "rotulo": "Cole as 11 linhas"
+      },
+      "dicas": [
+        "O `get a` antes do `set d` renova `a`: quem está no fundo da fila na hora do 4º set é `b`, então é `b` que sai.",
+        "`set` de chave que já existe (c=30) NÃO evicta ninguém: só atualiza o valor e move para o topo. O `set e=5` logo depois é que estoura e derruba `a`.",
+        "Se a sua saída mostra `[b,c,a]` depois do `get a`, está certo: a fila é impressa do menos ao mais recente."
+      ],
+      "solucao": "```\nclass LRU {\n  constructor(max) { this.max = max; this.m = new Map() }\n  get(k) {\n    if (!this.m.has(k)) return -1\n    const v = this.m.get(k)\n    this.m.delete(k); this.m.set(k, v)      // re-insere no fim = mais recente\n    return v\n  }\n  set(k, v) {\n    if (this.m.has(k)) this.m.delete(k)     // atualizar também conta como uso\n    else if (this.m.size >= this.max) this.m.delete(this.m.keys().next().value) // evicta o mais antigo\n    this.m.set(k, v)\n  }\n  estado() { return [...this.m.keys()].join(',') }\n}\nconst ops = [['set','a',1],['set','b',2],['set','c',3],['get','a'],['set','d',4],['get','b'],['set','c',30],['set','e',5],['get','a'],['get','c'],['get','e']]\nconst c = new LRU(3)\nfor (const [op, k, v] of ops) {\n  if (op === 'set') { c.set(k, v); console.log(`set ${k}=${v} -> [${c.estado()}]`) }\n  else { const r = c.get(k); console.log(`get ${k}=${r} -> [${c.estado()}]`) }\n}\n```\n\nSaída:\n```\nset a=1 -> [a]\nset b=2 -> [a,b]\nset c=3 -> [a,b,c]\nget a=1 -> [b,c,a]\nset d=4 -> [c,a,d]\nget b=-1 -> [c,a,d]\nset c=30 -> [a,d,c]\nset e=5 -> [d,c,e]\nget a=-1 -> [d,c,e]\nget c=30 -> [d,e,c]\nget e=5 -> [d,c,e]\n```\n\nPor que O(1): o `Map` do V8 é uma hash table com lista encadeada de ordem por baixo — a mesma dupla clássica (hash map para achar o nó + lista duplamente ligada para mover/remover em O(1) porque você já tem o ponteiro). É o caso raro em que linked list vence array: mover um elemento para o fim de um array custa O(n) de shift. Em entrevista, se pedirem sem `Map`, desenhe as duas estruturas: `nodes = {}` (chave → nó) e uma lista com sentinelas `head`/`tail`; `get` desconecta e recoloca na cabeça, `set` que estoura remove `tail.prev` e apaga do hash.\n\nO que uma lib real acrescenta (`lru-cache`): TTL, tamanho por peso, stats de hit/miss. O que medir em produção: hit ratio e evictions/s — hit < 80% num dado 'quente' significa que o padrão de acesso não é LRU-friendly (scan sequencial, por exemplo), e aí LFU ou W-TinyLFU se defendem melhor.",
+      "criterios": [
+        "get e set em O(1) usando ordem do Map (ou hash + lista duplamente ligada)",
+        "Trata set de chave existente como uso, sem evictar",
+        "Explica por que precisa de duas estruturas e por que aqui linked list vence array"
+      ],
+      "postmortem": false
+    },
+    {
+      "id": "bfs-dependencias-servicos",
+      "titulo": "BFS num grafo de dependências: ordem de visita, distâncias e nós inalcançáveis",
+      "termos": ["graph-bfs-dfs", "queue", "hash-table"],
+      "nivel": 3,
+      "tempoMin": 20,
+      "ambiente": "node",
+      "enunciado": "Grafo dirigido de dependências entre serviços (lista de adjacência, na ordem dada — a ordem dos vizinhos IMPORTA para a saída):\n\n```\nconst grafo = {\n  api:    ['auth', 'db', 'cache'],\n  auth:   ['db', 'redis'],\n  db:     [],\n  cache:  ['redis'],\n  redis:  [],\n  worker: ['db', 'fila'],\n  fila:   ['redis'],\n}\n```\n\nImplemente BFS a partir de `api` (fila FIFO, marca visitado ao ENFILEIRAR, vizinhos na ordem do array) e imprima 3 linhas:\n\n1. a ordem de visita, separada por espaço;\n2. a distância (em arestas) de cada nó alcançado, na ordem em que foi descoberto, no formato `nome=d` separado por espaço;\n3. `inalcancaveis: ` seguido dos nós NÃO alcançados a partir de `api`, em ordem alfabética separados por vírgula.\n\nDepois responda no papel: se trocasse a fila por uma pilha (DFS), a linha 1 mudaria? E a linha 2 continuaria sendo 'distância mínima'?\n\nEntregue: as 3 linhas exatas.",
+      "passos": [
+        "`const dist = new Map([[origem, 0]]); const fila = [origem]` — a distância do vizinho é `dist(u) + 1` no momento em que ele entra na fila",
+        "Para a linha 3: `Object.keys(grafo).filter((n) => !dist.has(n)).sort()`",
+        "`fila.shift()` é O(n) num array — para este tamanho não importa; em produção use um índice de cabeça ou um deque"
+      ],
+      "entrega": {
+        "tipo": "saida",
+        "esperado": "api auth db cache redis\napi=0 auth=1 db=1 cache=1 redis=2\ninalcancaveis: fila,worker",
+        "rotulo": "Cole as 3 linhas"
+      },
+      "dicas": [
+        "`redis` é vizinho de `auth` (descoberto na distância 2) e também de `cache` — mas já está marcado quando `cache` é processado, então aparece uma vez só, com d=2.",
+        "`worker` e `fila` apontam PARA o resto, mas ninguém aponta para eles: em grafo dirigido, alcançabilidade tem direção."
+      ],
+      "solucao": "```\nfunction bfs(g, origem) {\n  const dist = new Map([[origem, 0]])\n  const fila = [origem]\n  const ordem = []\n  while (fila.length) {\n    const u = fila.shift()\n    ordem.push(u)\n    for (const v of g[u]) {\n      if (!dist.has(v)) { dist.set(v, dist.get(u) + 1); fila.push(v) }\n    }\n  }\n  return { ordem, dist }\n}\nconst { ordem, dist } = bfs(grafo, 'api')\nconsole.log(ordem.join(' '))\nconsole.log([...dist].map(([n, d]) => `${n}=${d}`).join(' '))\nconsole.log('inalcancaveis: ' + Object.keys(grafo).filter((n) => !dist.has(n)).sort().join(','))\n```\n\nSaída:\n```\napi auth db cache redis\napi=0 auth=1 db=1 cache=1 redis=2\ninalcancaveis: fila,worker\n```\n\nPor que BFS dá distância mínima: a fila processa TODOS os nós de distância d antes de qualquer nó de distância d+1, então a primeira vez que um nó é descoberto é pelo caminho mais curto (em arestas, sem peso). Com pilha (DFS) a ordem de visita muda (por exemplo `api cache redis db auth` empilhando na ordem e desempilhando do fim) e a 'distância' vira profundidade do caminho encontrado, não a mínima — `redis` pode sair com d=2 ou d=3 dependendo de quem chegou primeiro.\n\nMarcar ao enfileirar (e não ao desenfileirar) evita duplicatas na fila: `redis` seria enfileirado duas vezes (por `auth` e por `cache`) e impresso duas vezes.\n\nComplexidade O(V + E): cada nó entra na fila uma vez, cada aresta é olhada uma vez. Uso real: 'o que quebra se `redis` cair?' é BFS no grafo INVERTIDO a partir de `redis` — `auth`, `cache`, `fila`, e daí `api`, `worker`.",
+      "criterios": [
+        "Marca visitado ao enfileirar e usa fila FIFO",
+        "Explica por que BFS dá distância mínima e DFS não",
+        "Sabe inverter o grafo para responder 'quem depende de X'"
+      ],
+      "postmortem": false
+    },
+    {
+      "id": "janela-deslizante-maior-soma",
+      "titulo": "Sliding window: maior soma de janela fixa em O(n)",
+      "termos": ["two-pointers-sliding-window", "big-o", "array-vs-linked-list"],
+      "nivel": 3,
+      "tempoMin": 15,
+      "ambiente": "node",
+      "enunciado": "Array fixo de 20 inteiros (pense em vendas por dia de uma loja):\n\n```\nconst a = [7, 3, 12, 5, 1, 9, 14, 2, 8, 6, 11, 4, 13, 10, 2, 15, 3, 7, 5, 9]\n```\n\nEncontre a MAIOR soma de uma janela contígua de exatamente `k = 5` dias. Primeiro escreva a versão O(n·k) (força bruta, dois loops). Depois a versão O(n) com janela deslizante: uma soma corrente em que entra `a[i]` e sai `a[i-k]`. As duas têm que concordar.\n\nImprima a soma e o índice inicial da melhor janela. Confira na mão quantas adições cada versão faz para n=20, k=5 (força bruta: 16 janelas × 5 = 80; deslizante: ~2 operações por elemento = 40).\n\nEntregue: a maior soma (um inteiro).",
+      "passos": [
+        "Força bruta: `for (i = 0; i + k <= n; i++) soma = a.slice(i, i + k).reduce(...)`",
+        "Deslizante: `soma += a[i]; if (i >= k) soma -= a[i - k]; if (i >= k - 1) melhor = Math.max(melhor, soma)`",
+        "Use `console.assert(bruta === deslizante)` antes de confiar"
+      ],
+      "entrega": { "tipo": "numero", "esperado": 44, "tolerancia": 0, "rotulo": "Maior soma de janela de 5 dias" },
+      "dicas": [
+        "A janela começa a valer quando `i === k - 1` (primeira janela completa). Antes disso a soma corrente ainda não tem 5 elementos.",
+        "Se deu 45 ou mais, você deixou a janela crescer além de 5: o `soma -= a[i - k]` tem que rodar a partir de `i === k`."
+      ],
+      "solucao": "```\nconst a = [7, 3, 12, 5, 1, 9, 14, 2, 8, 6, 11, 4, 13, 10, 2, 15, 3, 7, 5, 9]\nconst k = 5\n\n// O(n*k)\nlet bruta = -Infinity\nfor (let i = 0; i + k <= a.length; i++) bruta = Math.max(bruta, a.slice(i, i + k).reduce((s, x) => s + x, 0))\n\n// O(n)\nlet soma = 0, melhor = -Infinity, inicio = -1\nfor (let i = 0; i < a.length; i++) {\n  soma += a[i]\n  if (i >= k) soma -= a[i - k]\n  if (i >= k - 1 && soma > melhor) { melhor = soma; inicio = i - k + 1 }\n}\nconsole.assert(bruta === melhor)\nconsole.log(melhor, 'a partir do índice', inicio, a.slice(inicio, inicio + k))   // 44 a partir do índice 9 [6, 11, 4, 13, 10]\n```\n\nResposta: **44** (índices 9–13: 6 + 11 + 4 + 13 + 10).\n\nO truque da janela deslizante é não recalcular o que não mudou: entre a janela `[i-k+1..i]` e a próxima só um elemento entra e um sai. De O(n·k) para O(n) — com k=5 parece pouco; com k=1440 (minutos de um dia) sobre um ano de dados, é a diferença entre ~750 milhões e ~500 mil operações.\n\nMesma ideia em produção: rate limiter sliding window (janela = últimos N segundos, entra o request novo, saem os que venceram), média móvel de latência no dashboard, detecção de pico de vendas.\n\nVariante de janela VARIÁVEL (two pointers): 'menor trecho contíguo com soma >= 40'. O ponteiro da direita avança sempre; o da esquerda avança enquanto a soma ainda satisfaz a condição, registrando o tamanho. Neste array a resposta é 4 (`13, 10, 2, 15` = 40). Cada ponteiro anda no máximo n vezes, então continua O(n) mesmo com o `while` interno.",
+      "criterios": [
+        "Duas versões concordam e a O(n) usa uma soma corrente, sem slice/reduce por janela",
+        "Explica por que continua O(n) mesmo com dois ponteiros (cada um anda no máximo n vezes)",
+        "Liga a técnica a um caso real (rate limiter, média móvel)"
+      ],
+      "postmortem": false
+    },
+    {
+      "id": "topological-sort-migrations",
+      "titulo": "Ordenar migrations por dependência (Kahn) com desempate determinístico",
+      "termos": ["topological-sort", "graph-bfs-dfs", "heap-priority-queue"],
+      "nivel": 4,
+      "tempoMin": 30,
+      "ambiente": "node",
+      "enunciado": "Cada migration declara de quais outras depende. A ordem numérica do nome NÃO é confiável (foram criadas em branches diferentes) — o que vale é o grafo:\n\n```\nconst deps = {\n  '001_usuarios': [],\n  '002_produtos': [],\n  '003_pedidos': ['001_usuarios', '002_produtos'],\n  '004_itens_pedido': ['003_pedidos', '002_produtos'],\n  '005_pagamentos': ['003_pedidos'],\n  '006_estoque': ['002_produtos'],\n  '007_relatorio_giro': ['004_itens_pedido', '006_estoque'],\n  '008_auditoria': ['001_usuarios'],\n}\n```\n\nImplemente o algoritmo de Kahn: grau de entrada de cada nó; fila dos 'prontos' (grau 0); remove um pronto, decrementa o grau dos que dependem dele, novos zeros entram na fila. Regra de desempate obrigatória: quando há mais de um pronto, sai primeiro o de nome ALFABETICAMENTE menor (isso torna a saída única). Se sobrar nó com grau > 0 no final, há ciclo: lance erro.\n\nImprima a ordem, um nome por linha. Depois troque `'001_usuarios': []` por `'001_usuarios': ['008_auditoria']` e confirme que o erro de ciclo dispara.\n\nEntregue: as 8 linhas da ordem (sem o teste de ciclo).",
+      "passos": [
+        "Monte também o mapa inverso `dependentes[d] = [nós que dependem de d]` para decrementar rápido",
+        "Fila de prontos como array + `sort()` a cada inserção serve aqui; a versão 'de entrevista' usa um min-heap",
+        "Ciclo: `if (ordem.length !== Object.keys(deps).length) throw new Error('ciclo')`"
+      ],
+      "entrega": {
+        "tipo": "saida",
+        "esperado": "001_usuarios\n002_produtos\n003_pedidos\n004_itens_pedido\n005_pagamentos\n006_estoque\n007_relatorio_giro\n008_auditoria",
+        "rotulo": "Cole as 8 linhas na ordem"
+      },
+      "dicas": [
+        "Depois de sair `001_usuarios`, os prontos são `002_produtos` e `008_auditoria` — o desempate alfabético manda `002` primeiro, e `008` fica esperando até o fim.",
+        "`003_pedidos` só fica pronto quando AMBAS as dependências saíram: o grau de entrada começa em 2 e precisa chegar a 0.",
+        "Coincidiu com a ordem numérica? Sim, neste caso — mas renomeie `008_auditoria` para `000_auditoria` e veja que o grafo, não o número, decide."
+      ],
+      "solucao": "```\nfunction kahn(deps) {\n  const grau = new Map(Object.keys(deps).map((n) => [n, deps[n].length]))\n  const dependentes = new Map(Object.keys(deps).map((n) => [n, []]))\n  for (const [n, ds] of Object.entries(deps)) for (const d of ds) dependentes.get(d).push(n)\n\n  const prontos = [...grau].filter(([, g]) => g === 0).map(([n]) => n).sort()\n  const ordem = []\n  while (prontos.length) {\n    const n = prontos.shift()              // alfabeticamente menor entre os prontos\n    ordem.push(n)\n    for (const dep of dependentes.get(n)) {\n      grau.set(dep, grau.get(dep) - 1)\n      if (grau.get(dep) === 0) { prontos.push(dep); prontos.sort() }\n    }\n  }\n  if (ordem.length !== Object.keys(deps).length) {\n    throw new Error('ciclo: ' + [...grau].filter(([, g]) => g > 0).map(([n]) => n).join(', '))\n  }\n  return ordem\n}\nconsole.log(kahn(deps).join('\\n'))\n```\n\nSaída:\n```\n001_usuarios\n002_produtos\n003_pedidos\n004_itens_pedido\n005_pagamentos\n006_estoque\n007_relatorio_giro\n008_auditoria\n```\n\nPasso a passo: prontos iniciais `[001, 002]` → sai 001, `008` fica pronto → prontos `[002, 008]` → sai 002, `003` (grau 2→0) e `006` ficam prontos → `[003, 006, 008]` → sai 003, `004` e `005` prontos → `[004, 005, 006, 008]` → 004, 005, 006 → `007` pronto → `[007, 008]` → 007, 008.\n\nCom `'001_usuarios': ['008_auditoria']`, 001 e 008 dependem um do outro: nenhum dos dois chega a grau 0, e tudo que depende de 001 (003, 004, 005, 007) também fica preso. O `while` termina com só `002_produtos` e `006_estoque` na ordem e o erro lista os 6 presos. Um ciclo em migrations é um bug de modelagem — nenhuma ordem satisfaz.\n\nPor que o desempate importa: sem ele há várias ordens topológicas válidas (`006_estoque` poderia ir antes de `003_pedidos`), e uma ferramenta de migration que gera ordens diferentes em máquinas diferentes é um pesadelo de reprodutibilidade. Ferramentas reais (npm, Nx, Bazel, Docker Compose `depends_on`, o próprio `apt`) fazem exatamente isto — Kahn ou DFS com pós-ordem — e usam um heap (priority queue) em vez de `sort()` a cada inserção para ficar em O((V + E) log V).",
+      "criterios": [
+        "Grau de entrada + fila de prontos, com desempate alfabético explícito",
+        "Detecta ciclo pelo tamanho da ordem final e nomeia os nós presos",
+        "Sabe que há várias ordens válidas e por que determinismo importa em tooling"
+      ],
+      "postmortem": false
+    },
+    {
+      "id": "big-o-tres-funcoes",
+      "titulo": "Classificar a complexidade de três funções (e medir para conferir)",
+      "termos": ["big-o", "amortized-complexity", "sorting"],
+      "nivel": 2,
+      "tempoMin": 15,
+      "ambiente": "node",
+      "enunciado": "Sem rodar, classifique o tempo de cada função em função de `n = arr.length`:\n\n```\nfunction f1(arr) {                       // arr de números\n  const vistos = new Set()\n  for (const x of arr) { if (vistos.has(x)) return true; vistos.add(x) }\n  return false\n}\nfunction f2(arr) {\n  let c = 0\n  for (let i = 0; i < arr.length; i++)\n    for (let j = 1; j < arr.length; j *= 2) c++\n  return c\n}\nfunction f3(arr) {\n  const s = [...arr].sort((a, b) => a - b)\n  let c = 0\n  for (let i = 0; i < s.length; i++) if (s.includes(s[i] * 2)) c++\n  return c\n}\n```\n\nDepois confirme medindo: rode cada uma com n = 1.000, 10.000 e 100.000 (`performance.now()`), e veja como o tempo cresce quando n multiplica por 10 (×10 → linear; ×100 → quadrático; ×~13 → n log n).\n\nEntregue: a opção que classifica corretamente f1, f2 e f3.",
+      "entrega": {
+        "tipo": "escolha",
+        "opcoes": [
+          "f1 = O(n) · f2 = O(n log n) · f3 = O(n²)",
+          "f1 = O(n log n) · f2 = O(n²) · f3 = O(n log n)",
+          "f1 = O(n) · f2 = O(n²) · f3 = O(n log n)",
+          "f1 = O(1) · f2 = O(n log n) · f3 = O(n log n)"
+        ],
+        "correta": 0,
+        "rotulo": "Classificação correta"
+      },
+      "dicas": [
+        "`Set.has`/`Set.add` são O(1) amortizado (hash) — f1 é um loop simples sobre n. Se `vistos` fosse um array com `includes`, viraria O(n²).",
+        "Em f2, `j *= 2` faz o loop interno rodar log2(n) vezes, não n. Em f3, o `sort` é n log n, mas o `includes` dentro do for é um O(n) escondido dentro de outro O(n)."
+      ],
+      "solucao": "Correta: **f1 = O(n), f2 = O(n log n), f3 = O(n²)**.\n\n- **f1**: um loop sobre n elementos com `Set.has` e `Set.add`, ambos O(1) amortizado (hash table). Pior caso (sem duplicatas) percorre tudo: O(n) tempo, O(n) espaço. Medição: 10× n → ~10× tempo.\n- **f2**: loop externo n vezes; interno com `j *= 2` roda ⌈log2 n⌉ vezes — para n = 1024 são exatamente 10 iterações. Total n · log n. Conferência exata: `f2(new Array(64))` devolve 64 × 6 = 384. Medição: 10× n → ~13× tempo.\n- **f3**: o `sort` custa O(n log n), mas o `s.includes(...)` dentro do `for` é uma busca LINEAR executada n vezes: O(n²), que domina. A pegadinha é o array já estar ordenado e a pessoa 'sentir' que a busca é rápida — `includes` não sabe que o array está ordenado. Correção para O(n log n): binary search no array ordenado; ou O(n) com um `Set` (aí nem precisa ordenar). Medição: 10× n → ~100× tempo; com n = 100.000, f3 leva segundos enquanto f1 leva milissegundos.\n\nScript de medição:\n```\nfunction medir(f, n) {\n  const arr = Array.from({ length: n }, (_, i) => i * 3)\n  const t = performance.now(); f(arr); return (performance.now() - t).toFixed(1)\n}\nfor (const n of [1000, 10000, 100000]) console.log(n, medir(f1, n), medir(f2, n), medir(f3, n))\n```\n\nO que o entrevistador quer ouvir além da letra: Big-O é sobre crescimento, não sobre tempo absoluto — para n = 20 o O(n²) pode ganhar do O(n log n) por causa de constantes e cache locality (é por isso que o V8 usa insertion sort dentro do TimSort para trechos pequenos). E 'amortizado' em `Set.add` significa que um rehash ocasional custa O(n), mas dividido pelas n inserções dá O(1) por operação.",
+      "criterios": [
+        "Identifica o O(n) escondido do includes dentro do loop",
+        "Sabe que j *= 2 dá log n iterações e confere com um valor exato (64 → 384)",
+        "Mediu e relacionou o fator de crescimento (×10, ×13, ×100) com a classe"
+      ],
+      "postmortem": false
+    },
+    {
+      "id": "hash-vs-arvore-escolha-estrutura",
+      "titulo": "Hash map vs árvore: escolher a estrutura para três casos reais",
+      "termos": ["hash-table", "balanced-tree", "b-tree", "trie", "heap-priority-queue"],
+      "nivel": 4,
+      "tempoMin": 30,
+      "ambiente": "papel",
+      "enunciado": "Você tem três necessidades num serviço Node + Postgres de catálogo de loja (dezenas de milhares de SKUs, milhares de requests/min):\n\n**A.** Dado um SKU exato, devolver o produto (lookup por chave, o caso mais frequente).\n**B.** Autocomplete: dado o prefixo digitado ('CAM' → 'CAMISA…', 'CAMISETA…'), devolver os 10 primeiros em ordem alfabética.\n**C.** Relatório: todos os produtos com preço entre R$ 50 e R$ 80, ordenados por preço; e também 'os 20 mais vendidos da semana' recalculado a cada venda.\n\nPara cada caso, escolha a estrutura em memória (hash map, árvore balanceada/ordenada, trie, heap) E o equivalente no Postgres (índice hash, B-tree, `text_pattern_ops`, `ORDER BY ... LIMIT`), justificando com a complexidade da operação dominante. Depois explique o trade-off GERAL hash map vs árvore em 5 linhas: o que cada uma faz em O(1)/O(log n), o que uma faz e a outra não, custo de memória e pior caso.\n\nEntregue: tabela caso → estrutura em memória → índice no Postgres → complexidade da operação dominante → por que a alternativa perde; mais o parágrafo de trade-off geral.",
+      "entrega": { "tipo": "texto", "minimoChars": 400, "rotulo": "Cole a tabela dos 3 casos + o trade-off geral" },
+      "dicas": [
+        "Pergunte para cada caso: preciso de ORDEM ou VIZINHANÇA (prefixo, intervalo, 'menor que')? Se sim, hash não serve — hash destrói ordem por definição.",
+        "No Postgres, o índice padrão (B-tree) resolve igualdade E intervalo E `LIKE 'CAM%'` (com `text_pattern_ops` ou collation C). O índice hash só faz igualdade e raramente compensa.",
+        "'Top 20 recalculado a cada venda' é um problema de heap (priority queue) de tamanho fixo: O(log k) por atualização, não O(n log n) de reordenar tudo."
+      ],
+      "solucao": "| caso | em memória | Postgres | operação dominante | por que a alternativa perde |\n|---|---|---|---|---|\n| A. lookup por SKU exato | `Map` (hash) | B-tree padrão da PK (índice hash só se a chave for enorme e nunca houver intervalo) | `get` O(1) médio | árvore dá O(log n) — para 50k SKUs são ~16 comparações vs 1 hash; a diferença real é pequena, mas o hash não paga por uma ordenação que não precisa |\n| B. autocomplete por prefixo, 10 primeiros em ordem | trie (ou array ordenado + binary search do prefixo) | B-tree com `text_pattern_ops` (ou `COLLATE \"C\"`) + `WHERE nome LIKE 'CAM%' ORDER BY nome LIMIT 10` | descer o prefixo O(L) + coletar 10 em ordem | hash NÃO faz prefixo: teria que varrer as 50k chaves (O(n)) e ordenar; árvore ordenada resolve em O(log n + 10); trie ganha quando há muitos prefixos compartilhados e os 10 primeiros saem em DFS natural |\n| C1. preço entre 50 e 80 ordenado | árvore ordenada (array ordenado + binary search dos dois limites serve para dado estático) | B-tree em `preco`, `WHERE preco BETWEEN 50 AND 80 ORDER BY preco` (index scan já sai ordenado) | O(log n + k) | hash não sabe 'entre' — só igualdade; teria que testar todos |\n| C2. top 20 mais vendidos, atualizado a cada venda | min-heap de tamanho 20 (ou árvore ordenada por vendas) | view materializada com refresh, ou `ORDER BY vendas DESC LIMIT 20` com índice em `vendas` | O(log 20) por venda | reordenar o array inteiro a cada venda é O(n log n); hash não ordena |\n\nTrade-off geral hash map vs árvore:\n1. **Hash**: `get/set/delete` em O(1) médio; não mantém ordem; sem intervalo, sem prefixo, sem 'menor/maior que', sem iteração ordenada. Pior caso O(n) com colisões/adversário (Node randomiza a semente do hash por isso). Memória: fator de carga ~0,5–0,75 significa 25–50% de slots vazios, mais rehash ocasional (O(n), amortizado em O(1)).\n2. **Árvore balanceada (AVL, red-black, B-tree)**: tudo em O(log n) garantido; mantém ordem; range, prefixo, min/max, predecessor/sucessor e iteração ordenada de graça. Memória: ponteiros por nó (B-tree amortiza isso com nós largos — é por isso que disco e Postgres usam B-tree: um nó = uma página de 8 KB, 3–4 níveis para milhões de linhas).\n3. Regra: se a pergunta é só 'existe? qual o valor?', hash. Se a pergunta tem ORDEM ou VIZINHANÇA, árvore. Se é 'os k maiores mudando o tempo todo', heap.\n4. O `Map` do JS é hash + lista de ordem de INSERÇÃO (não ordem de chave) — dá para fazer LRU, não dá para fazer range.\n5. No Postgres a decisão quase sempre é B-tree: cobre igualdade e ordem, e o índice hash não ajuda em `ORDER BY` nem em intervalo. Só considere hash para chaves longas (UUID em texto) com igualdade pura e muito volume — e meça com `EXPLAIN ANALYZE` antes.\n\nErros clássicos em entrevista: propor hash para autocomplete; ordenar o array inteiro a cada venda para o top-k; achar que a B-tree do banco é árvore binária (é n-ária, com poucos níveis, feita para página de disco).",
+      "criterios": [
+        "Escolhe hash só onde não há ordem/vizinhança e justifica com a operação dominante",
+        "Mapeia cada escolha para o índice equivalente no Postgres (B-tree cobre igualdade + intervalo + prefixo)",
+        "Usa heap para o top-k dinâmico em vez de reordenar tudo",
+        "O trade-off geral cita O(1) vs O(log n), ordem/intervalo, memória e pior caso de colisão"
+      ],
+      "postmortem": false
+    }
+  ]
+}

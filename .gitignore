@@ -1,0 +1,14 @@
+node_modules/
+dist/
+data/*.json
+data/*.tmp
+.env
+.env.*
+npm-debug.log*
+.DS_Store
+Thumbs.db
+data/*.txt
+
+# transcricao pessoal do chat que originou o app (fica so local; o repo e publico)
+HistoricoChat.txt
+.claude/

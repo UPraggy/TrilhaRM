@@ -1,0 +1,132 @@
+{
+  "deckId": "vocabulario-entrevista-en",
+  "titulo": "Practice · Interview vocabulary (EN)",
+  "exercicios": [
+    {
+      "id": "sixty-second-project-pitch",
+      "titulo": "60-second pitch of a real project using 8 deck terms",
+      "termos": ["to-ship", "trade-off", "bottleneck", "root-cause", "edge-case", "to-own-a-feature", "under-the-hood", "in-hindsight"],
+      "nivel": 3,
+      "tempoMin": 30,
+      "ambiente": "papel",
+      "enunciado": "(PT: escreva e grave um pitch de 60 segundos, em inglês, sobre um projeto real seu, usando 8 termos do deck.)\n\nThe opener of almost every interview: \"Tell me about a project you're proud of.\" You get about 60 seconds before the interviewer starts steering. Pick ONE real project — AutoTrade (the crypto bot running on a phone under PM2), Trilha RM (this app), or a system you built at work — and write a pitch of 130–180 words (that is what fits in 60–70 seconds spoken at a natural pace).\n\nThe pitch must use ALL EIGHT of these terms naturally, not as a list: **to ship**, **trade-off**, **bottleneck**, **root cause**, **edge case**, **to own (a feature)**, **under the hood**, **in hindsight**.\n\nStructure: (1) what it is and who it's for, one sentence; (2) your role — what you owned; (3) one hard problem: the bottleneck or the bug, how you found the root cause, the trade-off you made; (4) one edge case you handled; (5) in hindsight, what you'd do differently. Numbers beat adjectives: \"2,000 requests per minute\", \"p99 went from 800 ms to 120 ms\", \"three months in production\".\n\nThen record yourself (phone voice memo), listen back, and count: did you exceed 75 seconds? Did any Portuguese-shaped phrase slip in (\"I did a deploy\", \"the performance was bad\", \"I had a doubt\")?\n\nEntregue: the written pitch (130–180 words), the recording length in seconds, and the list of the 8 terms with the sentence where each one appears.",
+      "passos": [
+        "Draft in English directly — do not write in Portuguese and translate; the sentence shapes come out wrong",
+        "Read it aloud with a timer; cut until it fits in 60–70 seconds",
+        "Replace every adjective (\"big\", \"fast\", \"complex\") with a number or a concrete noun"
+      ],
+      "entrega": { "tipo": "texto", "minimoChars": 600, "rotulo": "Pitch + recording length + the 8 terms in context" },
+      "dicas": [
+        "\"Under the hood\" opens the technical sentence: \"Under the hood it's a Node worker polling the exchange every 5 seconds and writing to SQLite.\"",
+        "\"In hindsight\" is your closing move and shows seniority: it says you reflect. Pair it with a concrete change, not a regret: \"In hindsight I'd have added the interleaving test on day one.\"",
+        "Common Brazilian slips: \"I made a deploy\" → \"I shipped it / I deployed it\"; \"the system was slow\" → \"the bottleneck was X\"; \"I had a doubt\" → \"I wasn't sure whether…\""
+      ],
+      "solucao": "Sample pitch (≈180 words, ~70 seconds — at the top of the budget; yours can be tighter) about AutoTrade:\n\n\"AutoTrade is a crypto trading bot I built and run on my own money — it lives on an Android phone under PM2, which forced me to keep it cheap and resilient. I own the whole thing: strategy, execution, dashboard and ops. **Under the hood** it's a Node process polling the exchange, scoring signals and placing orders with a fixed number of slots. The hardest bug was a slot that stayed locked for weeks: five thousand approved signals produced four trades. The **root cause** was a sale I'd made by hand outside the bot, leaving a phantom position — and `Number(null)` turning an unread balance into a confirmed zero. That was the **edge case** nobody tests: 'the data source answered nothing'. The **trade-off** I chose was to reserve the slot before the I/O and accept slightly fewer trades over double buys. I **shipped** the fix with an interleaving test. **In hindsight**, the dashboard should have alerted on 'approvals without trades' from day one — that ratio was the **bottleneck** signal all along, and I only looked at it when the money stopped moving.\"\n\nWhy it works: one sentence of context, ownership stated explicitly (\"I own the whole thing\"), a concrete number (5,000 → 4), a real root cause in two clauses, an edge case named as a category (\"the source answered nothing\"), the trade-off stated as X over Y, and the hindsight line proposes a concrete change. Every term carries meaning; none is decorative.\n\nWhat to check in your own: (1) 130–180 words; (2) at least two numbers; (3) the trade-off sentence has both sides (\"X over Y\", \"accept A to get B\"); (4) \"in hindsight\" is followed by a specific action; (5) no \"did a deploy\", \"doubt\", \"the performance\"; (6) the recording is under 75 seconds with no restarts.",
+      "criterios": [
+        "130–180 words, all 8 terms used in sentences that would still make sense without the bold",
+        "Ownership stated explicitly, at least two concrete numbers",
+        "The trade-off names both sides; 'in hindsight' proposes a specific change",
+        "No literal translations from Portuguese; recording under 75 seconds"
+      ],
+      "postmortem": false
+    },
+    {
+      "id": "star-production-bug",
+      "titulo": "\"Tell me about a time you found a bug in production\" — STAR answer",
+      "termos": ["root-cause", "postmortem", "edge-case", "happy-path", "to-roll-back", "in-hindsight", "heads-up"],
+      "nivel": 4,
+      "tempoMin": 35,
+      "ambiente": "papel",
+      "enunciado": "(PT: responda em inglês, no formato STAR, a uma pergunta comportamental sobre um bug real em produção.)\n\nBehavioral question, senior bar: **\"Tell me about a time you found and fixed a bug in production. What did you learn?\"**\n\nAnswer in STAR — Situation, Task, Action, Result — in 220–320 words (about 100–130 seconds spoken). Use a REAL incident. Good candidates from your own systems: the phantom position locking a slot in AutoTrade; the `timestamptz` report where sales at 23:30 landed on the next day; the Telegram 409 caused by a second instance with the same token; any incident you have a postmortem for.\n\nRequirements:\n- **Situation** (2 sentences): the system, the stakes, how the problem showed up (symptom, not cause).\n- **Task** (1 sentence): what YOU were responsible for.\n- **Action** (the bulk): how you went from symptom to evidence to **root cause**; the **edge case** that the **happy path** never hit; whether you chose to **roll back** or fix forward, and why; who you gave a **heads-up** to.\n- **Result** (2–3 sentences): numbers before/after; what changed in the process (test, alert, runbook, **postmortem**); one sentence starting with \"**In hindsight**\".\n\nUse at least 5 of the 7 deck terms in this exercise. Say \"I\", not \"we\", for what you did; use \"we\" only for what the team decided.\n\nEntregue: the STAR answer with the four sections labeled, plus a list of which deck terms you used and where.",
+      "passos": [
+        "Write the Result FIRST — interviewers remember the ending; make sure it has a number and a process change",
+        "Then write the Action as a chain: symptom → evidence → root cause → decision → fix; each link one or two sentences",
+        "Cut anything that is not about YOUR decisions; context is the enemy of the 2-minute budget"
+      ],
+      "entrega": { "tipo": "texto", "minimoChars": 900, "rotulo": "STAR answer (S/T/A/R labeled) + terms used" },
+      "dicas": [
+        "Symptom vs root cause: \"the bot stopped buying\" is the symptom; \"a phantom position from a manual sale kept the slot locked\" is the root cause. Interviewers score the distance you traveled between the two and HOW (logs? SQL on the events table? a test?).",
+        "Roll back vs fix forward is a senior signal. Say the criterion: \"I rolled back because the previous version was known-good and the fix wasn't; I fixed forward because rollback would have re-opened the double-buy.\"",
+        "\"Heads-up\" is what you give BEFORE acting: \"I gave the team a heads-up that I was going to pause trading for ten minutes.\" It shows you don't act on shared systems silently."
+      ],
+      "solucao": "Sample answer (≈310 words, ~2 minutes) on the AutoTrade slot incident:\n\n**Situation.** \"AutoTrade is a crypto bot I run on real money with a fixed number of trading slots. Over a few weeks I noticed it had stopped buying even though the dashboard showed thousands of approved signals — five thousand approvals and only four trades.\"\n\n**Task.** \"It's my system end to end, so finding out why, without losing money in the process, was on me.\"\n\n**Action.** \"The **happy path** looked fine: signals came in, got scored, got approved. So I stopped reading stdout and queried the events table directly for the approvals that never became orders. Every one of them was rejected at the slot guard. The slot was held by a position I had closed by hand on the exchange — outside the bot — so the bot still believed it owned it. That was the **root cause**, and it had a second layer: when the balance read failed, the code did `Number(null)`, which is zero in JavaScript, and treated 'unknown' as 'confirmed zero'. That's the **edge case** no test covered: the source answering nothing. I gave myself a **heads-up** rule for the future — don't trade by hand while the bot runs — and chose to fix forward rather than **roll back**, because the previous version had the same bug. The fix reconciles positions with the exchange on startup and refuses to coerce a null balance.\"\n\n**Result.** \"Trades resumed the same day; the approvals-to-trades ratio is now a dashboard alert, so the same class of failure shows up in hours instead of weeks. I wrote a short **postmortem** with the timeline and the two causes. **In hindsight**, the ratio was visible from day one — I was watching the wrong metric, and the lesson I carry is: alert on the outcome you actually want, not on the activity that should lead to it.\"\n\nTerms used: happy path, root cause, edge case, heads-up, to roll back, postmortem, in hindsight (7/7).\n\nWhat makes it senior: the distance from symptom to cause is explicit and traveled with evidence (SQL on the events table, not guessing); two layers of cause instead of one; the roll-back decision has a stated criterion; the result includes a process change and a number; the hindsight line generalizes into a principle. What would weaken it: blaming a tool, saying \"we\" for your own work, or ending on the fix instead of the lesson.",
+      "criterios": [
+        "Four STAR sections, 220–320 words, at least 5 of the 7 terms used meaningfully",
+        "Explicit path symptom → evidence → root cause, with the evidence named",
+        "States the roll-back vs fix-forward criterion and who got a heads-up",
+        "Result has a number and a process change; 'in hindsight' generalizes into a principle",
+        "Uses 'I' for own decisions, 'we' only for team decisions"
+      ],
+      "postmortem": false
+    },
+    {
+      "id": "explain-rate-limiter-out-loud",
+      "titulo": "Explain a system in English: design a rate limiter, thinking out loud",
+      "termos": ["let-me-think-out-loud", "to-clarify-the-requirements", "what-are-the-constraints", "i-would-start-by", "id-lean-towards", "the-trade-off-here-is", "single-point-of-failure", "to-scale-horizontally", "eventually-consistent", "to-be-stale"],
+      "nivel": 4,
+      "tempoMin": 45,
+      "ambiente": "papel",
+      "enunciado": "(PT: simule os primeiros 8 minutos de uma entrevista de system design em inglês — pensando alto, por escrito.)\n\nSystem design prompt, as an interviewer would say it: **\"Design a rate limiter for our public API. Talk me through it.\"** That's all you get — the vagueness is the test.\n\nWrite the transcript of what YOU would say in the first ~8 minutes (450–650 words), as spoken English, in this order:\n\n1. **Clarify the requirements** before designing anything — ask 4–6 questions and ANSWER them yourself with reasonable assumptions, as if the interviewer had replied (e.g. per user or per IP? limit like 100 req/min? what happens on reject — 429 with `Retry-After`? one API server or many?).\n2. **What are the constraints?** — traffic (say 5k req/s), latency budget for the check (< 2 ms), accuracy tolerance (is letting 5% extra through acceptable?).\n3. **\"Let me think out loud\"** through the algorithm choice: fixed window vs sliding window log vs sliding window counter vs token bucket. Say \"**I'd lean towards** X because…\" and \"**the trade-off here is**…\" for the alternative you reject.\n4. Where the state lives when you **scale horizontally**: in-process memory (fast, but each node has its own view), or Redis (shared, but a **single point of failure** and a network hop). Mention that a local cache of counters would be **eventually consistent** and can **be stale** by a few hundred ms — and whether that's acceptable for this use case.\n5. Close with what you'd build first: \"**I would start by**…\".\n\nUse all 10 terms of this exercise. Keep it conversational — this is what you would SAY, contractions and all, not an essay.\n\nEntregue: the transcript (450–650 words) with the 5 parts marked, plus one line naming the algorithm you picked and the two numbers (limit and window) you assumed.",
+      "passos": [
+        "Write the clarifying questions first and give yourself the answers in brackets — this is the habit the interviewer is checking",
+        "For each algorithm, one sentence of how it works and one of where it hurts (memory per key, burst behavior, boundary problem)",
+        "Read it aloud once; anything you'd never say out loud, rewrite"
+      ],
+      "entrega": { "tipo": "texto", "minimoChars": 2200, "rotulo": "Spoken transcript (5 parts) + algorithm and the two assumed numbers" },
+      "dicas": [
+        "Fixed window has the boundary problem: 100 requests at 0:59 and 100 at 1:00 is 200 in two seconds. Sliding window log is exact but stores one timestamp per request per key. Sliding window counter (two adjacent windows, weighted) is the usual compromise; token bucket is the one that allows controlled bursts.",
+        "In Redis, `INCR` + `EXPIRE` in a Lua script or `MULTI` makes the check atomic in one round trip (~0.3–1 ms on the same network). Say the number — it shows you've measured things like this.",
+        "'Single point of failure' invites the follow-up: what do you do when Redis is down? Fail open (let traffic through, log it) or fail closed (reject everything)? Have an answer: for a public API, fail open with an alert is usually the right call."
+      ],
+      "solucao": "Sample transcript (≈590 words):\n\n**1. Clarify.** \"Before I draw anything, let me clarify the requirements. Is the limit per user, per API key, or per IP? [Per API key, with IP as a fallback for anonymous calls.] What kind of limit are we talking about — something like 100 requests per minute? [Yes, 100 per minute per key.] When we reject, do we return 429 with a `Retry-After` header so clients can back off? [Yes.] Is this one API server or a fleet behind a load balancer? [A fleet, around 10 nodes.] And does the limit need to be exact, or is it okay if a client occasionally gets a few percent more than 100? [A few percent is fine; it's abuse protection, not billing.]\"\n\n**2. Constraints.** \"So what are the constraints? Let's say 5k requests per second across the fleet, and the limiter check has to add less than 2 milliseconds, because it sits in front of everything. Memory-wise we might have a million active keys. And we agreed accuracy can be a bit loose.\"\n\n**3. Think out loud.** \"Let me think out loud about the algorithm. Fixed window is the simplest — one counter per key per minute — but it has the boundary problem: 100 requests at 0:59 and another 100 at 1:00 is 200 in two seconds. Sliding window log fixes that by storing a timestamp per request, but that's up to 100 timestamps per key, times a million keys — too much memory for what we get. Sliding window counter keeps two counters, current and previous minute, and weights the previous one by how far into the current minute we are; it's approximate but smooth. Token bucket gives each key a bucket that refills at a fixed rate and allows short bursts up to the bucket size. **I'd lean towards** the sliding window counter here, because we said a few percent of inaccuracy is fine and it's two integers per key. **The trade-off here is** that token bucket would give us nicer burst behavior for well-behaved clients, but it's more state and more parameters to tune, and abuse protection doesn't need to be generous with bursts.\"\n\n**4. State and scaling.** \"Now, where does the state live? If each of the 10 nodes keeps counters in memory, the check is microseconds, but every node has its own view — a client could get 10 times the limit by spreading requests, and when we **scale horizontally** it gets worse. So the shared option is Redis: `INCR` plus `EXPIRE` in a Lua script, atomic, one round trip, roughly half a millisecond on the same network — inside our 2 ms budget. The concern is that Redis becomes a **single point of failure** for the whole API. I'd run it with a replica and decide the failure mode up front: for abuse protection I'd fail open — let traffic through and page someone — rather than reject every customer because the limiter is down. A middle ground is a small local cache in each node that syncs with Redis every few hundred milliseconds; that view is **eventually consistent** and can **be stale** by that much, which for a 100-per-minute limit is completely acceptable — it only matters if you're doing billing.\"\n\n**5. Start.** \"**I would start by** shipping the Redis sliding window counter as an Express middleware with a 429 and `Retry-After`, put a metric on rejects per key, and only add the local cache if the Redis hop actually shows up in the latency profile.\"\n\nAlgorithm: sliding window counter · 100 requests · 60-second window.\n\nWhat the interviewer is scoring: you asked before building; you named constraints with numbers; you compared alternatives with a reason for each rejection; you stated the consistency and failure trade-offs instead of hiding them; you proposed an incremental path. Common weak spots: jumping straight to Redis without saying why, saying \"it depends\" without then depending on something, and never giving a number.",
+      "criterios": [
+        "Opens with 4–6 clarifying questions and self-supplied answers; constraints include numbers",
+        "Compares at least three algorithms with one strength and one weakness each; states the choice with 'I'd lean towards' and a rejected alternative with 'the trade-off here is'",
+        "Addresses shared state when scaling horizontally, names Redis as a single point of failure and gives a failure mode (fail open/closed)",
+        "Uses 'eventually consistent' and 'stale' correctly with a tolerance judgment",
+        "Ends with 'I would start by' and an incremental plan; reads as spoken English"
+      ],
+      "postmortem": false
+    },
+    {
+      "id": "mock-interview-self-check",
+      "titulo": "Mock interview self-assessment checklist (after a recorded session)",
+      "termos": ["to-push-back-on", "it-depends-on", "to-clarify-the-requirements", "let-me-think-out-loud", "heads-up", "to-sync-up"],
+      "nivel": 3,
+      "tempoMin": 30,
+      "ambiente": "celular",
+      "enunciado": "(PT: faça um mock interview de 20 minutos em inglês, gravado, e se avalie com o checklist abaixo.)\n\nRun a 20-minute mock interview in English and record it (phone voice memo is enough). Options: a friend or colleague reading questions; an AI voice assistant playing interviewer; or yourself reading questions aloud from a list and answering with a 60–120 second timer per question. Use at least one question of each kind:\n\n- Behavioral: \"Tell me about a time you disagreed with a technical decision.\"\n- Technical explanation: \"How does Node handle thousands of concurrent connections with one thread?\"\n- Design: \"How would you add caching to a product catalog API?\"\n- Process: \"How do you handle a teammate blocked on your review?\" (this is where **heads-up** and **sync up** belong)\n\nAfter the session, listen to the WHOLE recording once without pausing, then check each item below honestly. \"Mostly\" counts as not done. This is the same rubric an interviewer applies in the debrief.\n\nEntregue: tick the items you genuinely did; note the timestamp of one moment you'd redo and what you'd say instead.",
+      "passos": [
+        "Prepare 6–8 questions in advance so you don't stall choosing",
+        "Answer with a visible timer; stopping at 2 minutes is a skill being tested",
+        "Listen back with the checklist open; write down one timestamp per unchecked item"
+      ],
+      "entrega": {
+        "tipo": "checklist",
+        "itens": [
+          "Before answering the design question, I clarified the requirements with at least two questions instead of designing straight away",
+          "When I wasn't sure, I said \"let me think out loud\" and reasoned audibly instead of going silent or guessing",
+          "I pushed back on at least one premise with a reason (\"I'd push back on that because…\"), rather than agreeing with everything",
+          "Every time I said \"it depends\", I finished the sentence with what it depends on and gave my pick for the common case",
+          "In the process question I used the team vocabulary correctly: heads-up before acting on something shared, sync up as a short alignment call — not as generic 'meeting' or 'talk'",
+          "I used \"I\" for my own decisions and \"we\" only for team decisions, and gave at least three concrete numbers across the session",
+          "No literal translations from Portuguese (\"I have a doubt\", \"did a deploy\", \"the performance\", \"in this moment\") — I checked the recording for them",
+          "Every answer ended inside 2 minutes with a clear last sentence (a result, a recommendation, or a lesson) instead of trailing off"
+        ],
+        "rotulo": "Check what you actually did in the recording"
+      },
+      "dicas": [
+        "The most common failure for strong engineers is item 1: the answer is technically excellent and completely wrong for the problem the interviewer had in mind, because nobody asked what the traffic was.",
+        "Push-back is scored positively when it comes with a reason and an alternative; it's scored negatively when it's a flat 'no'. Formula: 'I'd push back on X because Y — what if we did Z instead?'",
+        "'It depends' alone is a non-answer. 'It depends on whether reads dominate; if they do, I'd cache at the API layer' is a senior answer."
+      ],
+      "solucao": "How to score yourself and what each item is really measuring:\n\n1. **Clarifying** — the interviewer is checking whether you build the right thing, not just a right thing. Two questions minimum before any design; if you skipped it, replay the moment and write the two questions you should have asked.\n2. **Thinking out loud** — silence reads as being stuck; guessing reads as bluffing. \"Let me think out loud\" buys you time AND shows your reasoning, which is what's being graded. Ten seconds of narrated thinking beats ten seconds of silence every time.\n3. **Pushing back** — seniority is partly the willingness to disagree well. The formula is disagreement + reason + alternative. If you agreed with everything, you gave the interviewer nothing to evaluate about your judgment.\n4. **It depends on…** — the phrase is fine; stopping there is not. Always name the variable and then commit to the common case.\n5. **Team vocabulary** — \"heads-up\" is the notice you give before doing something that affects others (\"heads-up, I'm restarting the staging DB in five\"); \"sync up\" is a short alignment conversation (\"let's sync up for ten minutes on the API contract\"). Using them correctly signals you've worked in English-speaking teams; misusing them signals the opposite.\n6. **I vs we, and numbers** — \"we\" for your own work hides your contribution; three numbers in twenty minutes is a low bar that most candidates still miss.\n7. **Portuguese-shaped English** — the recording is the only way to catch these; you don't hear them while speaking. Keep a personal list and drill the replacements: \"I have a doubt\" → \"I have a question / I'm not sure whether\"; \"did a deploy\" → \"deployed / shipped\"; \"the performance\" → name the metric; \"in this moment\" → \"right now / at that point\".\n8. **Landing the answer** — a strong answer ends on purpose. Practice the last sentence: \"So the result was X\", \"So I'd go with Y\", \"The lesson I took from it is Z\".\n\nScoring: 8/8 is rare on a first recording; 5–6 is typical for a strong engineer new to English interviews. Whatever you didn't tick, redo just that answer, record it again, and compare the two takes. Repeat the full mock weekly until the checklist is boring — that is the signal that the vocabulary has moved from recall to habit.",
+      "criterios": [
+        "Session actually recorded and listened to in full",
+        "Each unchecked item has a timestamp and the sentence you'd say instead",
+        "At least one redo recorded and compared with the first take"
+      ],
+      "postmortem": false
+    }
+  ]
+}

@@ -1,0 +1,157 @@
+{
+  "deckId": "seguranca",
+  "titulo": "Práticas · Segurança",
+  "exercicios": [
+    {
+      "id": "threat-model-central",
+      "titulo": "Threat modeling STRIDE de uma tela do CentralBabita",
+      "termos": ["threat-modeling", "least-privilege", "logging-sem-vazar"],
+      "nivel": 4,
+      "tempoMin": 50,
+      "ambiente": "papel",
+      "enunciado": "Meta do deck de segurança é nível 3, e a prova de domínio é 'sei fazer threat modeling de uma tela do CentralBabita' (§3 do plano). Escolha UMA tela real que você conhece — ex.: a tela de meta de vendedora, ou o painel da diretoria com faturamento.\n\n1. Desenhe (em texto mesmo) o fluxo de dados com os trust boundaries: browser ↔ Nginx ↔ API (Node) ↔ Postgres (bd_babitacentral / bd_think). Marque onde o dado sensível (faturamento, meta, custo) atravessa uma fronteira.\n2. Para CADA letra do STRIDE, escreva ao menos uma ameaça concreta DESTA tela e a mitigação:\n   - S (Spoofing): quem finge ser quem?\n   - T (Tampering): que dado pode ser alterado em trânsito/repouso?\n   - R (Repudiation): o que você não conseguiria provar depois?\n   - I (Information disclosure): por onde vaza faturamento?\n   - D (Denial of service): o que derruba a tela?\n   - E (Elevation of privilege): como um vendedor vê dado de diretoria?\n3. Priorize: as 3 ameaças que você trataria PRIMEIRO e por quê.\n\nEntregue: o diagrama de fluxo em texto + as 6 ameaças (uma por letra) com mitigação + o top-3 priorizado. Termine com uma frase sobre logging sem vazar (o log dessa tela pode conter faturamento? CPF?).",
+      "passos": [
+        "As 4 perguntas de Shostack: o que construímos? o que pode dar errado? o que fazemos? fizemos bem?",
+        "Inclua o operador como ator: quem tem acesso ao servidor .251/.204 é parte do modelo (o admin é um ator, não uma garantia)",
+        "Lembre da matriz de permissões por cargo do conector: dado sensível vive na MemoriaConfidencial e as telas têm RBAC — isso é mitigação de E e I"
+      ],
+      "entrega": { "tipo": "texto", "minimoChars": 500, "rotulo": "Diagrama + 6 ameaças STRIDE com mitigação + top-3 + frase de logging" },
+      "dicas": [
+        "STRIDE mapeia 1:1 com propriedades: Spoofing↔autenticação, Tampering↔integridade, Repudiation↔auditoria, Info disclosure↔confidencialidade/autorização, DoS↔disponibilidade, Elevation↔autorização.",
+        "O resultado é uma lista priorizada com dono, não 40 páginas. 1–2 horas no início de uma feature com superfície nova."
+      ],
+      "solucao": "Exemplo — tela 'meta × realizado por vendedora' do painel da diretoria:\n\nFluxo e boundaries:\n```\n[Browser diretoria] --HTTPS--> [Nginx .202] --http interno--> [API Node] --SQL--> [Postgres bd_think]\n        ^ boundary 1 (internet/rede interna)     ^ boundary 2 (app/dados)\n  sessão(cookie)                     query com filtro de cargo        faturamento/meta em repouso\n```\nO dado sensível (meta e realizado em R$) cruza boundary 2 (banco→API) e boundary 1 (API→browser).\n\nSTRIDE:\n- S (Spoofing): alguém sem login abre a rota do painel, ou reusa o cookie de sessão de um diretor. Mitigação: sessão HttpOnly+Secure+SameSite, expiração curta, verificação de cargo no backend a CADA request (não só ao montar o menu).\n- T (Tampering): o front manda `?loja=8&incluirCustos=true` e a API confia; ou man-in-the-middle sem TLS. Mitigação: TLS obrigatório (HSTS), o backend deriva o que o usuário pode ver do cargo dele, nunca de parâmetro do cliente (whitelist de campos — foi o bug do sizeUsdt no AutoTrade).\n- R (Repudiation): não dá para provar quem exportou o faturamento do mês. Mitigação: log de auditoria (quem, quando, qual recorte) para acesso a dado sensível, imutável.\n- I (Information disclosure): a API devolve custo/margem para um cargo que só deveria ver venda; ou o log grava a linha de faturamento; ou mensagem de erro do Postgres vaza schema. Mitigação: projeção por cargo no SQL, RBAC do conector/tela, erro genérico ao cliente, log sem o valor sensível.\n- D (Denial of service): a query do painel roda um range grande sem índice (o `doctoclie` sem índice trava 20 min) e derruba a conexão para todos. Mitigação: `statement_timeout`, consultas canônicas do Cockpit já otimizadas, rate limit na rota pesada.\n- E (Elevation of privilege): vendedor troca o `cargo` no localStorage/JWT e a API acredita; ou acessa direto o endpoint sem passar pela tela. Mitigação: autorização no servidor derivada da sessão assinada, least privilege no usuário de banco (a API lê com um role que só enxerga as views permitidas).\n\nTop-3 a tratar primeiro: (1) E + I — autorização por cargo no backend, porque uma falha aqui expõe faturamento a quem não pode ver (maior impacto); (2) S — sessão robusta, porque é a porta de entrada de tudo; (3) D — timeout/índice, porque uma query ruim já derrubou a casa antes e afeta todos.\n\nLogging sem vazar: o log desta tela NÃO deve conter o valor de faturamento nem CPF de cliente — logue o id do usuário, a rota, o recorte (loja/período) e o resultado (ok/erro), nunca o payload. Um dump de log em incidente não pode virar vazamento de dado sensível.\n\nOnde isso quebra na prática: fazer uma vez e arquivar; modelar só o happy path; esquecer o operador (quem tem shell no servidor). Revise quando a arquitetura mudar.",
+      "criterios": [
+        "Desenhou o fluxo com trust boundaries e marcou onde o dado sensível cruza",
+        "Uma ameaça concreta e específica da tela para cada letra do STRIDE, com mitigação",
+        "Priorizou E/I (autorização) e justificou por impacto",
+        "Trata logging sem vazar dado sensível"
+      ],
+      "postmortem": false
+    },
+    {
+      "id": "cors-nao-protege",
+      "titulo": "CORS não protege o servidor: prove com curl e com Origin",
+      "termos": ["cors", "csrf", "authn-vs-authz"],
+      "nivel": 5,
+      "tempoMin": 30,
+      "ambiente": "node",
+      "enunciado": "Derrube o mito 'coloquei CORS, está seguro'. Suba este servidor (sem framework):\n\n```\nconst http = require('node:http')\nconst PERMITIDAS = new Set(['https://app.local'])\nlet contador = 0\nconst server = http.createServer((req, res) => {\n  const origin = req.headers.origin\n  if (origin && PERMITIDAS.has(origin)) {\n    res.setHeader('Access-Control-Allow-Origin', origin)\n    res.setHeader('Vary', 'Origin')\n  }\n  if (req.method === 'POST' && req.url === '/acao') { contador++; return res.end('feito') }\n  if (req.url === '/contador') return res.end(String(contador))\n  res.statusCode = 404; res.end()\n})\nserver.listen(3000, async () => { /* ver passos */ })\n```\n\nDentro do `listen`, dispare 3 POSTs em `/acao` — um com `Origin: https://evil.com`, um com `Origin: https://app.local`, um sem Origin (é o que o curl faz) — e imprima para cada um `status` + se voltou o header `Access-Control-Allow-Origin` (`acao=<origin>`) ou não (`sem-acao`). No fim, imprima o `contador`. Feche o server.\n\nA pergunta que o exercício corrige: o efeito colateral (o `contador++`) acontece mesmo para a origem NÃO permitida?\n\nEntregue: as 4 linhas exatas (`evil:`, `app:`, `curl:`, `contador:`).",
+      "passos": [
+        "Use `fetch` do Node 22 dentro do listen: `await fetch('http://localhost:3000/acao', { method:'POST', headers:{ Origin:'https://evil.com' } })`",
+        "Leia `r.status` e `r.headers.get('access-control-allow-origin')`",
+        "Formato: `evil: <status> <acao=...|sem-acao>`, idem `app:` e `curl:`, e `contador: <n>`",
+        "Repare: o servidor NÃO checa Origin para decidir se executa — só para decidir o header de resposta"
+      ],
+      "entrega": {
+        "tipo": "saida",
+        "esperado": "evil: 200 sem-acao\napp: 200 acao=https://app.local\ncurl: 200 sem-acao\ncontador: 3",
+        "rotulo": "Cole as 4 linhas"
+      },
+      "dicas": [
+        "O request de evil.com CHEGA e EXECUTA (contador vai a 3). O que o browser faria era BLOQUEAR a LEITURA da resposta pelo JS de evil.com — mas o efeito colateral já aconteceu no servidor.",
+        "curl/fetch server-side ignoram CORS por completo: não há browser para aplicar a Same-Origin Policy. CORS protege o USUÁRIO no browser, não o servidor."
+      ],
+      "solucao": "Saída:\n```\nevil: 200 sem-acao\napp: 200 acao=https://app.local\ncurl: 200 sem-acao\ncontador: 3\n```\n\nO ponto: `contador == 3`. Os três POSTs executaram, inclusive o de `evil.com` e o sem Origin. CORS não impediu nada no servidor — ele só decidiu se devolvia o header `Access-Control-Allow-Origin` (que autoriza o JS do browser a LER a resposta). O efeito colateral (a 'ação') aconteceu nas três.\n\nO que CORS realmente faz: relaxa a Same-Origin Policy do BROWSER, dizendo 'origem X pode ler minha resposta'. Consequências que confundem:\n1. Protege o USUÁRIO (impede evil.com de ler dados autenticados dele), não o servidor. Qualquer cliente fora do browser (curl, Python, este fetch) faz o request que quiser.\n2. 'Simple requests' (GET, POST form-encoded) são ENVIADOS mesmo sem CORS — só a leitura da resposta é barrada. O efeito colateral já ocorreu. Por isso CORS NÃO substitui proteção CSRF.\n3. Preflight (OPTIONS) só ocorre para métodos/headers não simples (PUT, JSON, Authorization).\n4. `Access-Control-Allow-Origin: *` com `Allow-Credentials: true` é inválido; e refletir o Origin de volta sem validar equivale a `*` com credenciais — o erro mais grave.\n\nO que protege o servidor de verdade: autenticação + autorização (o request de evil.com não deveria mudar estado sem credencial válida), CSRF token / SameSite (para o caso do browser da vítima ser usado como veículo), rate limiting, validação de entrada.\n\nConfig segura de CORS (quando você precisa de cross-origin com credencial):\n```\nconst allow = new Set(['https://app.empresa.com', 'https://central.empresa.com'])\napp.use(cors({ origin: (o, cb) => cb(null, !o || allow.has(o)), credentials: true, maxAge: 600 }))\n```\nAllowlist explícita, nunca refletir o Origin, cachear o preflight. E jamais 'resolver CORS' abrindo tudo porque o front reclamou.",
+      "criterios": [
+        "Mostra contador=3: o efeito aconteceu para toda origem, inclusive a não permitida",
+        "Explica que CORS protege o usuário no browser, não o servidor",
+        "Sabe que simple request é enviado mesmo sem CORS e por isso não substitui CSRF",
+        "Conhece o erro de refletir Origin com credentials"
+      ],
+      "postmortem": false
+    },
+    {
+      "id": "sqli-prepared-statement",
+      "titulo": "SQLi: por que prepared statement resolve e escape não",
+      "termos": ["sql-injection", "input-validation-sanitization", "least-privilege"],
+      "nivel": 5,
+      "tempoMin": 40,
+      "ambiente": "postgres",
+      "enunciado": "Prove os dois lados no seu Postgres local. Crie uma tabela `vendedoras(id int, nome text, loja int)` com 3 linhas.\n\n1. VULNERÁVEL: monte a query por concatenação e injete. Simule em Node: `client.query(\"SELECT * FROM vendedoras WHERE nome = '\" + entrada + \"'\")`. Rode com `entrada = \"x' OR '1'='1\"` e mostre que volta TUDO. Rode com `entrada = \"x'; DROP TABLE vendedoras; --\"` num banco de brinquedo e veja o estrago.\n2. PARAMETRIZADO: `client.query('SELECT * FROM vendedoras WHERE nome = $1', [entrada])` com as MESMAS entradas — mostre que devolve 0 linhas e a tabela sobrevive (o valor foi tratado como texto, não como SQL).\n3. IDENTIFICADOR: tente parametrizar o `ORDER BY $1` e veja que NÃO funciona (identificador não é parametrizável); implemente a allowlist.\n\nEntregue: um parágrafo explicando por que o `$1` é imune independente do conteúdo, e por que escapar aspas (`'`→`''`) falha em pelo menos dois casos (número sem aspas; encoding multibyte).",
+      "passos": [
+        "Rode um Postgres local ou em Docker (`docker run -d -p 5432:5432 -e POSTGRES_PASSWORD=x postgres:18`)",
+        "Use `pg` no Node (`npm i pg`); teste o DROP num banco descartável",
+        "ORDER BY: `const ORDENS = { nome: 'nome', loja: 'loja DESC' }; const ordem = ORDENS[req] ?? 'nome'`",
+        "Bônus: crie um role `app_ro` só com SELECT e veja o DROP falhar por permissão mesmo na query vulnerável"
+      ],
+      "entrega": { "tipo": "texto", "minimoChars": 350, "rotulo": "Explicação: por que $1 é imune e por que escape falha (2 casos)" },
+      "dicas": [
+        "Com $1, o Postgres recebe a query (Parse) e os valores (Bind) em mensagens SEPARADAS do protocolo. O valor nunca passa pelo parser de SQL — não importa o que tenha dentro.",
+        "Escape falha em: (1) valor numérico sem aspas — `WHERE id = ` + input, não há aspas para escapar; (2) identificadores (nome de coluna/tabela, ORDER BY) que não podem ser parametrizados; (3) encodings multibyte (GBK clássico)."
+      ],
+      "solucao": "Por que `$1` é imune: o driver usa o protocolo estendido do Postgres — a query com placeholders vai numa mensagem Parse (o servidor a compila com os buracos), e os valores vão numa mensagem Bind, separada. O parser de SQL do servidor NUNCA vê o conteúdo do valor como texto de comando; ele já compilou a estrutura antes de o valor chegar. Então `x' OR '1'='1` é procurado literalmente como o nome de uma vendedora chamada `x' OR '1'='1` — 0 linhas. `x'; DROP TABLE...` idem: é um nome improvável, não dois comandos. O conteúdo do valor é irrelevante para a estrutura da query.\n\nPor que escape (`'`→`''`) é remendo que falha:\n1. Número sem aspas: `WHERE id = ` + input. Não há aspas envolvendo o valor, então não há o que escapar — `1 OR 1=1` passa direto. Escape só 'protege' strings entre aspas.\n2. Identificadores: nome de tabela/coluna e `ORDER BY` dinâmico não são parametrizáveis nem 'escapáveis' com segurança — a única defesa é allowlist (`const ORDENS = { nome:'nome', venda:'total DESC' }; ORDENS[input] ?? 'nome'`).\n3. Encoding multibyte: em certos charsets (GBK), um byte do input combina com a aspa escapada e a 'engole', reabrindo a injeção — o clássico que quebrou muitas libs de escape.\n\nResultado observado: query concatenada com `x' OR '1'='1` devolve as 3 linhas; parametrizada devolve 0 e a tabela sobrevive ao `DROP`.\n\nDefesa em profundidade além de parametrizar: usuário de banco com privilégio mínimo (uma SQLi vira leitura de 3 tabelas, não `COPY TO PROGRAM` nem DROP — teste com o role `app_ro`), sem vazar mensagem de erro do banco para o cliente (blind SQLi usa timing e erros), `statement_timeout` (contra `%a%` em LIKE que vira DoS), e code review/grep por concatenação em SQL (`+ req.`, template com `${` dentro de query). ORMs parametrizam por padrão, mas `raw`/`literal` reabrem a porta.\n\nValor por parâmetro, identificador por allowlist — nunca pelo input.",
+      "criterios": [
+        "Demonstrou injeção na versão concatenada e a query parametrizada devolvendo 0 e preservando a tabela",
+        "Explica Parse/Bind (valor separado da estrutura) como razão da imunidade",
+        "Dá pelo menos 2 casos em que escape falha (número, identificador, multibyte)",
+        "Cita least privilege como camada extra (SQLi limitada pelo role)"
+      ],
+      "postmortem": false
+    },
+    {
+      "id": "jwt-validacao",
+      "titulo": "Implemente a validação de um JWT HS256 (exp, assinatura, alg)",
+      "termos": ["jwt", "sessao-cookie", "hashing-vs-encryption-nota"],
+      "nivel": 5,
+      "tempoMin": 45,
+      "ambiente": "node",
+      "enunciado": "Sem biblioteca, só `node:crypto`. Implemente emissão e verificação de JWT HS256 e prove que a verificação pega os 4 casos.\n\n1. `emitir(payload)`: header `{alg:'HS256',typ:'JWT'}`, base64url do header e do payload, assinatura HMAC-SHA256 de `header.payload` com um segredo.\n2. `verificar(token, agora)`: separa as 3 partes, recusa se `alg != HS256` (retorna `'alg'`), recompara a assinatura com `timingSafeEqual` (retorna `'assinatura'` se não bate), recusa se `exp <= agora` (retorna `'exp'`), senão retorna `ok sub=<sub>`.\n3. Gere e verifique, com `agora` FIXO (`1800000000`): um token válido; um expirado; um com o payload adulterado mantendo a assinatura antiga; um com `alg: none`.\n\nImprima uma linha por caso: `valido:`, `expirado:`, `adulterado:`, `alg-none:`.\n\nEntregue: as 4 linhas exatas.",
+      "passos": [
+        "base64url: `Buffer.from(JSON.stringify(o)).toString('base64url')`",
+        "Assinatura: `crypto.createHmac('sha256', SEGREDO).update(h + '.' + p).digest('base64url')`",
+        "Comparação: converta os dois em Buffer, cheque tamanho igual e use `crypto.timingSafeEqual`",
+        "alg-none: header `{alg:'none'}` e terceira parte vazia — sua verificação tem que recusar ANTES de olhar a assinatura"
+      ],
+      "entrega": {
+        "tipo": "saida",
+        "esperado": "valido: ok sub=42\nexpirado: exp\nadulterado: assinatura\nalg-none: alg",
+        "rotulo": "Cole as 4 linhas"
+      },
+      "dicas": [
+        "A assinatura garante integridade e origem, NÃO confidencialidade: o payload é base64, qualquer um lê. Por isso não guarde segredo no payload.",
+        "O adulterado mantém a assinatura do token válido mas muda o payload (sub 42→1): o HMAC de header.payload novo não bate. É exatamente o que a assinatura serve para pegar."
+      ],
+      "solucao": "```\nconst crypto = require('node:crypto')\nconst SEGREDO = 'trilha-rm'\nconst b64 = (o) => Buffer.from(JSON.stringify(o)).toString('base64url')\nconst assinar = (h, p) => crypto.createHmac('sha256', SEGREDO).update(`${h}.${p}`).digest('base64url')\n\nfunction emitir(payload, header = { alg: 'HS256', typ: 'JWT' }) {\n  const h = b64(header), p = b64(payload)\n  return `${h}.${p}.${assinar(h, p)}`\n}\nfunction verificar(token, agora) {\n  const [h, p, s] = token.split('.')\n  const header = JSON.parse(Buffer.from(h, 'base64url'))\n  if (header.alg !== 'HS256') return 'alg'\n  const esperado = Buffer.from(assinar(h, p))\n  const recebido = Buffer.from(s || '')\n  if (esperado.length !== recebido.length || !crypto.timingSafeEqual(esperado, recebido)) return 'assinatura'\n  const payload = JSON.parse(Buffer.from(p, 'base64url'))\n  if (typeof payload.exp !== 'number' || payload.exp <= agora) return 'exp'\n  return `ok sub=${payload.sub}`\n}\nconst AGORA = 1_800_000_000\nconst valido = emitir({ sub: 42, iat: AGORA - 60, exp: AGORA + 600 })\nconst expirado = emitir({ sub: 42, iat: AGORA - 7200, exp: AGORA - 3600 })\nconst [h, , s] = valido.split('.')\nconst adulterado = `${h}.${b64({ sub: 1, iat: AGORA - 60, exp: AGORA + 600 })}.${s}`\nconst algNone = `${b64({ alg: 'none', typ: 'JWT' })}.${b64({ sub: 42, exp: AGORA + 600 })}.`\nconsole.log('valido:', verificar(valido, AGORA))\nconsole.log('expirado:', verificar(expirado, AGORA))\nconsole.log('adulterado:', verificar(adulterado, AGORA))\nconsole.log('alg-none:', verificar(algNone, AGORA))\n```\nSaída:\n```\nvalido: ok sub=42\nexpirado: exp\nadulterado: assinatura\nalg-none: alg\n```\n\nO que cada caso ensina:\n- valido: fluxo feliz — assinatura bate, exp no futuro.\n- expirado: o servidor valida sem estado, mas o preço é que NÃO dá para revogar antes do exp. Access token curto (5–15 min) + refresh opaco revogável server-side.\n- adulterado: mudou o `sub` para se passar por outro usuário, mas manteve a assinatura antiga → HMAC não bate. É a integridade fazendo seu trabalho.\n- alg-none: o ataque histórico — token diz 'sem assinatura', e libs ingênuas aceitavam. Recuse `alg` fora do esperado ANTES de qualquer coisa. (Primo dele: confusão RS256/HS256, onde a lib aceita a chave pública como segredo HMAC.)\n\nHash ≠ encrypt ≠ encode (o outro termo): base64url é ENCODE (reversível, sem segredo — o payload é lido por qualquer um); HMAC é hash com chave (verifica integridade, não esconde); encrypt seria esconder o conteúdo. JWT assina, não cifra — nunca ponha segredo no payload.\n\nCuidados de produção: valide TODAS as claims (`aud`, `iss` — aud errada aceita token de outro serviço), segredo forte, cookie HttpOnly em vez de localStorage (XSS lê localStorage), e `timingSafeEqual` para não vazar a assinatura por timing. Para uma SPA + API do mesmo dono, sessão em cookie costuma ser mais simples e segura que JWT; JWT brilha entre serviços e com IdP externo.",
+      "criterios": [
+        "Verificação recusa alg≠HS256, assinatura inválida e exp vencido, nessa precedência",
+        "Usa timingSafeEqual com checagem de tamanho",
+        "Explica que JWT assina mas não cifra (payload legível) e por que não revoga antes do exp",
+        "Cita alg:none e confusão RS256/HS256 como ataques reais"
+      ],
+      "postmortem": false
+    },
+    {
+      "id": "csrf-samesite-token",
+      "titulo": "CSRF: qual defesa cobre o quê",
+      "termos": ["csrf", "sessao-cookie", "cors"],
+      "nivel": 4,
+      "tempoMin": 25,
+      "ambiente": "papel",
+      "enunciado": "Cenário: uma API do CentralBabita autentica por COOKIE de sessão (enviado automaticamente pelo browser). Um endpoint `POST /trocar-meta` muda estado. Um site malicioso monta `<form action=\"https://central/trocar-meta\" method=POST>` auto-submetido.\n\nPara cada afirmação, decida se é VERDADEIRA:\n\n1. `Access-Control-Allow-Origin` restrito a `app.local` impede o form de evil.com de EXECUTAR o POST.\n2. `SameSite=Lax` no cookie de sessão bloqueia esse POST cross-site (form de outra origem).\n3. Se a auth fosse por header `Authorization: Bearer` (token guardado pelo JS, não cookie), o CSRF desse form deixaria de se aplicar.\n4. Um token anti-CSRF (synchronizer/double-submit) validado no servidor protege mesmo sem SameSite.\n\nMarque TODAS as verdadeiras.",
+      "entrega": {
+        "tipo": "escolha",
+        "opcoes": [
+          "Afirmação 1 (CORS impede a execução)",
+          "Afirmação 2 (SameSite=Lax bloqueia o POST cross-site)",
+          "Afirmação 3 (Bearer no header tira o CSRF desse form)",
+          "Afirmação 4 (token anti-CSRF protege sem SameSite)"
+        ],
+        "corretas": [1, 2, 3],
+        "rotulo": "Marque todas as verdadeiras"
+      },
+      "dicas": [
+        "CORS bloqueia a LEITURA da resposta pelo JS, não o envio do request nem o efeito colateral — não impede o form de disparar (afirmação 1 é falsa).",
+        "CSRF só existe quando a credencial é enviada AUTOMATICAMENTE (cookie). Bearer no header exige o JS colocar o token — um form HTML não consegue, e cross-origin o preflight barraria."
+      ],
+      "solucao": "Verdadeiras: 2, 3 e 4. Falsa: 1.\n\n1. FALSA. CORS não impede o request de sair nem o efeito colateral de acontecer — ele só governa se o JS da origem pode LER a resposta. O `<form>` auto-submetido dispara o POST de qualquer jeito, com o cookie da vítima anexado. (É o mesmo ponto do exercício de CORS: CORS protege leitura no browser, não muda de estado no servidor.)\n\n2. VERDADEIRA. `SameSite=Lax` (default do Chrome hoje) faz o browser NÃO enviar o cookie em POST cross-site. Cobre a maioria dos CSRF clássicos. Ressalvas: não protege se você mudar estado em GET (nunca faça), não ajuda contra subdomínio comprometido, e `SameSite=None` (para embed em iframe de terceiros) reabre o risco.\n\n3. VERDADEIRA. CSRF só existe quando a credencial vai automaticamente — cookie. Se a auth é `Authorization: Bearer` guardado pelo JS, o browser não anexa nada sozinho; o form HTML não consegue setar esse header, e um fetch cross-origin com header custom dispara preflight que barra. MAS você trocou o risco: token no JS/localStorage fica exposto a XSS. É um trade-off, não uma vitória grátis.\n\n4. VERDADEIRA. Token anti-CSRF (synchronizer token no form, ou double-submit cookie) validado no servidor protege independentemente do SameSite — é a defesa que não depende do comportamento default do browser. Defesa em camadas é o certo: SameSite + token + checagem de Origin/Referer para métodos que mudam estado.\n\nOnde quebra na vida real: API que aceita cookie E bearer mas só protege o bearer; login CSRF (o atacante loga a vítima na conta DELE); e confiar só no SameSite sem token. Teste com um form em outra origem no staging.",
+      "criterios": [
+        "Identifica que CORS não impede a execução do POST (1 falsa)",
+        "Sabe que SameSite=Lax cobre a maioria mas tem ressalvas (GET, subdomínio, None)",
+        "Explica por que Bearer no header tira o CSRF e o trade-off com XSS",
+        "Reconhece token anti-CSRF como defesa independente do browser"
+      ],
+      "postmortem": false
+    }
+  ]
+}

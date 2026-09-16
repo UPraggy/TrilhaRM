@@ -1,0 +1,34 @@
+{
+  "fases": [
+    {
+      "numero": 1,
+      "titulo": "Fundamentos do que já uso",
+      "descricao": "15/09 → 25/10 · 6 semanas · por que começa aqui: são as quatro coisas que já uso todo dia na Babita e no AutoTrade — zero custo de contexto, só o custo de descer uma camada — e caem em qualquer entrevista de backend.",
+      "decks": ["node-internals", "http-networking", "postgres-internals", "linux-processos"]
+    },
+    {
+      "numero": 2,
+      "titulo": "Medir e prever o comportamento",
+      "descricao": "26/10 → 06/12 · 6 semanas · por que vem aqui: depois de saber como a máquina funciona, aprender a medir (percentis, Little's Law, golden signals) e a prever o que cache e fila fazem com o sistema antes de opinar.",
+      "decks": ["concorrencia-performance", "observabilidade", "cache", "mensageria"]
+    },
+    {
+      "numero": 3,
+      "titulo": "Resiliência, distribuídos e arquitetura",
+      "descricao": "07/12 → 24/01 · 7 semanas, com Natal e Ano-novo embutidos · por que vem aqui: para cada padrão, problema → solução → trade-off → novo problema criado; fecha com 1 system design por semana em 45 min.",
+      "decks": ["resiliencia", "sistemas-distribuidos", "arquitetura-software", "system-design"]
+    },
+    {
+      "numero": 4,
+      "titulo": "Produção, segurança e equipe",
+      "descricao": "25/01 → 28/02 · 5 semanas · por que vem aqui: o que separa quem opera de quem só programa — testes que valem, deploy sem downtime com PM2 + Nginx, o deck Júnior de segurança (meta 3) e o vocabulário de time (ADR, postmortem, RFC).",
+      "decks": ["testes", "containers-deploy", "seguranca", "producao-equipe"]
+    },
+    {
+      "numero": 5,
+      "titulo": "Fundamentos e entrevista internacional",
+      "descricao": "01/03 → 28/03 · 4 semanas + contínuo desde a semana 1 · por que fecha aqui: ligar cada estrutura de dados a um sistema que já usei, explicar pela raiz três bugs que já tive (BigInt do node:sqlite, timestamptz, Number(null)===0) e responder em inglês, gravado, sem travar.",
+      "decks": ["algoritmos-estruturas", "cs-fundamentals", "vocabulario-entrevista-en"]
+    }
+  ]
+}

@@ -1,0 +1,149 @@
+{
+  "deckId": "cs-fundamentals",
+  "titulo": "Práticas · CS fundamentals",
+  "exercicios": [
+    {
+      "id": "utf8-bytes-vs-length",
+      "titulo": "Contar bytes UTF-8 de uma string com acentos (e por que length mente)",
+      "termos": ["utf8-vs-utf16", "code-point-vs-grapheme", "ascii-controle-crlf-lf"],
+      "nivel": 2,
+      "tempoMin": 10,
+      "ambiente": "node",
+      "enunciado": "Um campo `VARCHAR(55)` de uma tabela legada recebe esta descrição de promoção (copie exatamente, inclusive o travessão `—`):\n\n```\nPromoção de verão: 30% off — já disponível na loja!\n```\n\nSem rodar, responda no papel: (1) quantos 'caracteres' `'…'.length` devolve em JS; (2) quantos bytes a string ocupa em UTF-8; (3) quantos em UTF-16 (`utf16le`). Regra: ASCII = 1 byte em UTF-8; letras acentuadas do latim (ç, ã, õ, á, í) = 2 bytes; travessão `—` (U+2014) = 3 bytes.\n\nDepois confira com `Buffer.byteLength(s, 'utf8')`, `Buffer.byteLength(s, 'utf16le')`, `s.length` e `[...s].length`. Por fim: a string cabe em `VARCHAR(55)` no Postgres? E numa coluna de 55 BYTES (MySQL `latin1`, ou um `CHAR(55)` de sistema legado)?\n\nEntregue: o número de bytes em UTF-8.",
+      "passos": [
+        "Conte os caracteres não-ASCII: são 5 letras acentuadas + 1 travessão",
+        "`node -e \"const s='…'; console.log(s.length, Buffer.byteLength(s), Buffer.byteLength(s,'utf16le'), [...s].length)\"`",
+        "Compare com o Postgres: `SELECT length(s), octet_length(s)` — `length` conta caracteres, `octet_length` conta bytes"
+      ],
+      "entrega": { "tipo": "numero", "esperado": 58, "tolerancia": 0, "unidade": "bytes", "rotulo": "Bytes em UTF-8" },
+      "dicas": [
+        "51 caracteres visíveis. Cada acentuado adiciona 1 byte extra (2 em vez de 1); o travessão adiciona 2 extras (3 em vez de 1).",
+        "As acentuadas são ç e ã (Promoção), ã (verão), á (já), í (disponível) = 5, cada uma com 1 byte extra; o travessão tem 2 extras. Se você chegou em 59 ou 60, contou o 'o' de 'Promoção' ou o 'e' de 'verão' como acentuado — releia a string."
+      ],
+      "solucao": "**58 bytes** em UTF-8.\n\nContagem: a string tem **51** code points (`s.length` = 51 e `[...s].length` = 51 — nenhum caractere fora do BMP, então não há surrogate pairs e as duas contagens coincidem). Não-ASCII: `ç` e `ã` em 'Promoção', `ã` em 'verão', `á` em 'já', `í` em 'disponível' — 5 letras de 2 bytes (+5) — e o travessão `—` U+2014 de 3 bytes (+2). 51 + 5 + 2 = **58**. Em UTF-16 são 51 × 2 = **102** bytes (todo caractere do BMP ocupa 2 bytes; só emoji e afins ocupam 4).\n\n```\nconst s = 'Promoção de verão: 30% off — já disponível na loja!'\nconsole.log(s.length)                          // 51  (unidades UTF-16)\nconsole.log([...s].length)                     // 51  (code points)\nconsole.log(Buffer.byteLength(s, 'utf8'))      // 58\nconsole.log(Buffer.byteLength(s, 'utf16le'))   // 102\n```\n\nCabe em `VARCHAR(55)`? No Postgres sim: `VARCHAR(n)` limita em CARACTERES (51 ≤ 55) e a coluna ocupa 58 bytes + cabeçalho. Numa coluna de 55 BYTES (sistemas legados, `latin1`, campo fixo de arquivo de integração) não cabe: 58 > 55 — e é assim que uma descrição 'de 51 letras' é truncada no meio do `í` e vira um caractere inválido na ponta. O mesmo bug aparece em `slice(0, 55)` feito por bytes num Buffer e em headers HTTP.\n\nPor que `length` mente: JS conta unidades UTF-16, não caracteres nem bytes. Para 'ção' dá 3 e o Buffer dá 5. Para '👨‍👩‍👧' (família, com ZWJ) `length` dá 8, `[...s].length` dá 5 code points, e o usuário vê UM grapheme — só `Intl.Segmenter` conta isso certo. Regra: validação de tamanho para o usuário = graphemes; para o banco = o que a coluna mede (caracteres no Postgres); para rede/disco = bytes.",
+      "criterios": [
+        "Separa unidades UTF-16 (length), code points e bytes",
+        "Conta certo os extras de 2 e 3 bytes",
+        "Sabe que VARCHAR(n) do Postgres mede caracteres e onde o limite em bytes morde"
+      ],
+      "postmortem": false
+    },
+    {
+      "id": "int32-overflow-contador",
+      "titulo": "Overflow de int32: quanto vira um contador que passa do teto",
+      "termos": ["dois-complementos-overflow", "bigint", "ieee-754-float"],
+      "nivel": 3,
+      "tempoMin": 15,
+      "ambiente": "node",
+      "enunciado": "Um contador armazenado como inteiro de 32 bits COM SINAL (complemento de dois — o `INTEGER` do Postgres, um `Int32Array`, o `| 0` do JS) está em **2.147.483.600** e recebe **+100**.\n\nSem rodar: (1) qual é o maior valor representável em int32 com sinal? (2) quantas unidades faltavam para o teto? (3) para que valor o contador 'dá a volta' se a operação simplesmente descartar o bit que estoura (wrap-around)?\n\nDepois confira no Node com `(2147483600 + 100) | 0` e com `new Int32Array([2147483700])[0]`. Em seguida faça o mesmo em `psql`: `SELECT 2147483600::int + 100;` — o Postgres faz a mesma coisa? E `SELECT 2147483600::bigint + 100;`?\n\nEntregue: o valor do contador após o wrap-around (um inteiro, possivelmente negativo).",
+      "passos": [
+        "Teto de int32 com sinal = 2^31 − 1 = 2.147.483.647. O intervalo total tem 2^32 = 4.294.967.296 valores",
+        "Wrap: resultado real − 2^32 quando passa do teto",
+        "Em JS puro, `2147483600 + 100` NÃO estoura (Number é float64 e representa inteiros exatos até 2^53) — o estouro só acontece quando você força 32 bits"
+      ],
+      "entrega": { "tipo": "numero", "esperado": -2147483596, "tolerancia": 0, "rotulo": "Valor do contador depois do +100 em int32" },
+      "dicas": [
+        "Faltavam 47 para o teto (2.147.483.647). Os outros 53 'dão a volta' pelo lado negativo, começando em −2.147.483.648.",
+        "−2.147.483.648 é o primeiro valor depois do teto; −2.147.483.648 + 52 = ? (os 53 excedentes ocupam −2^31 … −2^31 + 52)."
+      ],
+      "solucao": "**−2.147.483.596**.\n\nInt32 com sinal vai de −2^31 = −2.147.483.648 a 2^31 − 1 = 2.147.483.647. 2.147.483.600 + 100 = 2.147.483.700 está 53 acima do teto. Com wrap-around o valor é 2.147.483.700 − 2^32 = 2.147.483.700 − 4.294.967.296 = **−2.147.483.596**. Em bits: o resultado 0x8000_0034 tem o bit 31 ligado, e em complemento de dois bit 31 ligado significa negativo (valor = padrão − 2^32).\n\n```\nconsole.log(2147483600 + 100)                 // 2147483700  (Number = float64, sem estouro)\nconsole.log((2147483600 + 100) | 0)           // -2147483596 (força int32)\nconsole.log(new Int32Array([2147483700])[0])  // -2147483596\nconsole.log(new Int8Array([200])[0])          // -56  (mesmo fenômeno em 8 bits: 200 - 256)\n```\n\nNo Postgres: `SELECT 2147483600::int + 100;` NÃO dá a volta — lança `ERROR: integer out of range`. É um comportamento melhor (falha alta em vez de contador negativo silencioso), mas em produção significa que a sequence/coluna `INTEGER` que chegou no teto derruba todo INSERT — o clássico 'id estourou' de tabela de eventos/log. `SELECT 2147483600::bigint + 100;` devolve 2147483700 normalmente (bigint = int64, teto 9,2 × 10^18). Por isso `id BIGSERIAL`/`BIGINT` para tabela que cresce sem parar, e contador de dinheiro em centavos como `BIGINT` ou `NUMERIC`.\n\nOnde JS te engana: `Number` não é int32, é float64 — inteiros são exatos só até 2^53 − 1 (`Number.MAX_SAFE_INTEGER` = 9.007.199.254.740.991); acima disso ele não dá a volta, ele PERDE PRECISÃO (9007199254740993 vira 9007199254740992). Para id de 64 bits vindo do banco (ou o `node:sqlite` devolvendo BigInt), use `BigInt` ou trafegue como string — `JSON.parse` de um id de 19 dígitos já chega corrompido.",
+      "criterios": [
+        "Calcula o wrap com 2^32 e explica o bit de sinal do complemento de dois",
+        "Sabe que Number em JS é float64 e só estoura quando forçado a 32 bits",
+        "Compara com Postgres: int lança erro, bigint não, e cita o caso do id que estourou"
+      ],
+      "postmortem": false
+    },
+    {
+      "id": "pegadinhas-js-numeros-strings",
+      "titulo": "Prever 12 linhas: float, coerção, NaN, UTF-8, Base64 e int8",
+      "termos": ["ieee-754-float", "number-null-coercao", "nan-comparacao", "bigint", "base64", "url-encoding"],
+      "nivel": 3,
+      "tempoMin": 20,
+      "ambiente": "node",
+      "enunciado": "Salve como `pegadinhas.js`. Antes de rodar, escreva as 12 linhas de saída no papel — cada uma é um bug real que já apareceu em código de produção (o `Number(null) === 0` é o do saldo zero).\n\n```\nconsole.log(0.1 + 0.2 === 0.3)\nconsole.log(0.1 + 0.2)\nconsole.log((0.1 + 0.2).toFixed(2) === '0.30')\nconsole.log(Number.MAX_SAFE_INTEGER + 2)\nconsole.log(9007199254740991n + 2n)\nconsole.log(Number(null), Number(undefined), Number(''), Number(' '), Number('12,50'))\nconsole.log(NaN === NaN, [NaN].includes(NaN), [NaN].indexOf(NaN))\nconsole.log('ção'.length, Buffer.byteLength('ção', 'utf8'), Buffer.byteLength('ção', 'utf16le'))\nconsole.log('👨‍👩‍👧'.length, [...'👨‍👩‍👧'].length)\nconsole.log(Buffer.from('Babita:2026').toString('base64'))\nconsole.log(new Int8Array([200])[0], (2147483600 + 100) | 0)\nconsole.log(encodeURIComponent('giro=alto&loja=BH 2'))\n```\n\nRode `node pegadinhas.js`, compare com a previsão e anote em quais linhas errou — essas são os seus termos fracos neste deck.\n\nEntregue: as 12 linhas exatas da saída.",
+      "passos": [
+        "Linha 6: `Number(null)` é 0 mas `Number(undefined)` é NaN — string vazia e string só de espaços também viram 0",
+        "Linha 9: o emoji de família são 3 emojis + 2 ZWJ (U+200D) = 5 code points; cada emoji fora do BMP ocupa 2 unidades UTF-16",
+        "Linha 10: Base64 codifica 3 bytes em 4 caracteres; 11 bytes → 16 caracteres com `=` de padding"
+      ],
+      "entrega": {
+        "tipo": "saida",
+        "esperado": "false\n0.30000000000000004\ntrue\n9007199254740992\n9007199254740993n\n0 NaN 0 0 NaN\nfalse true -1\n3 5 6\n8 5\nQmFiaXRhOjIwMjY=\n-56 -2147483596\ngiro%3Dalto%26loja%3DBH%202",
+        "rotulo": "Cole as 12 linhas"
+      },
+      "dicas": [
+        "Float64 só tem 53 bits de mantissa: MAX_SAFE_INTEGER + 2 cai num inteiro par vizinho. Com `n` (BigInt) a conta é exata.",
+        "`includes` usa SameValueZero (acha NaN); `indexOf` usa `===` (nunca acha NaN). É por isso que `arr.indexOf(x) === -1` para NaN dá falso negativo.",
+        "`Number('12,50')` é NaN: vírgula decimal não é parseada. Formulário brasileiro precisa de `replace(',', '.')` — ou melhor, receber centavos inteiros."
+      ],
+      "solucao": "```\nfalse\n0.30000000000000004\ntrue\n9007199254740992\n9007199254740993n\n0 NaN 0 0 NaN\nfalse true -1\n3 5 6\n8 5\nQmFiaXRhOjIwMjY=\n-56 -2147483596\ngiro%3Dalto%26loja%3DBH%202\n```\n\nLinha a linha:\n1–3. **IEEE 754**: 0,1 e 0,2 não têm representação binária finita; a soma dá 0,30000000000000004. `toFixed(2)` arredonda para exibição e resolve a COMPARAÇÃO de exibição — não resolve dinheiro. Dinheiro: inteiros em centavos (`BIGINT`) ou `NUMERIC` no banco; nunca float.\n4–5. **Precisão de inteiro**: float64 tem 53 bits de mantissa; acima de 2^53 só inteiros pares são representáveis, então 9007199254740993 vira …992. `BigInt` é exato e imprime com sufixo `n`. Id de 64 bits vindo do banco → BigInt ou string.\n6. **Coerção**: `Number(null)` = 0, `Number('')` = 0, `Number(' ')` = 0, mas `Number(undefined)` = NaN e `Number('12,50')` = NaN. O bug do saldo zero: saldo NÃO LIDO chegou como `null`, `Number(null)` virou 0 e o código tratou como 'saldo zero confirmado'. Regra: 'não sei' não pode virar 0 — valide `=== null` antes de converter, ou use `typeof x === 'number' && Number.isFinite(x)`.\n7. **NaN**: é o único valor em JS diferente de si mesmo. `includes` (SameValueZero) acha; `indexOf` (===) não. Use `Number.isNaN(x)` (não `isNaN`, que coage: `isNaN('abc')` é true).\n8. **UTF-8 vs UTF-16**: 'ção' = 3 code points; em UTF-8 são 5 bytes (ç e ã com 2 cada), em UTF-16 6 bytes (2 por caractere).\n9. **Code point vs grapheme**: '👨‍👩‍👧' são 5 code points (3 emojis + 2 ZWJ), 8 unidades UTF-16 (cada emoji usa surrogate pair) e 1 grapheme para o usuário. `length` = 8. Limite de 'caracteres' para o usuário exige `Intl.Segmenter`.\n10. **Base64** não é criptografia: é uma codificação reversível de bytes em 64 caracteres imprimíveis, 3 bytes → 4 chars, `=` completa o último bloco. 'Babita:2026' são 11 bytes → 16 chars. Um header `Authorization: Basic …` é Base64 do `usuario:senha` — legível por qualquer um; só o TLS protege.\n11. **Complemento de dois**: `Int8Array` guarda 8 bits com sinal; 200 = 0b11001000 tem o bit alto ligado → 200 − 256 = −56. `| 0` força int32: 2147483700 − 2^32 = −2147483596.\n12. **Percent-encoding**: `=`, `&` e espaço são reservados na query string; `encodeURIComponent` os escapa (%3D, %26, %20). `encodeURI` NÃO escaparia `=` e `&` — errado para VALOR de parâmetro. Montar URL por concatenação sem escapar quebra em qualquer nome de loja com `&`; use `URLSearchParams`.",
+      "criterios": [
+        "Acertou (ou explicou depois) as 12 linhas, especialmente coerção de null vs undefined e NaN",
+        "Explica a raiz de cada grupo: mantissa de 53 bits, SameValueZero vs ===, unidades UTF-16 vs code points, bit de sinal",
+        "Liga cada pegadinha a uma defesa concreta (centavos inteiros, Number.isNaN, Intl.Segmenter, URLSearchParams, validar null)"
+      ],
+      "postmortem": false
+    },
+    {
+      "id": "redos-qual-regex-explode",
+      "titulo": "ReDoS: qual regex trava o event loop (e medir o tempo dobrando)",
+      "termos": ["regex-backtracking", "hashing-checksum-crc-vs-cripto", "random-vs-crypto-random"],
+      "nivel": 3,
+      "tempoMin": 20,
+      "ambiente": "node",
+      "enunciado": "Quatro regexes candidatas a validar um campo de entrada num servidor Express. Uma delas, com uma entrada maliciosa de ~30 caracteres, congela o processo Node por segundos (e, como o Node é single-thread, congela TODAS as requisições).\n\n```\nA) /^(a+)+$/\nB) /^a+$/\nC) /^[a-z]+!$/\nD) /^(?:a|b)+$/\n```\n\nEntrada de ataque: `'a'.repeat(n) + '!'` (muitos `a` e um caractere que faz o match FALHAR no fim).\n\nMeça as quatro com `n = 20, 22, 24, 26` usando `performance.now()` em volta do `.test()`. Para a regex vulnerável, o tempo deve cerca de QUADRUPLICAR a cada +2 no n (dobrar por caractere). Não passe de n = 28 sem paciência — n = 30 leva ~10 s, n = 40 leva horas. As outras três devem ficar em < 5 ms mesmo com `n = 100000`.\n\nEntregue: a letra da regex que sofre backtracking catastrófico.",
+      "passos": [
+        "`for (const n of [20, 22, 24, 26]) { const s = 'a'.repeat(n) + '!'; const t = performance.now(); re.test(s); console.log(n, (performance.now() - t).toFixed(0), 'ms') }`",
+        "Rode as outras três com `n = 100000` para ver que são lineares",
+        "Extra: valide a mesma regra sem regex (`s.split('')...` ou um loop) e compare"
+      ],
+      "entrega": {
+        "tipo": "escolha",
+        "opcoes": ["A) /^(a+)+$/", "B) /^a+$/", "C) /^[a-z]+!$/", "D) /^(?:a|b)+$/"],
+        "correta": 0,
+        "rotulo": "Regex com backtracking catastrófico"
+      },
+      "dicas": [
+        "O problema é um quantificador em cima de outro quantificador que casam a MESMA coisa: `(a+)+` pode dividir 'aaaa' de 2^(n−1) jeitos diferentes, e quando o `$` falha no `!` o motor tenta todos.",
+        "D parece parecida, mas `a|b` são alternativas EXCLUSIVAS por caractere: não há dois jeitos de dividir a mesma string, então o backtracking é linear."
+      ],
+      "solucao": "**A) `/^(a+)+$/`**.\n\nPor quê: o grupo `(a+)` casa 1 ou mais `a`, e o `+` de fora repete o grupo. Para 'aaaa' há 8 = 2^3 maneiras de dividir em grupos (a|a|a|a, aa|a|a, a|aa|a, …). Quando o `$` encontra o `!` e falha, o motor de backtracking (o V8 usa Irregexp, um motor de backtracking como o de Perl/PCRE) volta e tenta TODAS as divisões antes de desistir: O(2^n). Medição típica: n=22 → ~40 ms, n=24 → ~160 ms, n=26 → ~600 ms, n=28 → ~2,5 s; cada `a` extra dobra o tempo. Com n=40, o processo fica preso por horas — e com ele todo request do Express, porque o regex roda na thread principal.\n\nAs outras três são lineares: **B** `^a+$` tem um único caminho (o `a+` engole tudo, falha no `!`, recua um por vez: O(n)). **C** `^[a-z]+!$` idem: a classe engole, recua até achar `!`. **D** `^(?:a|b)+$`: a alternância é por caractere e exclusiva — cada posição só casa de UM jeito, então não há explosão combinatória.\n\nO padrão perigoso: quantificadores aninhados (`(x+)+`, `(x*)*`), ou alternância com sobreposição dentro de repetição (`(a|aa)+`, `(\\w+\\s?)+`), seguidos de algo que pode falhar. O caso real famoso é a validação de e-mail e de espaços em branco (`(\\s*)*`) — o Stack Overflow caiu 34 minutos em 2016 por um `\\s+$` num post com 20 mil espaços.\n\nDefesas: (1) reescreva sem aninhamento — `/^a+$/` é equivalente a A; (2) limite o tamanho da entrada ANTES do regex (`if (s.length > 200) return false`); (3) use `re2` (`npm i re2`, motor sem backtracking, garante linear) para regex que recebe entrada do usuário; (4) o Node 20+ suporta `--enable-experimental-regexp-engine-on-excessive-backtracks` como rede de segurança; (5) teste com o pior caso no CI. Regra de bolso: se a validação é simples (só letras, só dígitos, tamanho), um loop ou `split` é mais legível e não tem essa classe de bug.",
+      "criterios": [
+        "Mediu e viu o tempo dobrar por caractere na regex A",
+        "Explica quantificador aninhado como a causa (2^n divisões) e por que D não sofre",
+        "Cita pelo menos duas defesas (limite de tamanho, regex sem aninhamento, re2)"
+      ],
+      "postmortem": false
+    },
+    {
+      "id": "processo-thread-syscall-node",
+      "titulo": "Processo vs thread vs syscall: por que o Node é single-thread e faz I/O em paralelo",
+      "termos": ["syscall-user-kernel", "stack-vs-heap", "pass-by-value-vs-reference", "jit-interpretador-aot"],
+      "nivel": 4,
+      "tempoMin": 35,
+      "ambiente": "node",
+      "enunciado": "Pergunta de entrevista sênior, respondida com evidência do seu próprio sistema.\n\nParte 1 (medir): rode um servidor Node qualquer (o Trilha RM serve) e descubra, no Linux/Termux/WSL ou no Git Bash com as ferramentas que tiver: quantas THREADS o processo Node tem em repouso (`ls /proc/<pid>/task | wc -l` ou `cat /proc/<pid>/status | grep Threads`; no Windows, Gerenciador de Tarefas → Detalhes → coluna Threads). Depois rode `strace -f -c -p <pid>` (Linux) por 10 s enquanto faz 50 requests com `curl` e anote as 3 syscalls mais chamadas. Sem strace, use `node --cpu-prof` e olhe quanto tempo cai em `(program)`/`(idle)` vs JS.\n\nParte 2 (explicar, em PT, como se o entrevistador fosse sênior):\n1. Processo vs thread: o que cada um tem de próprio (espaço de endereço, heap, stack, file descriptors, PID) e o que compartilha. Custo de criar, custo de trocar contexto, o que acontece quando um crasha.\n2. O que é uma syscall: por que existe a fronteira user/kernel, o que custa atravessar (trap, troca de modo, ~100 ns–1 µs) e por que 'muitas syscalls pequenas' é lento (daí buffers, `writev`, batching).\n3. Como o Node consegue ser 'single-thread' e ainda assim atender milhares de conexões: onde entram `epoll`/`kqueue`/IOCP, a threadpool do libuv (4 threads por padrão, `UV_THREADPOOL_SIZE`), o que vai para a threadpool (fs, DNS, crypto, zlib) e o que não vai (sockets). Onde cada coisa vive: stack da thread principal, heap do V8, buffers fora do heap.\n4. Consequência prática: por que um `fib(40)` derruba tudo mas `fs.readFile` de 1 GB não; quando usar `worker_threads` (memória compartilhada via SharedArrayBuffer, mesmo processo) vs `cluster`/PM2 (processos, isolamento, mais RAM).\n\nEntregue: os números da Parte 1 (threads em repouso, top 3 syscalls ou distribuição do profile) e a explicação dos 4 pontos, com 1 frase sobre o que você faria diferente no AutoTrade ou no Trilha RM com base nisso.",
+      "passos": [
+        "`pgrep -f 'node' ` para achar o pid; `cat /proc/<pid>/status | grep -E 'Threads|VmRSS'`",
+        "Threads esperadas em repouso: 1 principal + 4 libuv + ~4 do V8 (GC, compilação) + inspector = ~7–11",
+        "`strace -f -c -p <pid>` e Ctrl-C depois dos requests: espere `epoll_wait`, `read`/`recvfrom`, `write`/`writev`, `futex` no topo"
+      ],
+      "entrega": { "tipo": "texto", "minimoChars": 500, "rotulo": "Números medidos + explicação dos 4 pontos" },
+      "dicas": [
+        "Thread = fluxo de execução com sua própria stack e registradores, dentro de um processo que dá o espaço de endereço (heap, código, fds). Processo crasha → todas as threads morrem; thread crasha em C → processo morre; em JS, exceção não tratada mata o processo inteiro.",
+        "O Node não espera I/O bloqueando: ele registra interesse no fd (`epoll_ctl`) e chama `epoll_wait` UMA vez para milhares de sockets — é uma syscall que devolve 'quem ficou pronto'. Isso é o event loop na fase poll.",
+        "`futex` aparecendo muito no strace = threads do libuv/V8 sincronizando; `read` de arquivo aparece em thread diferente da principal (`-f` mostra o tid)."
+      ],
+      "solucao": "**Parte 1 (valores típicos, os seus podem variar):** Node 22 em repouso com Express: `Threads: 7` a `11` (1 principal com o event loop + 4 da threadpool do libuv + threads de plataforma do V8 para GC concorrente e compilação em background; `--inspect` adiciona 1). `strace -c` durante os 50 curls: `epoll_wait` (o loop dormindo/acordando), `read`/`recvfrom` (ler o request do socket), `write`/`writev` (resposta), `futex` (sincronização entre threads), `epoll_ctl` (registrar/desregistrar fds), `accept4`, `close`. No `--cpu-prof`, a maior fatia é `(idle)`: o processo passa a vida esperando o kernel dizer que um socket ficou pronto.\n\n**1. Processo vs thread.** Processo = espaço de endereço virtual próprio (código, heap, stacks, memória mapeada), tabela de file descriptors, PID, credenciais, sinais. Thread = fluxo de execução DENTRO de um processo: stack própria (por isso recursão infinita numa thread estoura a stack dela, ~1 MB no Node), registradores e program counter próprios; compartilha heap, código, fds e variáveis globais com as irmãs. Criar processo custa mais (`fork` copia tabelas de página, copy-on-write) e trocar contexto entre processos invalida TLB/caches; entre threads do mesmo processo é mais barato porque o espaço de endereço é o mesmo. Isolamento: processo que crasha não leva os outros (é o que o PM2 cluster te dá); thread que corrompe memória corrompe o processo inteiro. Em JS não existe memória compartilhada acidental entre `worker_threads` — só via `SharedArrayBuffer` explícito; tudo o mais é copiado (structured clone) — a diferença entre passar por referência (mesmo heap) e por valor (cópia) fica literal aqui.\n\n**2. Syscall.** O código do usuário roda em modo não privilegiado; tocar hardware, rede, disco ou memória de outro processo exige pedir ao kernel. A syscall é um `trap`: salva o estado, troca para modo kernel, executa, volta. Custa ~100 ns a 1 µs por chamada (mais com mitigações Spectre/Meltdown) — trivial isolado, mas `write` de 1 byte 1 milhão de vezes são segundos, enquanto UM `write` de 1 MB é microssegundos. Daí: buffers (`fs.createWriteStream` com `highWaterMark`), `writev` (vários buffers em uma syscall — o Node usa em `socket.cork()`/`uncork()`), batching de inserts, `sendfile`. Regra: menos travessias, maiores.\n\n**3. Como o Node atende milhares de conexões com uma thread JS.** Sockets não são lidos bloqueando: o libuv registra cada fd no `epoll` (Linux), `kqueue` (macOS) ou IOCP (Windows) e o event loop chama `epoll_wait` — uma syscall que dorme até QUALQUER fd ficar pronto e devolve a lista. A thread principal então executa os callbacks JS, um por vez. O que não tem interface assíncrona no kernel vai para a threadpool do libuv (4 threads, `UV_THREADPOOL_SIZE` até 1024): `fs.*`, `dns.lookup` (getaddrinfo é bloqueante), `crypto.pbkdf2`/`scrypt`/`randomBytes`, `zlib`. Rede NÃO usa a threadpool. Memória: a stack da thread principal guarda os frames JS; o heap do V8 guarda objetos; `Buffer`s grandes ficam FORA do heap V8 (memória 'external', é por isso que `heapUsed` não mostra um leak de Buffers — só `rss`/`external`).\n\n**4. Consequência.** `fib(40)` é CPU na thread principal: enquanto roda, o loop não volta ao `epoll_wait` e nenhum socket é atendido — latência de todos sobe ao tempo do fib. `fs.readFile` de 1 GB vai para a threadpool; a principal segue livre (mas a threadpool de 4 fica ocupada: 4 leituras grandes + 1 `dns.lookup` = DNS esperando — sintoma clássico de 'a API lenta é o DNS'). `worker_threads`: CPU-bound no mesmo processo, RAM compartilhável por `SharedArrayBuffer`, isolate V8 próprio (~10 MB cada), comunicação por `postMessage` com cópia. `cluster`/PM2: N processos, isolamento total (um crasha, outros vivem), sem memória compartilhada, N× RAM do app, balanceamento por round-robin do master. Escolha: cálculo pesado eventual → worker; usar todos os cores para I/O + resiliência → cluster.\n\n**No AutoTrade/Trilha RM:** as duas apps rodam em PM2 num celular com ~6 cores fracos; o AutoTrade faz `crypto` (assinatura HMAC de cada request à exchange) e `zlib` — ambos passam pela threadpool de 4. Medir `UV_THREADPOOL_SIZE` maior (8) e o event loop lag (`perf_hooks.monitorEventLoopDelay`) antes de culpar a rede; e nunca calcular indicador pesado (média de 5 mil candles) no request path — pré-calcular no tick, ou worker.",
+      "criterios": [
+        "Traz números medidos (threads em repouso, syscalls do strace ou fatia idle do profile)",
+        "Processo vs thread com o que é próprio e o que é compartilhado, custo e isolamento",
+        "Syscall como trap user→kernel com custo e a consequência (batching, writev, buffers)",
+        "epoll_wait + threadpool do libuv: o que vai para cada lugar; Buffers fora do heap",
+        "Decide worker_threads vs cluster com critério e aplica ao próprio sistema"
+      ],
+      "postmortem": false
+    }
+  ]
+}

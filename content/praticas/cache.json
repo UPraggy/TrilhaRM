@@ -1,0 +1,202 @@
+{
+  "deckId": "cache",
+  "titulo": "Práticas · Cache",
+  "exercicios": [
+    {
+      "id": "stampede-cache-aside-decks",
+      "titulo": "Failure lab: provocar e medir um cache stampede",
+      "termos": ["cache-stampede", "cache-aside", "request-coalescing"],
+      "nivel": 4,
+      "tempoMin": 45,
+      "ambiente": "redis",
+      "enunciado": "Cache-aside com TTL curto, fonte lenta e 50 clientes: veja a fonte ser chamada 50 vezes para produzir o mesmo valor — e depois faça isso virar 1.\n\nRedis: `docker run -d --name trilha-redis -p 6379:6379 redis:7`. Servidor Express (lab, sem tocar no Trilha RM real) com `ioredis`:\n\n```\nlet carregamentos = 0\nasync function fonte() {\n  carregamentos++\n  await new Promise((r) => setTimeout(r, 300))   // banco/arquivo lento\n  return { decks: [1, 2, 3], em: Date.now() }\n}\napp.get('/api/decks', async (req, res) => {\n  const hit = await redis.get('decks')\n  if (hit) return res.json(JSON.parse(hit))\n  const dados = await fonte()\n  await redis.set('decks', JSON.stringify(dados), 'EX', 5)\n  res.json(dados)\n})\napp.get('/stats', (req, res) => res.json({ carregamentos }))\n```\n\nCarga: `npx autocannon -c 50 -d 30 http://localhost:3000/api/decks`. Ao final, `curl localhost:3000/stats`. Anote `carregamentos` (versão 1).\n\nAgora implemente **request coalescing**: um `Map` de promessas em voo por chave — a primeira request no miss dispara `fonte()`, as demais aguardam a MESMA promise; ao resolver, grava no Redis e limpa o Map. Zere o contador, repita a carga, anote (versão 2). Opcional: versão 3 com stale-while-revalidate (guardar com TTL lógico dentro do valor e TTL físico maior no Redis; servir o velho e renovar em background uma vez).\n\nEntregue: postmortem em 5 partes (sintoma → evidência → causa → correção → o que muda no processo) com `carregamentos` das versões 1 e 2 (e 3 se fez), p99 do autocannon em cada uma e uma frase sobre o que acontece com o coalescing quando o app roda em 2 instâncias.",
+      "passos": [
+        "`npm i express ioredis`; confira `docker exec trilha-redis redis-cli PING`",
+        "Versão 1: rode 30 s (TTL de 5 s → ~6 expirações). Espere `carregamentos` na casa das centenas: em cada expiração, as ~50 conexões dão miss dentro da janela de 300 ms",
+        "Versão 2: `const emVoo = new Map()`; no miss: `if (!emVoo.has(k)) emVoo.set(k, fonte().then(v => { redis.set(...); return v }).finally(() => emVoo.delete(k)))`; `return emVoo.get(k)`",
+        "Compare também p99 e req/s das duas versões",
+        "Pense em 2 instâncias (Fase 3, Nginx + 2 processos): o Map é por processo → 2 cargas por expiração; para 1 só, lock no Redis (`SET lock:decks 1 NX PX 1000`) ou aceitar 2"
+      ],
+      "entrega": { "tipo": "texto", "minimoChars": 400, "rotulo": "Cole o postmortem com carregamentos v1/v2, p99 de cada e a nota sobre 2 instâncias" },
+      "dicas": [
+        "O stampede não é 'muitos misses': é muitos misses SIMULTÂNEOS para a MESMA chave, todos recalculando o mesmo valor. A janela de perigo é o tempo da fonte (300 ms) após cada expiração.",
+        "Coalescing por processo resolve N→1 dentro da instância. Entre instâncias você escolhe: lock distribuído (mais uma ida ao Redis, mais um modo de falha) ou aceitar N = número de instâncias."
+      ],
+      "solucao": "**Sintoma:** a cada 5 s o p99 salta para 300+ ms e a 'fonte' (banco) recebe uma rajada; num sistema real, o banco cai justamente no pico — quando a chave mais quente expira.\n\n**Evidência:** versão 1 com `-c 50 -d 30`: `carregamentos ≈ 250–350` (6 expirações × ~50 misses simultâneos), p99 ≈ 310–350 ms, req/s alto entre expirações e um vale a cada 5 s. Versão 2 (coalescing): `carregamentos = 6 ou 7` (uma por expiração + a inicial), p99 igual (~300 ms — as 50 requests do miss ainda esperam a única carga), mas a fonte recebeu 50× menos. Versão 3 (SWR): `carregamentos ≈ 6`, p99 cai para < 10 ms porque ninguém espera a renovação — o usuário vê dado com até 5 s de atraso além do TTL lógico.\n\n**Causa:** cache-aside puro é passivo: cada request decide sozinha que deu miss e vai à fonte; nada coordena. Com N clientes concorrentes e fonte de 300 ms, os N chegam antes de o primeiro gravar → N cargas idênticas. TTL igual para todas as chaves quentes sincroniza as expirações e piora.\n\n**Correção:** (1) request coalescing (single-flight) por chave no processo — `Map<chave, Promise>`; (2) stale-while-revalidate para tirar a espera do caminho do usuário; (3) jitter no TTL (`5 ± 1 s`) para dessincronizar chaves; (4) entre instâncias, lock `SET lock:k 1 NX PX 1000` para 1 carga global, aceitando o custo de mais um round-trip e do modo de falha do lock (dono morre → 1 s sem renovação; quem não pega o lock serve stale ou espera). No Trilha RM, os decks são estáticos até o mtime mudar: SWR + coalescing e TTL longo, invalidando pelo mtime.\n\n**Processo:** todo cache-aside novo nasce com coalescing e com a métrica `cache_fonte_carregamentos_total{chave}` — se ela mostrar rajadas periódicas, é stampede. Teste de carga com `-c` maior que 1 antes de ligar cache em rota quente; cache que 'funcionou em dev' com 1 cliente não provou nada.",
+      "criterios": [
+        "Traz carregamentos e p99 das versões 1 e 2 (centenas vs ~6)",
+        "Explica a janela de perigo (tempo da fonte após a expiração) e a falta de coordenação do cache-aside",
+        "Implementa coalescing corretamente (Map de promises com limpeza no finally)",
+        "Discute o caso de 2 instâncias (lock no Redis vs aceitar N cargas) com trade-off",
+        "Fecha com métrica/processo para detectar stampede"
+      ],
+      "postmortem": true
+    },
+    {
+      "id": "redis-caiu-ioredis-padrao",
+      "titulo": "Failure lab: redis-cli shutdown com a app no ar",
+      "termos": ["redis-caiu", "cache-aside", "http-networking/connection-timeout-vs-read-timeout"],
+      "nivel": 4,
+      "tempoMin": 30,
+      "ambiente": "docker",
+      "enunciado": "Com o servidor do exercício anterior no ar (ioredis com as opções **padrão**, rota `/api/decks` envolvida em `try/catch` que responde 500 com `err.message`), derrube o Redis:\n\n```\ndocker exec trilha-redis redis-cli shutdown nosave\n```\n\nImediatamente: `curl -s -w '\\ntempo=%{time_total}s http=%{http_code}\\n' localhost:3000/api/decks`. Observe o tempo e o código. Olhe também o que o ioredis imprime no console do servidor.\n\nDepois, suba o Redis de novo (`docker start trilha-redis`) e veja a app se recuperar sozinha ou não.\n\nEntregue: o que a rota fez enquanto o Redis estava fora.",
+      "passos": [
+        "Garanta que a rota tem `try { … } catch (err) { res.status(500).json({ erro: err.message }) }` — sem isso, Express 4 + promise rejeitada deixa o request pendurado e o Node pode morrer por unhandled rejection",
+        "Derrube o Redis e rode o curl; anote `tempo=` e `http=` e a mensagem de erro no JSON",
+        "Leia a mensagem: ela cita `maxRetriesPerRequest`? Some as esperas do `retryStrategy` padrão (`min(times * 50, 2000)` para times = 1..20)",
+        "Corrija: `new Redis({ enableOfflineQueue: false, commandTimeout: 200, maxRetriesPerRequest: 1 })` + tratar erro do cache como MISS (vai à fonte) + log `warn` + contador. Repita: a rota deve responder pela fonte em ~300 ms",
+        "Suba o Redis de volta e observe: com o cache vazio, todo mundo dá miss ao mesmo tempo — o stampede do lab anterior, agora causado pela recuperação"
+      ],
+      "entrega": {
+        "tipo": "escolha",
+        "opcoes": [
+          "Respondeu pela fonte em ~300 ms — o cache era só otimização e a app nem notou",
+          "Travou ~10 s e devolveu 500: o GET ficou na offline queue do ioredis até esgotar maxRetriesPerRequest (20 reconexões)",
+          "Devolveu 500 imediatamente com ECONNREFUSED",
+          "O processo Node morreu com erro não tratado do socket"
+        ],
+        "correta": 1,
+        "rotulo": "Comportamento da rota com o Redis fora"
+      },
+      "dicas": [
+        "ioredis padrão: `enableOfflineQueue: true` guarda o comando enquanto reconecta; `maxRetriesPerRequest: 20` faz o comando falhar só depois de 20 tentativas de reconexão; `retryStrategy` padrão espera `min(times*50, 2000)` ms entre elas.",
+        "Some 50 + 100 + … + 1000 (20 termos) = 10.500 ms. É o tempo que o usuário espera para receber um erro de CACHE."
+      ],
+      "solucao": "**Travou ≈ 10,5 s e devolveu 500** com `Reached the max retries per request limit (which is 20). Refer to \"maxRetriesPerRequest\" option for details.` O console do servidor mostra `[ioredis] Unhandled error event: Error: connect ECONNREFUSED 127.0.0.1:6379` repetido a cada tentativa — o ioredis não derruba o processo (opção 3 falsa) e não falha rápido (opção 2 falsa), porque a configuração padrão é otimizada para 'o Redis vai voltar já': o comando fica na offline queue e cada reconexão falha depois de `min(times × 50, 2000)` ms; 20 tentativas somam 50 + 100 + … + 1000 = 10.500 ms. Nesse tempo, com 50 conexões, TODAS as requests da rota ficaram presas esperando um cache — o cache virou dependência dura, e ainda com a pior forma de falha: lenta.\n\nA resposta certa para 'o que acontece se o Redis cair' é **degradar, não travar**: (1) `enableOfflineQueue: false` — comando sem conexão falha na hora; (2) `commandTimeout: 200` — nenhum comando de cache espera mais que isso; (3) `maxRetriesPerRequest: 1`; (4) no código, erro do cache = miss: `try { hit = await redis.get(k) } catch (e) { metricas.cacheErro.inc(); req.log.warn(...) }` e segue para a fonte; idem no `set` (fire-and-forget com `.catch`). Resultado: com o Redis fora, a rota responde pela fonte em ~300 ms, mais lenta, sem sessão/rate limit se dependessem do Redis, mas **respondendo**. Um circuit breaker (opossum) em volta do cliente evita até pagar os 200 ms de timeout por request quando o Redis está comprovadamente fora.\n\nO que o Redis leva junto quando cai, no seu caso: cache (degrada), rate limit por IP (abre tudo ou fecha tudo — decida), sessões (deslogar todo mundo), locks de coalescing distribuído (volta ao stampede). Cada uso precisa de uma política de falha escrita. E a recuperação tem sua própria armadilha: Redis volta vazio → todo mundo dá miss junto → stampede; cache warming das chaves quentes no boot ou coalescing resolvem. Mesma família do connect vs read timeout do deck de HTTP: aqui o problema era não ter nenhum dos dois configurado.",
+      "criterios": [
+        "Mediu o tempo (~10 s) e leu a mensagem de erro do ioredis",
+        "Explica offline queue + maxRetriesPerRequest + retryStrategy e a soma das esperas",
+        "Configura falha rápida e trata erro de cache como miss (degradação)",
+        "Lista o que mais cai junto com o Redis e a política de cada um",
+        "Prevê o stampede da recuperação"
+      ],
+      "postmortem": false
+    },
+    {
+      "id": "ttl-set-apaga",
+      "titulo": "SET apaga o TTL: três comandos que todo cache-aside erra",
+      "termos": ["ttl", "redis-estruturas", "eviction-policies"],
+      "nivel": 2,
+      "tempoMin": 15,
+      "ambiente": "redis",
+      "enunciado": "No `redis-cli` interativo (`docker exec -it trilha-redis redis-cli`), rode em ordem e anote cada resposta:\n\n```\nSET decks:v1 '{\"a\":1}' EX 100\nTTL decks:v1\nSET decks:v1 '{\"a\":2}'\nTTL decks:v1\nTTL nao:existe\nSET decks:v1 '{\"a\":3}' KEEPTTL\nTTL decks:v1\nEXPIRE decks:v1 100\nINCRBY contador 1\nEXPIRE contador 100\nINCRBY contador 1\nTTL contador\nHSET h campo 1\nEXPIRE h 100\nHSET h outro 2\nTTL h\n```\n\nAntes de rodar, escreva o que espera para cada `TTL`.\n\nEntregue: as respostas do **segundo** `TTL decks:v1` (logo após o `SET` sem EX) e do `TTL nao:existe`, uma por linha, só os números.",
+      "passos": [
+        "Rode e compare com a previsão",
+        "Note quais comandos preservam TTL (INCRBY, HSET, LPUSH… alteram o valor) e qual o descarta (SET substitui a chave inteira)",
+        "Rode `CONFIG GET maxmemory-policy` e `CONFIG GET maxmemory`: o que acontece com uma chave sem TTL num Redis com `noeviction` e memória infinita?"
+      ],
+      "entrega": {
+        "tipo": "saida",
+        "esperado": "-1\n-2",
+        "esperadoQualquer": ["(integer) -1\n(integer) -2"],
+        "rotulo": "Cole os dois números (TTL após SET sem EX; TTL de chave inexistente)"
+      },
+      "dicas": [
+        "`TTL` devolve -1 quando a chave existe e não tem prazo, -2 quando a chave não existe. O `SET` sem `EX`/`PX`/`KEEPTTL` substitui a chave inteira, inclusive o TTL.",
+        "Comandos que MODIFICAM o valor (INCR, HSET, LPUSH, SADD) mantêm o TTL; comandos que SUBSTITUEM (SET, GETSET, RENAME para destino) descartam."
+      ],
+      "solucao": "```\n-1\n-2\n```\n\nSequência: `TTL` após `SET … EX 100` ≈ 100; após `SET` sem EX → **-1** (a chave virou permanente: o SET recria a chave e o TTL vai embora); `TTL nao:existe` → **-2**; `SET … KEEPTTL` mantém o que havia (aqui, -1 — não havia TTL para manter); `EXPIRE` põe 100 de volta; `INCRBY` depois de `EXPIRE` mantém o TTL (~100); `HSET` num hash com TTL também mantém (~100).\n\nPor que isso importa em cache-aside: o padrão `redis.set(k, JSON.stringify(v))` seguido de `redis.expire(k, ttl)` em dois comandos tem uma janela em que a chave existe sem TTL — se o processo morre entre os dois, a chave fica para sempre; e um `SET` de atualização escrito sem `EX` por outro trecho de código transforma um cache com TTL em leak silencioso. Regra: TTL sempre no MESMO comando (`SET k v EX 60` ou `SET k v KEEPTTL`; `GETEX` para ler renovando); para estruturas (HSET/INCR) o EXPIRE inicial fica e as escritas seguintes o preservam — mas o primeiro comando que cria a chave precisa ser seguido do EXPIRE no mesmo pipeline/MULTI.\n\nSem TTL, quem decide o destino da chave é a `maxmemory-policy`: o padrão do Redis é `noeviction` com `maxmemory 0` (ilimitado) — a imagem Docker sobe assim. Ou seja: cache sem TTL, em Redis padrão, cresce até o host trocar para swap ou o OOM killer agir; e `volatile-*` só considera chaves COM TTL, então chaves sem TTL nunca são candidatas a eviction nessas políticas.",
+      "criterios": [
+        "Distingue -1 (sem prazo) de -2 (não existe)",
+        "Sabe quais comandos preservam e quais descartam TTL e por quê (modificar vs substituir)",
+        "Liga TTL ausente a leak e à política de eviction padrão (noeviction, maxmemory 0)"
+      ],
+      "postmortem": false
+    },
+    {
+      "id": "keys-bloqueia-single-thread",
+      "titulo": "Medir o que KEYS * faz com uma thread só",
+      "termos": ["redis-single-thread", "hot-key", "redis-estruturas"],
+      "nivel": 3,
+      "tempoMin": 25,
+      "ambiente": "redis",
+      "enunciado": "Popule o Redis e prove com o SLOWLOG que um único comando O(N) para todos os clientes.\n\n```\ndocker exec trilha-redis redis-benchmark -t set -n 1000000 -r 1000000 -q\ndocker exec trilha-redis redis-cli DBSIZE\ndocker exec trilha-redis redis-cli CONFIG SET slowlog-log-slower-than 10000\ndocker exec trilha-redis redis-cli SLOWLOG RESET\n```\n\nNum terminal, deixe rodando `docker exec -it trilha-redis redis-cli --latency` (mostra min/max/avg de PING contínuos). Em outro:\n\n```\ndocker exec trilha-redis redis-cli KEYS '*' > /dev/null\ndocker exec trilha-redis redis-cli SLOWLOG GET 1\n```\n\nO `SLOWLOG GET` traz a duração do comando em **microssegundos**. Observe também o `max` do `--latency` saltar no mesmo instante. Depois compare com `SCAN 0 COUNT 1000` repetido (cada chamada aparece no SLOWLOG?).\n\nEntregue: a duração do `KEYS *` registrada no SLOWLOG, convertida para **milissegundos**.",
+      "passos": [
+        "redis-benchmark gera ~630 mil chaves distintas (`-r 1000000` sorteia com repetição); DBSIZE confirma",
+        "Rode o KEYS com saída para /dev/null (imprimir 630 mil linhas no terminal seria o gargalo do lado errado)",
+        "Leia o SLOWLOG: `2) (integer) 412345` = 412 ms. Anote o `max` do --latency no mesmo instante",
+        "`SCAN 0 COUNT 1000` → cursor + 1000 chaves em ~1 ms; some 630 chamadas e compare com o KEYS: mesmo trabalho total, sem bloquear ninguém por mais de 1 ms",
+        "Extra: `DEBUG SLEEP 1` e veja o --latency acusar 1.000 ms — é o que um script Lua pesado ou um `SMEMBERS` de 1 M itens faz"
+      ],
+      "entrega": { "tipo": "numero", "min": 30, "max": 20000, "unidade": "ms", "rotulo": "Duração do KEYS * no SLOWLOG (ms)" },
+      "dicas": [
+        "SLOWLOG registra comandos acima de `slowlog-log-slower-than` (µs). O tempo é só de execução no servidor — não inclui rede nem a transferência da resposta.",
+        "O `--latency` em outro cliente é a prova de que a thread única é compartilhada: durante o KEYS, o PING dele esperou o KEYS inteiro."
+      ],
+      "solucao": "Tipicamente **150–600 ms** para `KEYS *` em ~630 mil chaves (depende da CPU; no Docker Desktop do Windows, mais). No mesmo instante, o `--latency` do outro cliente mostra `max` saltando para o mesmo valor: o PING dele ficou na fila atrás do KEYS. Uma thread executa comandos; enquanto o KEYS varre o dicionário inteiro, nenhum outro cliente é atendido — atomicidade grátis e sem locks é exatamente o que torna um comando O(N) um incidente global.\n\n`SCAN 0 COUNT 1000` faz o mesmo trabalho em ~630 fatias de < 1 ms cada, intercaladas com os comandos dos outros clientes; nenhuma aparece no SLOWLOG. Mesma regra para `SMEMBERS`/`HGETALL`/`LRANGE 0 -1` em estruturas grandes (use SSCAN/HSCAN/LRANGE paginado), `FLUSHALL` (use `FLUSHALL ASYNC`), `DEL` de chave enorme (`UNLINK`) e scripts Lua longos. Em produção, `KEYS` é o comando que se renomeia/desabilita no `redis.conf` (`rename-command KEYS \"\"`).\n\nHot key é o mesmo fenômeno pelo lado do dado: uma chave acessada 100× mais que as outras não bloqueia, mas concentra CPU e banda numa thread/um shard — o Redis satura em ~100–200 mil ops/s por instância e a chave quente sozinha pode chegar lá. Diagnóstico: `redis-cli --hotkeys` (exige política LFU) ou `MONITOR` por alguns segundos. Solução: cache local (in-process) na frente do Redis para as chaves quentes, ou replicar a chave em N cópias (`k:0..k:N`) e sortear.",
+      "criterios": [
+        "Leu o SLOWLOG e converteu µs → ms; correlacionou com o max do --latency",
+        "Explica por que um comando O(N) bloqueia todos os clientes (thread única)",
+        "Sabe as alternativas incrementais (SCAN, UNLINK, FLUSHALL ASYNC) e o que fazer com hot key"
+      ],
+      "postmortem": false
+    },
+    {
+      "id": "volatile-lru-sem-ttl-oom",
+      "titulo": "maxmemory atingido com volatile-lru e chaves sem TTL",
+      "termos": ["eviction-policies", "ttl", "redis-caiu"],
+      "nivel": 3,
+      "tempoMin": 20,
+      "ambiente": "redis",
+      "enunciado": "Configure um limite pequeno e uma política que só olha chaves com TTL; depois encha o Redis com chaves SEM TTL e veja o que a escrita seguinte devolve.\n\n```\ndocker exec trilha-redis redis-cli FLUSHALL\ndocker exec trilha-redis redis-cli CONFIG SET maxmemory 2mb\ndocker exec trilha-redis redis-cli CONFIG SET maxmemory-policy volatile-lru\ndocker exec trilha-redis redis-benchmark -t set -n 2000 -r 100000 -d 10000 -q\ndocker exec trilha-redis redis-cli SET teste 1\ndocker exec trilha-redis redis-cli GET key:000000000001\ndocker exec trilha-redis redis-cli INFO stats | grep evicted_keys\ndocker exec trilha-redis redis-cli INFO memory | grep -E 'used_memory_human|maxmemory_human'\n```\n\n(`redis-benchmark -d 10000` grava valores de 10 KB; 2.000 SETs ≈ 20 MB, dez vezes o limite.)\n\nEm seguida troque para `allkeys-lru`, repita o `SET teste 1` e o `evicted_keys`. Por fim, `CONFIG SET maxmemory 0` e `maxmemory-policy noeviction` para devolver o padrão — e anote que ESSE é o padrão da imagem Docker.\n\nEntregue: o que aconteceu com `SET teste 1` sob `volatile-lru` com o Redis cheio de chaves sem TTL.",
+      "passos": [
+        "Rode a sequência; o redis-benchmark vai reportar erros — é esperado",
+        "Leia a resposta do SET e do GET; leia `evicted_keys` (deve ser 0 sob volatile-lru)",
+        "Troque para allkeys-lru: SET volta a funcionar, `evicted_keys` cresce, `used_memory` fica ≤ 2 MB",
+        "Responda: qual política você configuraria para um Redis que guarda cache COM TTL e sessões SEM TTL na mesma instância? (volatile-lru protege as sessões; allkeys-lru pode despejá-las)"
+      ],
+      "entrega": {
+        "tipo": "escolha",
+        "opcoes": [
+          "Gravou: o Redis despejou a chave menos usada recentemente mesmo sem TTL",
+          "Erro OOM na escrita (\"OOM command not allowed when used memory > 'maxmemory'\"); leituras continuam funcionando",
+          "O Redis reiniciou/caiu por falta de memória",
+          "Gravou e ultrapassou o maxmemory — o limite é só um aviso"
+        ],
+        "correta": 1,
+        "rotulo": "Resultado do SET com volatile-lru e só chaves sem TTL"
+      },
+      "dicas": [
+        "`volatile-*` só enxerga chaves com TTL como candidatas a eviction. Se não há nenhuma, o Redis se comporta como `noeviction`: recusa escritas que aumentem memória.",
+        "GET, e comandos que não alocam, continuam — o Redis fica 'somente leitura' na prática, e a app que trata isso como cache-miss segue viva; a que trata como erro fatal, não."
+      ],
+      "solucao": "**`(error) OOM command not allowed when used memory > 'maxmemory'.`** `GET` funciona, `evicted_keys = 0`, `used_memory` acima dos 2 MB (o limite é checado antes de cada escrita que aloca; o que já está dentro fica). O redis-benchmark reporta a maior parte dos 2.000 SETs como erro pelo mesmo motivo.\n\nSob `volatile-lru`, `volatile-lfu`, `volatile-ttl` e `volatile-random`, só chaves com prazo são candidatas; sem nenhuma, o Redis não tem o que despejar e recusa escritas — igual a `noeviction`, que é o **padrão** (com `maxmemory 0` = sem limite: aí ele nunca recusa, só cresce até o host sofrer). Com `allkeys-lru`, o mesmo SET funciona, `evicted_keys` sobe para centenas e `used_memory` estabiliza em ~2 MB: as chaves antigas do benchmark foram embora.\n\nDecisão de política é decisão sobre o que pode sumir: cache puro → `allkeys-lru` (ou `allkeys-lfu` se há chaves quentes estáveis) e `maxmemory` explícito (ex.: 70 % da RAM disponível para o Redis); cache + dado que NÃO pode sumir (sessões, locks, rate limit) na mesma instância → `volatile-lru` e disciplina de TTL em TODO cache — ou, melhor, duas instâncias (uma `allkeys-lru` para cache, outra `noeviction` com persistência para dado). Misturar sem pensar dá o pior dos dois: sob `allkeys-lru`, um pico de cache despeja sessões e desloga usuários; sob `volatile-lru` com cache sem TTL, o Redis vira somente leitura no pico — 'o Redis caiu' sem ter caído. A app precisa tratar erro de escrita no cache como não-fatal (log `warn` + segue), exatamente como no lab do shutdown.",
+      "criterios": [
+        "Leu o erro OOM e confirmou evicted_keys = 0 e GET funcionando",
+        "Explica volatile-* vs allkeys-* e que o padrão é noeviction sem maxmemory",
+        "Escolhe política por 'o que pode sumir' e propõe separar instâncias quando há dado não descartável"
+      ],
+      "postmortem": false
+    },
+    {
+      "id": "invalidacao-decks-progresso",
+      "titulo": "Projetar a invalidação do cache do Trilha RM",
+      "termos": ["cache-invalidation", "write-through", "negative-caching"],
+      "nivel": 4,
+      "tempoMin": 30,
+      "ambiente": "papel",
+      "enunciado": "O Trilha RM vai ganhar Redis (passo 'Redis / cache' do laboratório). Dois dados, dois comportamentos: **decks** (`content/decks/*.json`, mudam quando você edita o arquivo; hoje o servidor recarrega por mtime) e **progresso** (`data/progresso.json`, muda a cada avaliação SM-2 que você faz no app, e a tela seguinte já precisa ver o valor novo).\n\nProjete a estratégia de cache e invalidação para os dois, no formato do plano: para cada decisão, **'X melhora A, piora B, custa C; escolho X porque aqui A pesa mais'**.\n\nDecida e justifique: (1) padrão de escrita para o progresso — cache-aside com invalidação no write, write-through, ou write-behind — e o que acontece se o Redis morrer entre a escrita e a leitura seguinte; (2) invalidação dos decks — TTL, invalidação pelo mtime (quem detecta? quem apaga a chave?), ou versão no nome da chave (`decks:v<mtime>`); (3) negative caching para `GET /api/decks/nao-existe` — cachear o 404? por quanto tempo? qual o risco de cachear 'não existe' logo antes de você criar o deck; (4) esquema de nomes de chaves e TTLs (tabela); (5) como você vai MEDIR que o cache está coerente (atraso máximo observado entre escrita e leitura, taxa de hit por chave).\n\nEntregue: as 5 decisões no formato pedido, a tabela de chaves/TTL/estratégia de invalidação, e a resposta ao cenário 'Redis caiu entre a escrita do progresso e a próxima leitura'.",
+      "passos": [
+        "Liste quem ESCREVE cada dado (você pelo editor; o app pelo POST) e quem LÊ (o app) — invalidação é difícil quando escrita e leitura estão longe; aqui uma delas está no mesmo processo",
+        "Para o progresso, pense no fluxo: POST avaliação → grava JSON → ? → GET seguinte. Onde a chave é apagada/atualizada e o que acontece se o passo falhar",
+        "Para os decks, compare: TTL de 60 s (atraso até 60 s ao editar) × versão no nome da chave (zero atraso, chaves velhas somem por TTL longo) × DEL explícito (quem roda? e com 2 instâncias?)",
+        "Negative caching: TTL curto (5–30 s) e invalidar no mesmo evento que invalida os decks",
+        "Métrica: log com `escrito_em` no valor cacheado e comparar com `Date.now()` no hit → histograma de idade do dado servido"
+      ],
+      "entrega": { "tipo": "texto", "minimoChars": 600, "rotulo": "Cole as 5 decisões no formato X/A/B/C, a tabela de chaves e o cenário do Redis caído" },
+      "dicas": [
+        "Versão no nome da chave transforma 'invalidar' (difícil: achar e apagar) em 'passar a ler outro nome' (fácil: chaves velhas expiram sozinhas). Só funciona quando você tem uma versão barata — o mtime é uma.",
+        "Write-through para o progresso: o POST grava no JSON e no Redis antes de responder; a leitura seguinte é hit coerente. Piora: a escrita paga os dois; se o Redis falhar no SET, escolha entre falhar o POST (coerência) ou apagar a chave e seguir (disponibilidade)."
+      ],
+      "solucao": "**(1) Progresso — write-through com fallback para DEL.** Melhora: leitura seguinte é hit e coerente (o usuário vê a avaliação que acabou de fazer); piora: o POST paga fs + Redis; custa: tratar falha do SET. Escolho write-through porque aqui a leitura imediata após escrita é o caso comum (a tela seguinte). Se o SET falhar, faço `DEL` da chave (ou nem isso, se o SET falhou porque o Redis está fora — a leitura vai dar miss e ler o JSON). **Redis morre entre a escrita e a leitura:** o JSON em disco é a fonte da verdade; a leitura dá erro→miss→lê o arquivo→correto. Write-behind seria errado aqui: se o Redis morrer antes do flush, a avaliação some — dado de progresso não é descartável. Cache-aside com DEL no write também funciona, mas troca um hit coerente por um miss garantido após cada avaliação.\n\n**(2) Decks — versão no nome da chave.** `decks:<mtimeMs>` (o repositório já lê o mtime para recarregar). Melhora: zero atraso ao editar e nada para apagar; piora: chaves velhas ocupam memória até o TTL (24 h) expirar; custa: um `stat` por request (ou o watcher já existente) para saber a versão atual. Escolho porque invalidação por DEL exige que alguém detecte a mudança e apague — com 2 instâncias, cada uma teria que detectar; e TTL curto (60 s) dá atraso visível ao editar e stampede a cada minuto. Negative: chaves velhas custam KB.\n\n**(3) 404 de deck — negative caching com TTL de 10 s**, chave `deck:404:<id>:<mtime>` — versionada pelo mesmo mtime, então criar o deck (muda o mtime) invalida o 'não existe' junto. Melhora: protege de scanner/bot batendo em ids inexistentes; piora: até 10 s de 404 falso se o mtime não mudasse; custa: uma chave por id inválido (limitar tamanho do id para não virar vetor de enchimento).\n\n**(4) Tabela:**\n\n| chave | TTL | invalidação |\n|---|---|---|\n| `decks:<mtime>` | 24 h | por versão (nome muda); velhas expiram |\n| `deck:<id>:<mtime>` | 24 h | idem |\n| `deck:404:<id>:<mtime>` | 10 s | TTL + versão |\n| `progresso:<usuario>` | 1 h (teto de inconsistência) | write-through no POST; DEL se o SET falhar |\n| `mentor:<hash-do-prompt>` | 7 d | só TTL (resposta do OpenRouter é cara e determinística o bastante) |\n\n**(5) Medição:** todo valor cacheado leva `{ v, escritoEm }`; no hit, `idade = Date.now() − escritoEm` vai para um histograma `cache_idade_segundos{chave}` — o p99 dessa idade é o 'atraso máximo observado', o número que responde 'quanto o cache está atrasado' em vez de discutir. Mais `cache_hit_total{chave,resultado=hit|miss|erro}` para taxa de hit por chave e detectar stampede/erro. Teste de coerência: script que faz POST de avaliação e GET imediato 100× e conta divergências — deve ser 0 com write-through.",
+      "criterios": [
+        "Cada decisão no formato 'X melhora A, piora B, custa C; escolho X porque…'",
+        "Progresso: write-through justificado pela leitura imediata; write-behind descartado por perda de dado",
+        "Decks: versão no nome da chave em vez de DEL, com o argumento das 2 instâncias",
+        "Negative caching com TTL curto e invalidação atrelada à mesma versão",
+        "Métrica de idade do dado servido e teste de coerência"
+      ],
+      "postmortem": false
+    }
+  ]
+}

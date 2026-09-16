@@ -1,0 +1,153 @@
+{
+  "deckId": "containers-deploy",
+  "titulo": "Práticas · Containers e deploy",
+  "exercicios": [
+    {
+      "id": "explique-sem-docker",
+      "titulo": "Explique container sem a palavra Docker",
+      "termos": ["namespaces", "cgroups", "process-isolation", "container-vs-vm"],
+      "nivel": 4,
+      "tempoMin": 30,
+      "ambiente": "papel",
+      "enunciado": "Prova de que você entende o mecanismo, não a ferramenta. Escreva uma explicação de container SEM usar as palavras 'Docker', 'imagem' ou 'Dockerfile' — só o que o kernel faz.\n\nCubra, com uma frase cada:\n1. Que visão o PID namespace dá ao processo (quem é PID 1, o que ele vê e o que o host vê).\n2. O que o mount namespace faz para o rootfs 'parecer /'.\n3. O que o network namespace isola e como o tráfego chega no host (veth + bridge).\n4. O que cgroups limitam e a diferença entre limite de CPU (throttling) e de memória (OOM).\n5. Uma frase dizendo por que container NÃO é VM (kernel compartilhado; o que isso implica em segurança e boot).\n\nDepois, no seu PC ou no celular (Termux tem `unshare`), rode ao menos UM comando que mostra o mecanismo direto — ex.: `ls -l /proc/self/ns/` (lista os namespaces do seu shell), ou `lsns` — e cole no fim.\n\nEntregue: os 5 pontos + a saída de um comando de namespace.",
+      "passos": [
+        "Regra: se a frase serve para qualquer runtime (containerd, podman, runc, LXC), está no nível certo",
+        "Para o ponto 3, saiba dizer por que um container ouvindo em :3000 não aparece em `ss -lntp` do host",
+        "No celular/PRoot alguns namespaces são restritos — `ls -l /proc/self/ns/` funciona e já mostra os links"
+      ],
+      "entrega": { "tipo": "texto", "minimoChars": 400, "rotulo": "Os 5 pontos + saída do comando de namespace" },
+      "dicas": [
+        "Container = um processo normal do host com uma VISÃO restrita (namespaces) e um ORÇAMENTO de recursos (cgroups). Não há 'máquina' dentro.",
+        "CPU é throttling (pausado até o próximo período de 100 ms), não reserva — por isso p99 sobe em rajada mesmo com host ocioso. Memória estourada chama o OOM killer."
+      ],
+      "solucao": "1. PID namespace: o primeiro processo dentro vira PID 1 e só enxerga a árvore de processos criada dentro dele; o host vê o mesmo processo com outro PID (maior). Isolamento de visão, não de kernel.\n2. Mount namespace: o processo recebe uma tabela de montagem própria; monta-se o rootfs preparado como '/', então ele vê um sistema de arquivos que começa naquele diretório — sem cópia, é a mesma árvore do host remapeada.\n3. Network namespace: interfaces, tabela de rotas, portas e firewall próprios. O runtime cria um par veth: uma ponta dentro do namespace, a outra numa bridge no host; NAT/roteamento levam o pacote para fora. Por isso a porta :3000 do container não aparece no `ss` do host — está em outra pilha de rede (veja com `nsenter -t <pid> -n ss -lntp`).\n4. cgroups: limitam e contabilizam CPU, memória, I/O e número de PIDs por grupo. CPU é throttling — estourou a quota do período, o processo é pausado até o próximo (aparece como latência em rajada). Memória é limite duro: passou de `memory.max` e o kernel recupera page cache; se não der, o OOM killer mata um processo do grupo (normalmente o seu Node).\n5. Não é VM: uma VM tem kernel próprio e hardware virtual (boot de segundos, isolamento forte via hypervisor). Container compartilha o kernel do host (boot em ms, densidade alta), mas uma falha/escape do kernel afeta todos — isolamento mais fraco, superfície de ataque maior.\n\nComando (exemplo real):\n```\n$ ls -l /proc/self/ns/\nlrwxrwxrwx ... cgroup -> 'cgroup:[4026531835]'\nlrwxrwxrwx ... ipc -> 'ipc:[4026531839]'\nlrwxrwxrwx ... mnt -> 'mnt:[4026531841]'\nlrwxrwxrwx ... net -> 'net:[4026531840]'\nlrwxrwxrwx ... pid -> 'pid:[4026532...]'\nlrwxrwxrwx ... user -> 'user:[4026531837]'\nlrwxrwxrwx ... uts -> 'uts:[4026531838]'\n```\nOs números entre colchetes são os IDs de cada namespace; dois processos no MESMO namespace mostram o mesmo número. É literalmente isso que um container 'é' — um processo com alguns desses números diferentes do host.\n\nLigação com o seu mundo: o Node no PRoot/Termux do celular NÃO está num conjunto completo de namespaces (PRoot emula em espaço de usuário, sem privilégio de kernel), por isso o phantom process killer do Android alcança os processos — o 'isolamento' ali é muito mais fraco que um container de verdade.",
+      "criterios": [
+        "Explica namespaces (pid/mnt/net) e cgroups sem citar Docker/imagem",
+        "Distingue throttling de CPU de OOM de memória",
+        "Diz por que container não é VM (kernel compartilhado) e a consequência de segurança",
+        "Colou a saída de um comando de namespace real"
+      ],
+      "postmortem": false
+    },
+    {
+      "id": "pid1-sinais-tini",
+      "titulo": "PID 1: docker stop com e sem tini",
+      "termos": ["container-como-processo", "pm2-supervisor", "healthcheck"],
+      "nivel": 4,
+      "tempoMin": 45,
+      "ambiente": "docker",
+      "enunciado": "Meça, não confie. Crie um servidor Node que NÃO trata SIGTERM:\n\n```\nconst http = require('node:http')\nhttp.createServer((_, res) => res.end('ok')).listen(3000, () => console.log('no ar'))\n```\n\nRode em três variantes e cronometre `docker stop` (`time docker stop <c>`):\n\nA) `CMD npm start` (shell form via npm).\nB) `CMD [\"node\", \"server.js\"]` (exec form, node é PID 1, sem handler).\nC) igual a B, mas `docker run --init` (ou `ENTRYPOINT [\"tini\", \"--\"]`), ainda sem handler.\nD) exec form COM handler de SIGTERM que fecha o server e sai.\n\nPara cada uma, anote o tempo do `docker stop`. Depois responda: qual demora ~10 s e por quê; o que `--init`/tini muda; o que só o handler resolve.\n\nEntregue: o tempo do `docker stop` do cenário A, em segundos inteiros (deve ser ~10 — o SIGKILL do timeout).",
+      "passos": [
+        "Dockerfile mínimo: `FROM node:22-alpine` / `WORKDIR /app` / `COPY server.js .` / e o CMD de cada variante",
+        "`docker build -t pid1 .` ; `docker run -d --name c pid1` ; `time docker stop c` ; `docker rm c`",
+        "Handler (D): `process.on('SIGTERM', () => { server.close(() => process.exit(0)) })`",
+        "Confirme que em A o `docker inspect -f '{{.State.Pid}}'` aponta para o npm/sh, não para o node"
+      ],
+      "entrega": { "tipo": "numero", "esperado": 10, "tolerancia": 0.3, "unidade": "s", "rotulo": "Tempo do docker stop no cenário A (s)" },
+      "dicas": [
+        "PID 1 no Linux ignora sinais sem handler instalado — o kernel não aplica a ação default. Então SIGTERM não mata, e o Docker manda SIGKILL após o grace period (10 s padrão).",
+        "npm como PID 1 não repassa SIGTERM ao node filho (histórico ruim); shell form (`/bin/sh -c`) tem o mesmo problema."
+      ],
+      "solucao": "Tempos esperados:\n- A) `npm start`: ~10 s. `npm`/`sh` vira PID 1, ignora SIGTERM e não repassa ao node. Docker espera o grace period e manda SIGKILL. Conexões cortadas no meio.\n- B) exec form sem handler: ~10 s também. Agora o `node` é PID 1, mas PID 1 sem handler de SIGTERM ignora o sinal — de novo SIGKILL no timeout. Este é o resultado que surpreende quem acha que 'node em exec form já resolve'.\n- C) `--init`/tini, sem handler: continua ~10 s para o node sair, MAS tini repassa o sinal corretamente e recolhe zumbis; o que falta é o node ter um handler. tini conserta o encanamento de sinais e o reaping de órfãos, não a ausência de graceful shutdown na sua app.\n- D) exec form + handler: ~instantâneo (o tempo de fechar o server e sair). É o único cenário com shutdown limpo.\n\nConclusão: você precisa das DUAS coisas — tini/`--init` (repassa sinais, recolhe zumbis) E um handler de SIGTERM na aplicação (para de aceitar, drena in-flight, fecha o pool, sai). Uma sem a outra ainda perde conexões.\n\nDockerfile bom:\n```\nFROM node:22-alpine\nWORKDIR /app\nCOPY server.js .\nENTRYPOINT [\"/sbin/tini\", \"--\"]   # ou docker run --init\nCMD [\"node\", \"server.js\"]\n```\nHandler:\n```\nconst server = http.createServer(...).listen(3000)\nprocess.on('SIGTERM', () => { server.close(() => process.exit(0)) })\n```\nComo isso conversa com PM2: `pm2 reload` também manda SIGINT e espera `kill_timeout` — se o seu processo não trata o sinal, você tem o mesmo 'exatamente 10/15 s' no reload, e o zero-downtime vira quase-zero. Em Kubernetes, alinhe `terminationGracePeriodSeconds` com o tempo de drain.\n\nDica de medição: se o `docker stop` leva EXATAMENTE o grace period, seu processo não trata o sinal — é o teste definitivo.",
+      "criterios": [
+        "Mediu os 4 cenários e identificou que A e B dão ~10 s pelo mesmo motivo (PID 1 sem handler)",
+        "Explica por que npm/shell form como PID 1 não repassa o sinal",
+        "Sabe que tini/--init conserta sinais e zumbis, mas não substitui o graceful shutdown da app",
+        "Liga ao pm2 reload e ao terminationGracePeriodSeconds"
+      ],
+      "postmortem": false
+    },
+    {
+      "id": "cpu-throttling-cgroup",
+      "titulo": "Onde estão os p99 escondidos: --cpus e nr_throttled",
+      "termos": ["resource-limits", "cgroups", "healthcheck"],
+      "nivel": 4,
+      "tempoMin": 40,
+      "ambiente": "docker",
+      "enunciado": "Prove que 0,5 CPU não é 'metade da velocidade' e sim 'latência em rajada'. Suba uma API Node com uma rota que gasta ~30 ms de CPU por request (um loop de hash), rode dentro de um container com `--cpus=0.5 --memory=256m`, meça o p99 com autocannon e leia o cgroup.\n\n1. Rota: `for` que faz `crypto.createHash('sha256')` até passar ~30 ms; devolve `ok`.\n2. `docker run -d --cpus=0.5 --memory=256m -p 3000:3000 --name c api`\n3. Carga: `npx autocannon -c 20 -d 20 http://localhost:3000/`\n4. Leia o throttling: `docker exec c cat /sys/fs/cgroup/cpu.stat` — anote `nr_throttled` antes e depois da carga.\n5. Repita com `--cpus=2` e compare o p99 do autocannon.\n\nEntregue: `nr_throttled` cresceu durante a carga com `--cpus=0.5`? Escolha a interpretação correta.",
+      "entrega": {
+        "tipo": "escolha",
+        "opcoes": [
+          "nr_throttled fica em 0; a latência sobe só porque a CPU está lenta",
+          "nr_throttled cresce a cada período; cada rajada estoura a quota de ~50 ms e o processo fica pausado até o próximo período de 100 ms — é isso que vira p99 alto mesmo com o host ocioso",
+          "nr_throttled cresce, mas é irrelevante: o que importa é a memória",
+          "nr_throttled só cresceria se a memória estourasse (OOM)"
+        ],
+        "correta": 1,
+        "rotulo": "O que os números mostram"
+      },
+      "dicas": [
+        "cpu.max é quota/período (ex.: 50000/100000 = meio core). Estourou a quota no período de 100 ms → pausado até o próximo. Isso é throttling, e é diferente de 'CPU lenta'.",
+        "Com --cpus=2 o p99 despenca e nr_throttled quase não cresce: havia quota de sobra por período."
+      ],
+      "solucao": "Resposta: nr_throttled CRESCE a cada período sob carga com `--cpus=0.5`.\n\nMecanismo: `--cpus=0.5` vira `cpu.max = 50000 100000` (50 ms de CPU a cada 100 ms). Uma rajada de requests que precisa de 30 ms de CPU cada consome os 50 ms de quota rápido; o kernel então PAUSA o cgroup até o início do próximo período de 100 ms. Requests que caíram nessa janela esperam a pausa inteira — daí um p99 de centenas de ms mesmo com o host a 10% de CPU. `cpu.stat` mostra `nr_periods`, `nr_throttled` (quantos períodos foram estrangulados) e `throttled_usec` (tempo total pausado) subindo.\n\nNão é 'CPU lenta': o trabalho por request é o mesmo; o que muda é a espera forçada pela quota. Por isso a interpretação 1 está errada.\n\nCom `--cpus=2`: quota de 200 ms por período de 100 ms — nunca estoura sob essa carga, `nr_throttled` estável, p99 cai para perto do custo real (~30 ms + fila).\n\nDetalhe Node: o V8 dimensiona o heap pela RAM do HOST, não pelo `--memory` do cgroup. Um container de 256 MB com Node achando que tem 16 GB adia o GC e morre por OOM antes de coletar. Fixe `--max-old-space-size` ≈ 75% do limite (aqui ~192). Node 22 já lê o cgroup para `availableParallelism()`, mas não para o heap — o flag ainda importa.\n\nLição de produção: 'meia CPU' é uma decisão de latência, não só de custo. Se o SLA é p99 baixo sob rajada, ou dá quota folgada, ou aceita o throttling e mede `nr_throttled` como sinal de que a quota está curta. Health check que faz trabalho de CPU pode falhar SÓ porque o processo estava throttled — outra armadilha.",
+      "criterios": [
+        "Mediu p99 nos dois limites e nr_throttled antes/depois",
+        "Explica throttling (quota por período) vs 'CPU lenta'",
+        "Sabe que o heap do V8 ignora o limite do cgroup e como corrigir",
+        "Liga throttling a p99 e a falha de health check"
+      ],
+      "postmortem": false
+    },
+    {
+      "id": "blue-green-duas-pastas",
+      "titulo": "Blue/green de verdade: duas pastas, Nginx e o gap de conexões",
+      "termos": ["blue-green", "zero-downtime", "reverse-proxy-na-frente", "pm2-supervisor"],
+      "nivel": 5,
+      "tempoMin": 60,
+      "ambiente": "nginx",
+      "enunciado": "É o passo 'deploy sem downtime' do seu laboratório (§5 do plano), feito com o que você tem: Nginx na frente + duas instâncias Node, sem Kubernetes.\n\n1. Duas pastas `blue/` e `green/` com o MESMO servidor Node, cada uma numa porta (3001 e 3002), cada rota devolvendo a cor e a versão. Handler de SIGTERM com drain.\n2. Nginx com `upstream app { server 127.0.0.1:3001; }` (blue) e um `include` de um arquivo `active.conf` trocável por symlink; `proxy_pass http://app;`.\n3. Suba as duas. Rode uma carga contínua e MEÇA erros durante o switch: `npx autocannon -c 10 -d 30 http://localhost:8080/` e, no meio, troque o symlink para green e `nginx -s reload`.\n4. Faça de dois jeitos: (a) switch com a instância green ainda subindo (readiness fake — responde antes de estar pronta) e (b) switch só depois de green passar num `curl /readyz`. Compare os `non-2xx` do autocannon.\n5. Rollback: symlink de volta + reload; cronometre.\n\nEntregue um postmortem: sintoma (quantos erros no switch sem readiness) → evidência (números do autocannon nos dois jeitos, tempo do reload e do rollback) → causa (o que causou os 5xx/reset: readiness fake? keep-alive preso? sessão em memória?) → correção → o que muda no seu processo de deploy do Trilha RM no celular.",
+      "passos": [
+        "Nginx no Docker: `docker run -d -p 8080:80 -v $PWD/nginx.conf:/etc/nginx/nginx.conf:ro nginx` (edite e `docker exec ... nginx -s reload`)",
+        "readyz que só responde 200 depois de N segundos simula readiness real vs fake",
+        "Repare no keep-alive: sem `Connection: close` ao drenar, conexões presas na instância velha seguem chegando nela",
+        "Meça o gap: autocannon reporta `non-2xx` e `errors`; a meta do blue/green é ZERO, não 'quase'"
+      ],
+      "entrega": { "tipo": "texto", "minimoChars": 400, "rotulo": "Postmortem com os números do autocannon (com e sem readiness) e tempos" },
+      "dicas": [
+        "`nginx -s reload` é gracioso: workers antigos terminam as conexões abertas e novos usam a config nova. O erro raramente é no reload do Nginx — é a instância green não estar pronta quando o tráfego chega.",
+        "Sessão em memória: se blue guardava login em RAM, o usuário 'desloga' no switch. Store externo (Redis) ou token resolve — é um custo do blue/green, não um bug do Nginx."
+      ],
+      "solucao": "Estrutura Nginx:\n```\nhttp {\n  upstream app { server 127.0.0.1:3001; }   # editado pelo active.conf/symlink\n  server { listen 80; location / { proxy_pass http://app; } }\n}\n```\nDeploy blue→green: sobe green (3002), espera `curl -sf localhost:3002/readyz`, aponta o upstream para 3002, `nginx -s reload`.\n\nSintoma: no jeito (a), sem esperar readiness, o autocannon acusa dezenas de `non-2xx`/`errors` (ECONNREFUSED ou 502) na janela do switch — o Nginx começou a mandar tráfego para uma porta que ainda não aceitava conexão, ou para uma app que aceitava a conexão mas respondia 500 porque o pool de banco não estava aberto. No jeito (b), com readiness real, os erros vão a zero.\n\nEvidência: (a) ~20–60 requests non-2xx em 30 s; (b) 0 non-2xx; reload do Nginx ~50–200 ms, rollback (symlink de volta + reload) em ~1–2 s.\n\nCausa (a ordenar pelo que você mediu):\n- readiness fake: green entrou no upstream antes de aceitar/estar pronto → 502/ECONNREFUSED. Causa mais comum.\n- keep-alive preso: conexões keep-alive já estabelecidas na instância velha continuam chegando nela durante o drain; se ela já parou de aceitar mas não fechou os keep-alive, o cliente vê reset. Resolve com `Connection: close` no drain ou `keepalive_timeout` curto.\n- sessão em memória: não gera 5xx, gera 'usuário deslogado' — sintoma diferente, mesma raiz (estado local).\n\nCorreção: (1) readiness REAL — green só entra no upstream após `/readyz` 200 (que só responde quando pool aberto e migrations ok); (2) graceful shutdown no blue (SIGTERM → para de aceitar → drena in-flight → fecha keep-alives → sai); (3) estado fora do processo (sessão/cache em Redis) para o switch ser indolor; (4) durante a janela, blue e green rodam contra o mesmo banco — schema tem que ser compatível com as duas (expand/contract, veja o deck de produção).\n\nProcesso no celular (Trilha RM em PM2 + cloudflared): a versão barata do mesmo padrão é `pm2 reload` em cluster com `wait_ready: true` + handler de SIGINT — rolling entre workers. Blue/green com duas pastas vale quando você quer smoke em produção antes de expor e rollback em segundos. Documente o gap medido em `20-app-trilha-rm.md` (antes/depois), senão não conta como passo do laboratório.",
+      "criterios": [
+        "Mediu non-2xx com readiness fake e com readiness real (meta zero no segundo)",
+        "Nomeia a causa dos erros pelos números (readiness, keep-alive, ou sessão)",
+        "Descreve graceful shutdown e compatibilidade de schema durante a janela",
+        "Traduz para pm2 reload no celular e registra o gap medido"
+      ],
+      "postmortem": true
+    },
+    {
+      "id": "multistage-cache",
+      "titulo": "Multi-stage e ordem de layers: por que o build ficou rápido",
+      "termos": ["dockerfile-multistage", "imagem-layers", "twelve-factor"],
+      "nivel": 3,
+      "tempoMin": 30,
+      "ambiente": "docker",
+      "enunciado": "Meça o efeito da ordem das instruções no cache de build. Pegue um app Node com `package.json` + `src/`. Escreva DOIS Dockerfiles:\n\nRuim:\n```\nFROM node:22\nWORKDIR /app\nCOPY . .\nRUN npm ci\nCMD [\"node\", \"src/server.js\"]\n```\nBom (multi-stage + ordem certa):\n```\nFROM node:22 AS build\nWORKDIR /app\nCOPY package*.json ./\nRUN npm ci\nCOPY . .\nFROM node:22-slim\nWORKDIR /app\nCOPY --from=build /app/node_modules ./node_modules\nCOPY . .\nCMD [\"node\", \"src/server.js\"]\n```\n\n1. `docker build` nos dois; anote o tamanho final (`docker images`).\n2. Altere UMA linha em `src/server.js` (não o package.json) e rode `docker build` de novo nos dois. Cronometre.\n3. Explique por que o 'ruim' reinstala tudo e o 'bom' reusa o cache do `npm ci`.\n\nEntregue: qual mudança faz o rebuild do Dockerfile 'ruim' ser lento a cada alteração de código.",
+      "entrega": {
+        "tipo": "escolha",
+        "opcoes": [
+          "O `FROM node:22` sem tag slim",
+          "O `COPY . .` vir ANTES do `RUN npm ci`: qualquer alteração em qualquer arquivo invalida a layer do COPY e todas as seguintes, forçando o npm ci a rodar de novo",
+          "Faltar um .dockerignore",
+          "Usar `npm ci` em vez de `npm install`"
+        ],
+        "correta": 1,
+        "rotulo": "A causa do rebuild lento"
+      },
+      "dicas": [
+        "Cada instrução é uma layer com hash do seu conteúdo + das anteriores. Mudou uma, invalida todas dali para baixo.",
+        "Copiar só package*.json antes do npm ci faz a layer de dependências depender só do lockfile — código que muda toda hora não a invalida."
+      ],
+      "solucao": "Resposta: `COPY . .` antes do `RUN npm ci`. No Dockerfile ruim, qualquer alteração de qualquer arquivo muda o conteúdo da layer `COPY . .`, o que invalida essa layer e TODAS as seguintes — incluindo o `RUN npm ci`. Resultado: reinstala node_modules inteiro a cada mudança de uma linha de código (minutos por build).\n\nNo Dockerfile bom, a ordem separa o que muda pouco do que muda muito:\n1. `COPY package*.json ./` — layer que só muda quando o lockfile muda.\n2. `RUN npm ci` — cacheada enquanto o lockfile não mudar; um edit em `src/` não a toca.\n3. `COPY . .` — só essa layer (barata) refaz.\n\nMulti-stage adiciona o segundo ganho: o estágio final parte de `node:22-slim` e copia só `node_modules` + código do estágio de build — sem toolchain, sem cache de npm, sem devDependencies se você fizer `npm ci --omit=dev`. Imagem final bem menor (centenas de MB a menos), menos superfície de ataque, pull mais rápido no deploy.\n\nComplementos: `.dockerignore` (não copiar `node_modules` local, `.git`, `.env` — o 12-factor manda config por env, não no build), tag fixa da base (`node:22.1.0`, não `latest`, para build reprodutível), e `COPY --chown` se o container roda como não-root. Medir: `docker build` com e sem cache (`--no-cache`), tamanho em `docker images`, e o tempo do rebuild após um edit de 1 linha — é aí que a diferença aparece.\n\n12-factor aqui: a MESMA imagem sobe em dev/staging/prod; o que muda é a config via variável de ambiente em runtime. Se você precisa rebuildar para trocar de ambiente, quebrou o princípio.",
+      "criterios": [
+        "Identifica que a ordem COPY/RUN invalida o cache do npm ci",
+        "Explica layers como cache por conteúdo em cascata",
+        "Sabe o ganho do multi-stage (imagem menor, sem toolchain/devDeps)",
+        "Cita .dockerignore, tag fixa e config por env (12-factor)"
+      ],
+      "postmortem": false
+    }
+  ]
+}

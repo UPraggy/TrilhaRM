@@ -1,0 +1,30 @@
+// Monograma RM extraído de "Identidade Visual.svg" (lettermark): R em traço periwinkle, M em âmbar.
+export default function Logo({ className = '', size, title = 'Rafael MR' }) {
+  const style = size ? { width: size, height: Math.round(size * 0.8) } : undefined
+  return (
+    <svg className={className} style={style} viewBox="0 0 116 94" role="img" aria-label={title} xmlns="http://www.w3.org/2000/svg">
+      <g transform="translate(-4.5,89)">
+        <path
+          d="M16.24 0L5.41 0L5.41-57.40L30.34-57.40Q35.75-57.40 39.77-55.51Q43.79-53.63 46.00-50.18Q48.22-46.74 48.22-42.07L48.22-42.07L48.22-41.08Q48.22-35.92 45.76-32.72Q43.30-29.52 39.69-28.04L39.69-28.04L39.69-26.57Q42.97-26.40 44.77-24.31Q46.58-22.22 46.58-18.78L46.58-18.78L46.58 0L35.75 0L35.75-17.22Q35.75-19.19 34.73-20.42Q33.70-21.65 31.32-21.65L31.32-21.65L16.24-21.65L16.24 0ZM16.24-47.56L16.24-31.49L29.19-31.49Q33.05-31.49 35.22-33.58Q37.39-35.67 37.39-39.11L37.39-39.11L37.39-39.93Q37.39-43.38 35.26-45.47Q33.13-47.56 29.19-47.56L29.19-47.56L16.24-47.56Z"
+          fill="none"
+          stroke="#9db1ea"
+          strokeWidth="3.1"
+          strokeLinejoin="round"
+        />
+        <path
+          d="M61.73 0L51.24 0L51.24-57.40L71.33-57.40L81.25-7.38L82.72-7.38L92.65-57.40L112.74-57.40L112.74 0L102.24 0L102.24-49.45L100.76-49.45L90.92 0L73.05 0L63.21-49.45L61.73-49.45L61.73 0Z"
+          fill="#eaa94e"
+          fillOpacity="0.26"
+          stroke="#eaa94e"
+          strokeWidth="3.1"
+          strokeLinejoin="round"
+        />
+      </g>
+      {/* nós de construção */}
+      <g fill="#0a0c12" stroke="#9db1ea" strokeWidth="1.4">
+        <circle cx="4" cy="4" r="2.4" />
+        <circle cx="112" cy="90" r="2.4" />
+      </g>
+    </svg>
+  )
+}

@@ -1,0 +1,383 @@
+/* Cursos (content/cursos/*.md): lista, sumário do curso, lição e os blocos de Markdown.
+   Arquivo separado de propósito — nada aqui edita src/styles.css. Só usa as variáveis de lá.
+   Mobile-first: tudo pensado para 360px de largura, sem nada vazando do card. */
+
+/* ---- blocos de conteúdo ------------------------------------------------- */
+.blocos {
+  min-width: 0;
+}
+.blocos p,
+.blocos li {
+  color: var(--fg-1);
+  line-height: 1.66;
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+/* o espaçamento entre blocos mora nos FILHOS DIRETOS: mesma especificidade das duas regras,
+   e a segunda vence para quem tem um irmão antes. Não use ".blocos p" para margem — "* + *"
+   tem especificidade menor que um seletor de tipo e perderia a disputa. */
+.blocos > * {
+  margin: 0;
+}
+.blocos > * + * {
+  margin-top: 14px;
+}
+.blk-h2,
+.blk-h3 {
+  color: var(--bone);
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+  margin: 0;
+}
+.blk-h2 {
+  font-size: 1.16rem;
+  margin-top: 26px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+.blk-h3 {
+  font-size: 1rem;
+  margin-top: 20px;
+  color: var(--peri);
+}
+.blocos > .blk-h2:first-child,
+.blocos > .blk-h3:first-child {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
+}
+.blk-lista {
+  margin: 0;
+  padding-left: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.blk-lista li {
+  padding-left: 2px;
+}
+.blk-lista li.n1 {
+  margin-left: 14px;
+}
+.blk-lista li.n2,
+.blk-lista li.n3 {
+  margin-left: 28px;
+}
+.blk-cod {
+  margin: 0;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  padding: 12px;
+  overflow-x: auto;
+  font-family: var(--mono);
+  font-size: 0.82rem;
+  line-height: 1.6;
+  color: var(--fg-1);
+  white-space: pre;
+  min-width: 0;
+  max-width: 100%;
+}
+.blk-cod__lang {
+  display: block;
+  font-size: 0.68rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--fg-3);
+  margin-bottom: 6px;
+}
+.blocos code,
+.atv code {
+  font-family: var(--mono);
+  font-size: 0.86em;
+  background: rgba(157, 177, 234, 0.1);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 1px 5px;
+  overflow-wrap: anywhere;
+}
+.blk-tab {
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  max-width: 100%;
+}
+.blk-tab table {
+  border-collapse: collapse;
+  width: 100%;
+  min-width: 320px;
+  font-size: 0.86rem;
+}
+.blk-tab th,
+.blk-tab td {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  vertical-align: top;
+  color: var(--fg-1);
+}
+.blk-tab th {
+  background: var(--surface-2);
+  color: var(--bone);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.blk-tab tr:last-child td {
+  border-bottom: 0;
+}
+.blk-cita {
+  margin: 0;
+  border-left: 3px solid var(--peri);
+  padding: 2px 0 2px 12px;
+  color: var(--fg-2);
+  font-style: italic;
+}
+.blk-cita p {
+  margin: 0;
+}
+.blk-cita p + p {
+  margin-top: 8px;
+}
+.blk-hr {
+  border: 0;
+  border-top: 1px solid var(--line);
+  margin: 18px 0;
+}
+.blk-wiki {
+  color: var(--peri);
+  border-bottom: 1px dashed var(--peri-dim);
+  text-decoration: none;
+}
+.blk-wiki--quebrado {
+  color: var(--rose-soft);
+  border-bottom-style: dotted;
+  cursor: help;
+}
+
+/* ---- callouts (:::objetivo :::nota :::alerta :::exemplo) ---------------- */
+.blk-callout {
+  border: 1px solid var(--line-2);
+  border-left: 3px solid var(--peri);
+  border-radius: var(--r-sm);
+  background: var(--surface-2);
+  padding: 12px 14px;
+  min-width: 0;
+}
+.blk-callout__t {
+  font-size: 0.7rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--peri);
+  font-weight: 600;
+  margin-bottom: 8px;
+  overflow-wrap: anywhere;
+}
+.blk-callout--objetivo {
+  border-left-color: var(--green);
+}
+.blk-callout--objetivo .blk-callout__t {
+  color: var(--green);
+}
+.blk-callout--alerta {
+  border-left-color: var(--rose-soft);
+}
+.blk-callout--alerta .blk-callout__t {
+  color: var(--rose-soft);
+}
+.blk-callout--exemplo {
+  border-left-color: var(--amber);
+}
+.blk-callout--exemplo .blk-callout__t {
+  color: var(--amber);
+}
+
+/* ---- atividade embutida na lição --------------------------------------- */
+.atv {
+  border: 1px solid var(--line-2);
+  border-radius: var(--r);
+  background: var(--surface-2);
+  padding: 14px;
+  min-width: 0;
+}
+.atv--feita {
+  border-color: rgba(123, 191, 94, 0.45);
+}
+.atv__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.atv__t {
+  font-weight: 700;
+  color: var(--bone);
+  font-size: 1rem;
+  flex: 1 1 180px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.atv__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+.atv__corpo {
+  margin-top: 12px;
+}
+.atv__entrega {
+  margin-top: 14px;
+  border-top: 1px dashed var(--line);
+  padding-top: 12px;
+}
+.atv__label {
+  font-size: 0.7rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--fg-3);
+  margin-bottom: 8px;
+}
+.atv .textarea,
+.atv .input {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+}
+.atv__num {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+.atv__num .input {
+  flex: 1 1 140px;
+}
+.atv__nota {
+  font-family: var(--mono);
+  font-weight: 700;
+}
+
+/* ---- lista de cursos / sumário ----------------------------------------- */
+.curso-card {
+  display: block;
+  color: inherit;
+  text-decoration: none;
+}
+.curso-card__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+.curso-card__t {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--bone);
+  flex: 1 1 200px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.curso-card__d {
+  color: var(--fg-2);
+  margin: 8px 0 0;
+  font-size: 0.92rem;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+.curso-mod {
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  overflow: hidden;
+  margin-top: 12px;
+}
+.curso-mod__head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  background: var(--surface-2);
+  min-width: 0;
+}
+.curso-mod__n {
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  color: var(--peri);
+  border: 1px solid var(--line-2);
+  border-radius: 4px;
+  padding: 2px 6px;
+  flex: 0 0 auto;
+}
+.curso-mod__t {
+  font-weight: 600;
+  color: var(--bone);
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: 0.95rem;
+}
+.curso-lic {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 12px;
+  border-top: 1px solid var(--line);
+  color: var(--fg-1);
+  text-decoration: none;
+  min-height: var(--tap);
+  min-width: 0;
+}
+.curso-lic:hover {
+  background: rgba(157, 177, 234, 0.06);
+}
+.curso-lic__i {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 1.5px solid var(--line-2);
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  color: var(--bg);
+}
+.curso-lic--ok .curso-lic__i {
+  background: var(--green);
+  border-color: var(--green);
+}
+.curso-lic--atual {
+  background: rgba(234, 169, 78, 0.08);
+}
+.curso-lic__t {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.curso-lic--ok .curso-lic__t {
+  color: var(--fg-2);
+}
+
+/* ---- página da lição ---------------------------------------------------- */
+.licao__nav {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 16px;
+}
+.licao__nav .btn {
+  flex: 1 1 140px;
+  justify-content: center;
+}
+.licao__fim {
+  margin-top: 16px;
+}
+@media (max-width: 420px) {
+  .blk-cod {
+    font-size: 0.78rem;
+    padding: 10px;
+  }
+  .atv {
+    padding: 12px;
+  }
+}

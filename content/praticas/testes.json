@@ -1,0 +1,183 @@
+{
+  "deckId": "testes",
+  "titulo": "Práticas · Testes",
+  "exercicios": [
+    {
+      "id": "fake-sincrono-race",
+      "titulo": "Fake síncrono esconde um race: prove com três fakes",
+      "termos": ["fake-sincrono-async", "test-doubles", "flaky-test"],
+      "nivel": 4,
+      "tempoMin": 30,
+      "ambiente": "node",
+      "enunciado": "Este é o bug do AutoTrade em miniatura. O código \"de produção\" abaixo tem uma guarda de vaga (`vagas`) e lê o saldo na exchange por callback. Dois sinais chegam praticamente juntos.\n\n```\nfunction criarBot(ex) {\n  let vagas = 1\n  const log = []\n  function sinal(nome) {\n    if (vagas <= 0) { log.push(`${nome} barrado`); return }\n    ex.saldo((saldo) => {\n      if (saldo >= 10) { vagas--; log.push(`${nome} comprou`) }\n    })\n  }\n  return { sinal, log, vagas: () => vagas }\n}\n```\n\nEscreva TRÊS fakes da exchange, todos devolvendo saldo 100:\n\n1. `fakeSincrono`: chama o callback na hora (`cb(100)`).\n2. `fakeMicrotask`: `queueMicrotask(() => cb(100))`.\n3. `fakeIO`: `setImmediate(() => cb(100))` (é o que uma chamada HTTP real faz: responde em outra volta do loop).\n\nPara cada fake: crie o bot, dispare `sinal('A')` e `sinal('B')` em sequência, espere 10 ms e imprima UMA linha no formato `<nome>: <log separado por ' | '> | vagas=<n>`, nesta ordem: `sincrono`, `microtask`, `io`.\n\nAntes de rodar, escreva no papel o que cada cenário vai imprimir. Depois rode e compare.\n\nEntregue: as 3 linhas exatas da saída.",
+      "passos": [
+        "Salve como `race.mjs` (top-level await) e rode `node race.mjs`",
+        "Explique em uma frase por que o cenário síncrono é o único em que B é barrado",
+        "Pergunta extra: se o código usasse `const s = await ex.saldo()` e o fake fosse `saldo() { return 100 }` (sem Promise), o resultado mudaria? Rode e veja"
+      ],
+      "entrega": {
+        "tipo": "saida",
+        "esperado": "sincrono: A comprou | B barrado | vagas=0\nmicrotask: A comprou | B comprou | vagas=-1\nio: A comprou | B comprou | vagas=-1",
+        "rotulo": "Cole as 3 linhas"
+      },
+      "dicas": [
+        "No fake síncrono, `vagas--` acontece DENTRO da chamada `sinal('A')`, antes de `sinal('B')` sequer começar. Nos outros dois, A e B passam pela guarda antes de qualquer callback rodar.",
+        "Microtask ou I/O dá o mesmo resultado aqui: basta o callback sair do fluxo síncrono para a guarda ser lida duas vezes com o mesmo valor."
+      ],
+      "solucao": "```\nconst fakeSincrono = { saldo: (cb) => cb(100) }\nconst fakeMicrotask = { saldo: (cb) => queueMicrotask(() => cb(100)) }\nconst fakeIO = { saldo: (cb) => setImmediate(() => cb(100)) }\n\nasync function cenario(nome, ex) {\n  const bot = criarBot(ex)\n  bot.sinal('A'); bot.sinal('B')\n  await new Promise((r) => setTimeout(r, 10))\n  console.log(`${nome}: ${bot.log.join(' | ')} | vagas=${bot.vagas()}`)\n}\nawait cenario('sincrono', fakeSincrono)\nawait cenario('microtask', fakeMicrotask)\nawait cenario('io', fakeIO)\n```\n\nSaída:\n```\nsincrono: A comprou | B barrado | vagas=0\nmicrotask: A comprou | B comprou | vagas=-1\nio: A comprou | B comprou | vagas=-1\n```\n\nPor quê: com o fake síncrono, `sinal('A')` executa a guarda, o callback e o `vagas--` numa só passada; quando `sinal('B')` roda, `vagas` já é 0. Com qualquer fake que devolva fora do fluxo síncrono (microtask ou I/O), A e B leem `vagas = 1` ANTES de qualquer decremento, e os dois compram — exatamente o \"vaga travada\"/compra dupla que só aparece em produção. O teste com fake síncrono ficaria verde validando um programa sequencial que não existe.\n\nPergunta extra: com `await ex.saldo()` o resultado NÃO muda entre `return 100` e `Promise.resolve(100)` — `await` de não-Promise ainda cede um microtick, então a guarda já é lida duas vezes. O perigo do fake síncrono é quando ele elimina o ponto de suspensão (callback direto, `.then` de thenable síncrono, ou método que em produção era `async` e no fake virou síncrono e é chamado sem `await`).\n\nDefesa: fake preserva a assinatura temporal (sempre `async` / sempre fora do tick), e existe um teste explícito de interleaving: dois sinais concorrentes + invariante `vagas >= 0`. Correção do bug de produção: reservar a vaga ANTES do I/O (`vagas--` antes de `ex.saldo`, devolvendo se falhar) ou serializar com uma fila.",
+      "criterios": [
+        "Explica que o fake síncrono elimina o ponto de suspensão e por isso a guarda funciona só no teste",
+        "Sabe que microtask e I/O dão o mesmo resultado (basta sair do fluxo síncrono)",
+        "Propõe reservar a vaga antes do I/O ou serializar, não 'aumentar a guarda'",
+        "Escreve o teste de interleaving (dois sinais + invariante), não só o teste feliz"
+      ],
+      "postmortem": false
+    },
+    {
+      "id": "testcontainers-timestamptz",
+      "titulo": "Testcontainers: o banco de teste tem que ser o banco de produção",
+      "termos": ["testcontainers", "integration-test", "fixtures-factories"],
+      "nivel": 3,
+      "tempoMin": 40,
+      "ambiente": "docker",
+      "enunciado": "SQLite em memória, mock do `pg` ou um Postgres \"parecido\" testam outro programa. Prove com o bug que você já teve (`criado_em` timestamptz virando o dia seguinte).\n\nMonte um projeto mínimo com vitest e `@testcontainers/postgresql` (`npm i -D vitest @testcontainers/postgresql pg`). Num `globalSetup`, suba `postgres:18` (ou a versão que você roda) e exporte `process.env.DATABASE_URL`. Escreva UM teste que, na mesma conexão:\n\n1. `SET TIME ZONE 'UTC'` e depois `SELECT (TIMESTAMPTZ '2026-09-01 23:30:00-03')::date::text AS d`\n2. `SET TIME ZONE 'America/Sao_Paulo'` e a mesma consulta\n\nO teste imprime (`console.log`) uma linha por consulta no formato `<timezone> <data>` e faz `expect` de que as duas datas são DIFERENTES.\n\nDepois responda no papel: qual `TimeZone` a sua produção usa (`SHOW timezone` no banco real)? O container vem com qual? O que isso faz com um teste que passa no CI e falha no celular?\n\nEntregue: as 2 linhas impressas pelo teste.",
+      "passos": [
+        "`vitest.config.js`: `export default { test: { globalSetup: './setup.js', testTimeout: 60000 } }`",
+        "`setup.js`: `const pg = await new PostgreSqlContainer('postgres:18').start(); process.env.DATABASE_URL = pg.getConnectionUri(); return () => pg.stop()`",
+        "No teste use `new pg.Client(process.env.DATABASE_URL)`; rode com `npx vitest run`",
+        "Docker Desktop precisa estar aberto; o primeiro `start()` baixa a imagem (1–2 min), os seguintes levam ~3 s",
+        "Se o Testcontainers não achar o Docker no Windows, exporte `DOCKER_HOST=npipe:////./pipe/docker_engine`"
+      ],
+      "entrega": {
+        "tipo": "saida",
+        "esperado": "UTC 2026-09-02\nAmerica/Sao_Paulo 2026-09-01",
+        "rotulo": "Cole as 2 linhas (timezone e data)"
+      },
+      "dicas": [
+        "`timestamptz` guarda um instante (23:30 de SP = 02:30 UTC do dia seguinte). O `::date` pergunta 'que dia é esse instante NO TimeZone da sessão'.",
+        "A imagem oficial do Postgres vem com TimeZone = Etc/UTC. Se a sua produção usa America/Sao_Paulo, o teste no container está testando outro comportamento a menos que você fixe o TimeZone nos dois."
+      ],
+      "solucao": "```\n// setup.js\nimport { PostgreSqlContainer } from '@testcontainers/postgresql'\nexport async function setup() {\n  const pg = await new PostgreSqlContainer('postgres:18').withDatabase('app_test').start()\n  process.env.DATABASE_URL = pg.getConnectionUri()\n  return async () => { await pg.stop() }\n}\n\n// tz.test.js\nimport { test, expect, beforeAll, afterAll } from 'vitest'\nimport pg from 'pg'\nlet c\nbeforeAll(async () => { c = new pg.Client(process.env.DATABASE_URL); await c.connect() })\nafterAll(() => c.end())\n\ntest('::date de timestamptz depende do TimeZone da sessão', async () => {\n  const datas = {}\n  for (const tz of ['UTC', 'America/Sao_Paulo']) {\n    await c.query(`SET TIME ZONE '${tz}'`)\n    const { rows } = await c.query(\"SELECT (TIMESTAMPTZ '2026-09-01 23:30:00-03')::date::text AS d\")\n    datas[tz] = rows[0].d\n    console.log(`${tz} ${rows[0].d}`)\n  }\n  expect(datas['UTC']).not.toBe(datas['America/Sao_Paulo'])\n})\n```\n\nSaída:\n```\nUTC 2026-09-02\nAmerica/Sao_Paulo 2026-09-01\n```\n\nO instante é o mesmo (02:30Z de 02/09). Em UTC o dia é 02; em São Paulo, 01. Uma venda às 23:30 'cai no dia seguinte' em qualquer relatório que faça `::date` com sessão em UTC — exatamente o aviso da fonte PG_APPBABITA26 (`(criado_em AT TIME ZONE 'America/Sao_Paulo')::date`).\n\nPor que Testcontainers e não SQLite/mocks: SQLite não tem timestamptz, e um mock devolve o que você mandou devolver — nenhum dos dois reproduz este bug. O container roda a MESMA engine (versão, extensões, collation) que a produção. O que falta alinhar é a config de sessão: a imagem vem com `Etc/UTC`; fixe explicitamente (`SET TIME ZONE` no pool, ou `AT TIME ZONE` na query) para que o teste e o celular concordem. Um teste que passa no CI (UTC) e falha no celular (TZ local) é isso.\n\nCusto honesto: ~3 s de startup por suíte (amortize com um container por `globalSetup`, não por arquivo), Docker obrigatório no CI, imagem de 400 MB no cache.",
+      "criterios": [
+        "Subiu o container no globalSetup (um por suíte) e usou a URL dinâmica",
+        "Explica por que o mesmo instante dá duas datas",
+        "Sabe qual TimeZone a produção usa e como fixar no teste e no código",
+        "Cita o custo (startup, Docker no CI) e por que ainda vale"
+      ],
+      "postmortem": false
+    },
+    {
+      "id": "flaky-espera-fixa",
+      "titulo": "Flaky test: qual correção é a certa?",
+      "termos": ["flaky-test", "test-isolation", "vitest-jest"],
+      "nivel": 3,
+      "tempoMin": 20,
+      "ambiente": "node",
+      "enunciado": "Reproduza o flaky antes de escolher. Crie este teste em vitest:\n\n```\nimport { test, expect, vi } from 'vitest'\nimport { EventEmitter } from 'node:events'\n\nfunction iniciar(emitter) {\n  const atraso = 50 + Math.floor(Math.random() * 100)   // 'I/O' de 50–150 ms\n  setTimeout(() => emitter.emit('pronto'), atraso)\n}\n\ntest('dispara pronto', async () => {\n  const em = new EventEmitter()\n  const handler = vi.fn()\n  em.on('pronto', handler)\n  iniciar(em)\n  await new Promise((r) => setTimeout(r, 100))\n  expect(handler).toHaveBeenCalled()\n})\n```\n\nRode 10 vezes: `for i in $(seq 10); do npx vitest run --reporter=dot 2>&1 | grep -E 'passed|failed'; done`. Anote quantas falharam.\n\nAgora escolha a correção correta para tirar o flaky SEM esconder o problema.",
+      "entrega": {
+        "tipo": "escolha",
+        "opcoes": [
+          "Aumentar a espera para `setTimeout(r, 1000)`",
+          "Trocar a espera fixa por espera por condição: `await once(em, 'pronto')` (ou `vi.waitFor(() => expect(handler).toHaveBeenCalled())`) com timeout máximo",
+          "Configurar `retry: 3` no vitest para o teste",
+          "Marcar como `test.skip` até alguém investigar"
+        ],
+        "correta": 1,
+        "rotulo": "A correção certa"
+      },
+      "dicas": [
+        "Aumentar o timeout troca 'falha às vezes' por 'passa sempre e demora 1 s' — e volta a falhar em CI carregado. Retry esconde o sinal. Skip perde a cobertura.",
+        "A pergunta que resolve flaky é: 'o que eu estou esperando de verdade?'. Aqui é um evento, não a passagem de tempo."
+      ],
+      "solucao": "Correta: espera por condição (`await once(em, 'pronto')` de `node:events`, ou `vi.waitFor`). O teste espera exatamente o que importa — o evento — e falha rápido com timeout explícito se ele nunca vier.\n\nPor que as outras são erradas:\n- Espera fixa maior: continua sendo uma corrida contra o relógio; só mudou a probabilidade. Em CI a 100% de CPU, 1 s também não basta. E cada teste ganha 1 s de custo fixo.\n- `retry`: mascara. O time aprende a ignorar vermelho; e se o flaky fosse um race REAL do código (como o saldo virando zero no AutoTrade), você acabou de esconder um bug de produção.\n- `skip`: cobertura perdida e ninguém volta.\n\nProcesso: flaky é bug. Quarentena (tirar do gate) por no máximo alguns dias, registrar a taxa de falha, corrigir a causa. Espera fixa (`sleep`) em teste é quase sempre a causa número 1; número 2 é estado compartilhado entre testes (veja o failure lab deste deck).\n\nVersão corrigida:\n```\nimport { once } from 'node:events'\ntest('dispara pronto', async () => {\n  const em = new EventEmitter()\n  const p = once(em, 'pronto')     // registra ANTES de iniciar, senão perde o evento\n  iniciar(em)\n  await p\n})\n```\nRepare no detalhe: registrar o listener antes de chamar `iniciar` — registrar depois é outro flaky clássico (evento emitido antes do listener).",
+      "criterios": [
+        "Reproduziu o flaky (pelo menos 1 falha em 10)",
+        "Explica por que timeout maior e retry escondem em vez de corrigir",
+        "Sabe registrar o listener antes de disparar a ação"
+      ],
+      "postmortem": false
+    },
+    {
+      "id": "coverage-vs-mutantes",
+      "titulo": "100% de coverage com zero verificação: mate os mutantes",
+      "termos": ["coverage", "mutation-testing", "unit-test"],
+      "nivel": 3,
+      "tempoMin": 35,
+      "ambiente": "node",
+      "enunciado": "Crie `frete.js`:\n\n```\nconst TABELA = { MG: 12, SP: 15, RJ: 18 }\nexport function calcularFrete(pesoKg, uf) {\n  if (pesoKg <= 0) throw new Error('peso inválido')\n  const base = TABELA[uf] ?? 30\n  const extra = pesoKg > 5 ? (pesoKg - 5) * 2 : 0\n  return base + extra\n}\n```\n\nE o teste 'de coverage': `expect(calcularFrete(1, 'MG')).toBeDefined()` mais um `expect(() => calcularFrete(0, 'MG')).toThrow()`. Rode `npx vitest run --coverage` (instale `@vitest/coverage-v8`) e confirme 100% de linhas.\n\nAgora aplique, UM DE CADA VEZ, estes 5 mutantes e rode os testes:\n\n1. `MG: 12` → `MG: 13`\n2. `?? 30` → `?? 0`\n3. `pesoKg > 5` → `pesoKg >= 5`\n4. `(pesoKg - 5) * 2` → `(pesoKg - 5) * 3`\n5. `return base + extra` → `return base - extra`\n\nO teste original mata quantos? (Deve ser 0.) Depois escreva testes de verdade, com valores esperados exatos, e conte quantos mutantes eles matam.\n\nEntregue: o número de mutantes mortos pelos SEUS testes novos (meta: 5).",
+      "passos": [
+        "Cada mutante: edite, `npx vitest run`, anote 'morreu' (algum teste falhou) ou 'sobreviveu', desfaça",
+        "Teste bom para o mutante 3: `calcularFrete(5, 'SP')` deve ser exatamente 15 (a borda)",
+        "Teste bom para o 2: uf desconhecida (`'AM'`) com peso 1 deve dar 30",
+        "Se quiser automatizar: `npx stryker run` faz isso por você (StrykerJS suporta vitest)"
+      ],
+      "entrega": { "tipo": "numero", "min": 4, "max": 5, "unidade": "mutantes", "rotulo": "Mutantes mortos pelos seus testes novos (de 5)" },
+      "dicas": [
+        "Coverage mede o que rodou; mutantes medem o que foi VERIFICADO. `toBeDefined()` roda tudo e verifica nada.",
+        "Mutante de borda (`>` vs `>=`) só morre com um teste exatamente na borda (peso 5). É o tipo de teste que coverage nunca vai pedir."
+      ],
+      "solucao": "Testes que matam os 5:\n```\nimport { test, expect } from 'vitest'\nimport { calcularFrete } from './frete.js'\n\ntest('tabela por UF', () => {\n  expect(calcularFrete(1, 'MG')).toBe(12)   // mata 1\n  expect(calcularFrete(1, 'AM')).toBe(30)   // mata 2 (fallback)\n})\ntest('borda dos 5 kg não cobra extra', () => {\n  expect(calcularFrete(5, 'SP')).toBe(15)   // mata 3\n})\ntest('extra por kg acima de 5', () => {\n  expect(calcularFrete(7, 'RJ')).toBe(22)   // 18 + 2*2 → mata 4 (seria 24) e 5 (seria 14)\n})\ntest('peso inválido', () => {\n  expect(() => calcularFrete(0, 'MG')).toThrow('peso inválido')\n})\n```\n\nO teste original (`toBeDefined`) tem 100% de linhas e mata 0 mutantes: qualquer número é 'defined'. É a armadilha do coverage como meta — pressão por número gera testes que tocam linhas sem afirmar nada.\n\nUso certo de coverage: detector de buracos ('a branch do `throw` nunca roda') e tendência por PR. Quem mede qualidade da verificação é mutation testing (StrykerJS). Trade-off: mutation é lento (roda a suíte N vezes) — use em módulos de regra de negócio (cálculo de frete, giro, meta), não na suíte inteira a cada commit.\n\nBranch coverage é mais honesto que line coverage: `pesoKg > 5 ? … : 0` tem dois caminhos numa linha só.",
+      "criterios": [
+        "Confirmou 100% de linhas com o teste vazio e 0 mutantes mortos",
+        "Testes novos usam valores exatos (`toBe`), inclusive a borda (peso 5) e o fallback de UF",
+        "Explica a diferença entre 'executado' e 'verificado'",
+        "Sabe onde mutation testing vale o custo"
+      ],
+      "postmortem": false
+    },
+    {
+      "id": "o-que-nao-testar",
+      "titulo": "Decidir o que NÃO testar no servidor do Trilha RM",
+      "termos": ["test-pyramid", "unit-test", "integration-test"],
+      "nivel": 4,
+      "tempoMin": 45,
+      "ambiente": "node",
+      "enunciado": "Abra `server/praticas.js` deste projeto (Trilha RM). Ele tem funções puras (`normalizarSaida`, `corrigir`, `notaAutomatica`, `notaChecklist`), um loader que lê a pasta `content/praticas` com recarga por mtime, e a normalização de exercícios que produz avisos.\n\nClassifique cada uma destas 8 peças em: **unit** (testa sozinha, sem I/O), **integration** (com arquivo/servidor real), **não testar** (e diga o motivo):\n\n1. `normalizarSaida` (CRLF, espaços, case)\n2. `corrigir` para `numero` com `tolerancia` e com `min/max`\n3. `corrigir` para `escolha` múltipla (conjunto igual, ordem diferente)\n4. `notaAutomatica` (as 5 regras do README)\n5. `recarregarSePreciso` (assinatura por mtime)\n6. `normalizarEntrega` gerando aviso para `escolha` sem `correta`\n7. `publico()` remove gabarito (`esperados`, `corretas`, `solucao`)\n8. A rota Express que devolve o exercício ao front\n\nDepois ESCREVA e RODE os testes das peças que classificou como unit (vitest, arquivo `server/praticas.test.js` — pode criar, é o único arquivo novo). Inclua pelo menos: CRLF vs LF em `normalizarSaida`; `numero` com `tolerancia: 0.1` aceitando 109 e recusando 111 para esperado 100; `escolha` `[2, 0]` igual a `[0, 2]`; `publico()` sem `esperados`.\n\nEntregue: a tabela (peça → tipo → motivo em uma linha) e a saída do `npx vitest run` com todos passando.",
+      "passos": [
+        "Regra de bolso: puro e com regra de negócio → unit; toca disco/rede/relógio → integration ou fake na fronteira; glue de framework e getters → não testar",
+        "Para o loader (5): vale UM teste de integração com uma pasta temporária (`fs.mkdtempSync`), não mock de `fs`",
+        "Rode `npx vitest run server/` — se o projeto não tem vitest, `npm i -D vitest`"
+      ],
+      "entrega": { "tipo": "texto", "minimoChars": 400, "rotulo": "Tabela de classificação + saída do vitest" },
+      "dicas": [
+        "O que NÃO testar: código sem decisão própria (a rota que só chama `praticas.obter` e faz `res.json`) — o teste só repetiria a implementação. Teste a rota uma vez, por fora, com supertest ou fetch, como smoke.",
+        "Mockar `fs.readdirSync` para testar o loader é o 'fake testa outro programa' de novo: você testa que o mock foi chamado. Pasta temporária real custa 2 ms."
+      ],
+      "solucao": "Classificação:\n\n| peça | tipo | motivo |\n|---|---|---|\n| 1 normalizarSaida | unit | pura, regra de comparação — é onde um bug faz o aluno 'errar' resposta certa |\n| 2 corrigir numero | unit | pura, aritmética de borda (tolerância inclusiva, min/max) |\n| 3 corrigir escolha | unit | pura, comparação de conjunto — ordem não pode importar |\n| 4 notaAutomatica | unit | pura, são 5 regras documentadas no README: uma tabela de casos |\n| 5 recarregarSePreciso | integration | toca fs e mtime; 1 teste com pasta temporária: escreve JSON, lista, altera mtime, lista de novo |\n| 6 aviso de escolha sem correta | unit | pura (recebe objeto, devolve problemas) — cobre o contrato do autor de conteúdo |\n| 7 publico() | unit | pura e é SEGURANÇA do gabarito: se vazar `esperados`, o app perde sentido |\n| 8 rota Express | não testar (unit) | glue sem decisão; 1 smoke por fora (fetch em `/api/praticas/:deck`) já cobre wiring |\n\nTestes (server/praticas.test.js):\n```\nimport { test, expect } from 'vitest'\nimport { normalizarSaida, corrigir, notaAutomatica, notaChecklist } from './praticas.js'\n\ntest('normalizarSaida ignora CRLF, espaços e case', () => {\n  expect(normalizarSaida('A  B\\r\\n C \\r\\n')).toBe(normalizarSaida('a b\\nc'))\n})\ntest('numero com tolerancia 10% é inclusivo', () => {\n  const ex = { entrega: { tipo: 'numero', esperado: 100, tolerancia: 0.1, min: null, max: null } }\n  expect(corrigir(ex, '109').correto).toBe(true)\n  expect(corrigir(ex, '110').correto).toBe(true)\n  expect(corrigir(ex, '111').correto).toBe(false)\n  expect(corrigir(ex, '90,5').correto).toBe(true)   // vírgula decimal\n})\ntest('numero com min/max', () => {\n  const ex = { entrega: { tipo: 'numero', esperado: null, tolerancia: 0, min: 500, max: 30000 } }\n  expect(corrigir(ex, '499').correto).toBe(false)\n  expect(corrigir(ex, '500 ms').correto).toBe(true)\n})\ntest('escolha múltipla compara conjunto', () => {\n  const ex = { entrega: { tipo: 'escolha', corretas: [0, 2] } }\n  expect(corrigir(ex, [2, 0]).correto).toBe(true)\n  expect(corrigir(ex, [0]).correto).toBe(false)\n  expect(corrigir(ex, [0, 1, 2]).correto).toBe(false)\n})\ntest('notaAutomatica segue o README', () => {\n  expect(notaAutomatica({})).toBe(4)\n  expect(notaAutomatica({ dicasUsadas: 1 })).toBe(3)\n  expect(notaAutomatica({ tentativasErradas: 2 })).toBe(3)\n  expect(notaAutomatica({ tentativasErradas: 3 })).toBe(2)\n  expect(notaAutomatica({ revelou: true, tentativasErradas: 0 })).toBe(1)\n  expect(notaChecklist(3, 6)).toBe(3)\n})\n```\nPara `publico()` e o aviso (6, 7): use `criarPraticas` apontando para uma pasta temporária com um JSON de 1 exercício e um `repo` fake mínimo (`{ listar: () => [deck], obter: () => deck }`) — aqui o fake é legítimo: `repo` é uma fronteira simples e síncrona, sem assinatura temporal a preservar.\n\nAtenção ao rodar: `notaAutomatica({ dicasUsadas: 1 })` devolve 3 e não 4 — se o seu teste esperava 4, você achou uma divergência entre README e código? Não: o README diz 'acertou com dica → 3'. É o teste te obrigando a ler a regra.\n\nO que a pirâmide diz aqui: muitos unit baratos nas funções de correção (é onde mora a lógica), 1–2 integration no loader (fs real), 1 smoke na rota. Zero mocks de `fs`.",
+      "criterios": [
+        "Classifica as 8 peças com motivo; a rota e o glue caem em 'não testar como unit' com smoke por fora",
+        "Testes unit cobrem bordas (tolerância inclusiva, vírgula decimal, ordem no conjunto)",
+        "Loader testado com pasta temporária real, não mock de fs",
+        "Saída do vitest colada com todos verdes"
+      ],
+      "postmortem": false
+    },
+    {
+      "id": "isolamento-ordem-aleatoria",
+      "titulo": "Failure lab: suíte que só passa na ordem certa",
+      "termos": ["test-isolation", "flaky-test", "arrange-act-assert"],
+      "nivel": 4,
+      "tempoMin": 40,
+      "ambiente": "node",
+      "enunciado": "Provoque um flaky de estado compartilhado, prove a causa e corrija.\n\n1. Crie `limiter.js` com o rate limiter sliding log do deck de algoritmos, mas com o `Map` de janelas no ESCOPO DO MÓDULO (`const janelas = new Map()` fora da função), limite 3 por 1000 ms, relógio injetado.\n2. Escreva 3 testes no mesmo arquivo: (a) 'permite 3 do mesmo ip' — chama 3 vezes com t=0,1,2 e espera `true` nas três; (b) 'bloqueia o 4º' — chama 4 vezes e espera `false` no 4º; (c) 'libera depois da janela' — chama em t=0 e t=1000 e espera `true` nos dois. Use a MESMA chave `'ip1'` nos três.\n3. Rode `npx vitest run` (ordem do arquivo) e depois 10 vezes com `npx vitest run --sequence.shuffle`. Anote seeds que falham (`--sequence.seed=<n>` para reproduzir).\n4. Corrija de verdade: o estado sai do módulo (factory `criarLimiter()` ou `beforeEach` que reseta) — e explique por que `--sequence.shuffle` deveria estar ligado no CI.\n\nEntregue: um postmortem em 5 partes — sintoma (qual teste falha, com que seed) → evidência (saída do vitest antes e depois, com o seed que reproduz) → causa (o que compartilha estado e por que a ordem muda o resultado) → correção (o diff) → o que muda no processo.",
+      "passos": [
+        "`--sequence.shuffle` embaralha a ordem dos testes; `--sequence.seed=N` fixa o embaralhamento para reproduzir",
+        "Para ver a dependência sem shuffle: rode só o teste (c) com `-t 'libera'` — passa sozinho? E depois de (b)?",
+        "Correção mínima: `export function criarLimiter(limite, ms) { const janelas = new Map(); return (chave, agora) => … }` e cada teste cria o seu"
+      ],
+      "entrega": { "tipo": "texto", "minimoChars": 350, "rotulo": "Postmortem em 5 partes com seeds e saídas" },
+      "dicas": [
+        "Estado de módulo é singleton por processo: vitest roda os testes de um arquivo no mesmo contexto, então o `Map` de 'ip1' sobrevive entre testes.",
+        "O teste (c) em t=0 depois de (b) encontra 3–4 timestamps de t=0..3 na fila: o primeiro `permitir('ip1', 0)` volta false."
+      ],
+      "solucao": "Sintoma: `npx vitest run` passa na ordem (a)(b)(c)? Não necessariamente — depende do relógio injetado: (a) deixa [0,1,2] na fila; (b) chama t=0..3, o 1º já volta false (fila cheia de (a)) e o 4º também — (b) 'passa' por acidente se só olha o 4º; (c) em t=0 recebe false → FALHA. Com shuffle, o conjunto de testes que falha muda a cada seed: rodando (c) primeiro, passa; (b) antes de (a) faz (a) falhar. Evidência: saída com `--sequence.seed=<n>` reproduzindo a falha de forma determinística, e o mesmo seed passando após a correção.\n\nCausa: `const janelas = new Map()` no escopo do módulo é um singleton por processo de teste; os 3 testes usam a mesma chave `'ip1'` e o mesmo relógio artificial começando em 0, então cada teste herda a fila do anterior. Não é 'azar': é dependência de ordem, um dos 4 grandes causadores de flaky (tempo, ordem, concorrência, recurso externo).\n\nCorreção:\n```\n// limiter.js\nexport function criarLimiter(limite, janelaMs) {\n  const janelas = new Map()\n  return function permitir(chave, agora) {\n    const q = janelas.get(chave) ?? []\n    while (q.length && agora - q[0] >= janelaMs) q.shift()\n    if (q.length >= limite) { janelas.set(chave, q); return false }\n    q.push(agora); janelas.set(chave, q); return true\n  }\n}\n// teste: cada test faz `const permitir = criarLimiter(3, 1000)` no Arrange\n```\nAlternativa mais fraca: manter o singleton e exportar `reset()` chamado em `beforeEach` — funciona, mas deixa em produção um estado global que também vai morder no PM2 cluster (cada worker com sua fila).\n\nProcesso: (1) `sequence: { shuffle: true }` no vitest.config do CI, para que dependência de ordem apareça no PR e não meses depois; (2) toda falha 'aleatória' vira issue com seed anexado — reproduzível não é flaky, é bug; (3) revisão de PR pergunta 'tem estado de módulo?' em qualquer arquivo com `const x = new Map()` no topo.\n\nO bônus: a correção (factory em vez de singleton) também é a arquitetura certa para o limiter real — a mesma pressão que melhora o teste melhora o design.",
+      "criterios": [
+        "Reproduziu com seed fixo e mostrou o mesmo seed passando depois",
+        "Nomeia o estado compartilhado (Map de módulo) e explica a dependência de ordem",
+        "Corrige por isolamento (factory ou reset em beforeEach), não por ajustar os valores dos testes",
+        "Propõe shuffle no CI e tratamento de flaky como bug com seed"
+      ],
+      "postmortem": true
+    }
+  ]
+}

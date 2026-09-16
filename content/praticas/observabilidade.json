@@ -1,0 +1,191 @@
+{
+  "deckId": "observabilidade",
+  "titulo": "Práticas · Observabilidade",
+  "exercicios": [
+    {
+      "id": "metrics-histograma-latencia",
+      "titulo": "Expor /metrics com histograma de latência (prom-client)",
+      "termos": ["metricas-tipos", "golden-signals", "cardinalidade"],
+      "nivel": 3,
+      "tempoMin": 30,
+      "ambiente": "node",
+      "enunciado": "Instrumente um Express com o histograma padrão de latência e leia o que ele expõe.\n\n```\nconst express = require('express')\nconst client = require('prom-client')\nclient.collectDefaultMetrics()\nconst hist = new client.Histogram({\n  name: 'http_request_duration_seconds',\n  help: 'Duração das requisições HTTP',\n  labelNames: ['method', 'route', 'status_code'],\n  buckets: [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5]\n})\nconst app = express()\napp.use((req, res, next) => {\n  const fim = hist.startTimer()\n  res.on('finish', () => fim({ method: req.method, route: req.route ? req.route.path : 'sem-rota', status_code: res.statusCode }))\n  next()\n})\napp.get('/ping', (req, res) => res.send('ok'))\napp.get('/metrics', async (req, res) => {\n  res.set('Content-Type', client.register.contentType)\n  res.end(await client.register.metrics())\n})\napp.listen(3000)\n```\n\nBata exatamente 100 vezes em `/ping`: `for i in $(seq 1 100); do curl -s localhost:3000/ping > /dev/null; done`. Depois: `curl -s localhost:3000/metrics | grep http_request_duration_seconds`.\n\nLeia as três famílias de linhas: `_bucket{le=…}`, `_sum` e `_count`. Depois responda no caderno: por que `route` usa `req.route.path` (template `/decks/:id`) e não `req.path` (URL crua)? Quantas séries este histograma gera com 10 rotas × 4 métodos × 5 status? E se fosse por URL crua com `/termos/<uuid>`?\n\nEntregue: o valor de `http_request_duration_seconds_count` para a série de `/ping`.",
+      "passos": [
+        "`npm i express prom-client`",
+        "Rode os 100 curls e leia o /metrics; ache a linha `_count{method=\"GET\",route=\"/ping\",status_code=\"200\"}`",
+        "Calcule: `_sum / _count` = latência média; o bucket `le=\"0.005\"` diz quantas ficaram abaixo de 5 ms (cumulativo)",
+        "Estime p99 pelos buckets: o menor `le` cujo bucket acumulado ≥ 99 % do `_count` — é o que `histogram_quantile` faz no Prometheus",
+        "Conte séries: buckets (10 + `+Inf`) + sum + count = 13 linhas por combinação de labels; multiplique pelas combinações"
+      ],
+      "entrega": { "tipo": "numero", "esperado": 100, "tolerancia": 0, "rotulo": "Valor de _count para route=\"/ping\"" },
+      "dicas": [
+        "O request ao /metrics também é medido, mas cai em outra série (route=\"/metrics\") — a série de /ping fica em 100 exatos.",
+        "Se aparecer 'sem-rota', o `res.on('finish')` rodou antes do Express casar a rota — não deveria; confira se o middleware está ANTES das rotas e se a rota existe (404 não tem `req.route`)."
+      ],
+      "solucao": "`http_request_duration_seconds_count{method=\"GET\",route=\"/ping\",status_code=\"200\"} 100`. Ao lado, `_sum` ≈ 0,05–0,3 (segundos somados; ÷ 100 = média de 0,5–3 ms) e os `_bucket{le=…}` cumulativos: `le=\"0.005\"` já perto de 100, `le=\"+Inf\"` = 100 sempre. Não existe p99 pronto no cliente — o Prometheus estima com `histogram_quantile(0.99, rate(..._bucket[5m]))` interpolando dentro do bucket, por isso os limites dos buckets precisam cobrir a faixa que importa (para SLO de 300 ms, ter um bucket em 0.3).\n\nHistograma vs summary: o histograma é agregável entre instâncias (soma de buckets) e permite calcular qualquer quantil depois; o summary calcula quantis no processo e não pode ser somado entre 2 instâncias atrás do Nginx — por isso o histograma é o padrão para latência de serviço.\n\nCardinalidade: 10 rotas × 4 métodos × 5 status = 200 combinações × 13 linhas = **2.600 séries** — barato. Com URL crua (`/termos/3f9a…`), cada UUID é uma série nova: 10 mil termos × 13 = 130 mil séries só nesta métrica, e cresce sem teto; o Prometheus enche memória e o scrape passa a demorar. Regra: label só para valores de conjunto fechado e pequeno (rota-template, método, classe de status); nunca id, e-mail, URL crua, user-agent. E este histograma sozinho já dá 3 dos 4 golden signals: latência (buckets), tráfego (`rate(_count)`) e erros (`_count{status_code=~\"5..\"}`); saturação vem de outro lugar (event loop lag, `pg_pool_waiting`, memória).",
+      "criterios": [
+        "Leu _count, _sum e buckets e sabe que os buckets são cumulativos",
+        "Explica histograma vs summary pela agregabilidade",
+        "Calcula a cardinalidade e justifica route-template em vez de URL crua",
+        "Mapeia o histograma nos golden signals e aponta o que falta (saturação)"
+      ],
+      "postmortem": false
+    },
+    {
+      "id": "correlation-id-pino",
+      "titulo": "Correlation ID: do header ao log estruturado e de volta",
+      "termos": ["correlation-id", "logs-estruturados", "context-propagation"],
+      "nivel": 3,
+      "tempoMin": 25,
+      "ambiente": "node",
+      "enunciado": "Faça um request-id atravessar o serviço inteiro: entra pelo header (ou nasce na borda), vai para TODO log daquele request e volta na resposta.\n\n```\nconst express = require('express')\nconst pino = require('pino')\nconst { randomUUID } = require('node:crypto')\nconst log = pino()\nconst app = express()\napp.use((req, res, next) => {\n  req.id = req.get('x-request-id') || randomUUID()\n  res.set('x-request-id', req.id)\n  req.log = log.child({ reqId: req.id })\n  next()\n})\napp.get('/ping', (req, res) => {\n  req.log.info({ rota: '/ping' }, 'atendendo')\n  res.send('ok')\n})\napp.listen(3000)\n```\n\nTeste com um id conhecido:\n\n```\ncurl -s -D - -o /dev/null -H 'x-request-id: abc-123' localhost:3000/ping | grep -i '^x-request-id'\n```\n\nE no terminal do servidor, pegue o campo do log: a linha JSON deve conter `\"reqId\":\"abc-123\"`.\n\nDepois: faça o handler chamar um segundo serviço (outro Express na 3001) com `fetch` repassando `x-request-id` — e também `traceparent` no formato W3C — e mostre os dois logs com o mesmo id.\n\nEntregue: duas linhas — a linha do header `x-request-id` impressa pelo curl e o trecho `\"reqId\":\"…\"` extraído do log do servidor.",
+      "passos": [
+        "`npm i express pino`; rode com `node server.js` (JSON cru) e, para ler, `node server.js | npx pino-pretty`",
+        "Rode o curl com `x-request-id: abc-123`; confira header de resposta e log",
+        "Rode SEM o header: o id nasce no servidor (UUID) e volta na resposta — é o que o cliente deve guardar para abrir chamado",
+        "Serviço B na 3001 com o mesmo middleware; A chama B com `fetch('http://localhost:3001/x', { headers: { 'x-request-id': req.id, traceparent: `00-${traceId}-${spanId}-01` } })`; grep pelo id nos dois logs",
+        "Onde isso entra no Trilha RM: no middleware global do server e no `mentor.js` (chamada ao OpenRouter) — o id do request precisa aparecer no log da chamada externa"
+      ],
+      "entrega": {
+        "tipo": "saida",
+        "esperado": "x-request-id: abc-123\n\"reqId\":\"abc-123\"",
+        "rotulo": "Cole a linha do header (curl) e o trecho \"reqId\":\"…\" do log, uma por linha"
+      },
+      "dicas": [
+        "Aceitar o id que veio de fora é o que permite correlacionar com o log do cliente/proxy — mas valide tamanho e caracteres (um atacante pode injetar 10 KB de lixo no seu log).",
+        "`log.child({ reqId })` cria um logger que carimba o campo em TODA linha sem você repetir; passe `req.log` adiante em vez do logger global."
+      ],
+      "solucao": "```\nx-request-id: abc-123\n\"reqId\":\"abc-123\"\n```\n\nO middleware faz três coisas que juntas formam a correlação: (1) **adota ou gera** o id — se veio de fora (Nginx `$request_id`, Cloudflare `CF-Ray`, cliente), reutiliza; senão cria um UUID na borda; (2) **carimba** o id em um logger filho (`pino.child`) que todo código daquele request usa — nenhuma linha sai sem `reqId`; (3) **devolve** o id no header de resposta, para que o usuário/cliente possa citar 'meu erro foi o abc-123' e você `grep` num único id em vez de por horário aproximado.\n\nPropagação: ao chamar outro serviço (B na 3001, o OpenRouter, o Postgres via `application_name`), o id vai no header e B repete o passo (1) — adota. Assim `grep abc-123` nos logs de A e B monta a história inteira. O padrão W3C `traceparent: 00-<trace_id 32 hex>-<parent_span_id 16 hex>-<flags>` é o mesmo conceito formalizado para tracing: trace_id equivale ao correlation id, e cada serviço adiciona seu span. Adotar o formato desde já permite ligar OpenTelemetry depois sem trocar header.\n\nLog estruturado é o que torna isso pesquisável: `{\"level\":30,\"reqId\":\"abc-123\",\"rota\":\"/ping\",\"msg\":\"atendendo\"}` é filtrável por campo em qualquer agregador (Loki: `{app=\"trilha\"} | json | reqId=\"abc-123\"`); `console.log('atendendo abc-123')` obriga regex. Validar o id que vem de fora (≤ 64 chars, `[A-Za-z0-9-_]`) evita log injection. No Trilha RM: middleware no server, `req.log` em `praticas.js`/`mentor.js`, e o id no log da chamada ao OpenRouter — hoje um erro do mentor não tem como ser ligado ao request que o causou.",
+      "criterios": [
+        "Adota id externo ou gera na borda, e devolve no header",
+        "Usa logger filho para carimbar todas as linhas do request",
+        "Propaga para o serviço B e mostra os dois logs com o mesmo id",
+        "Relaciona correlation id com traceparent/trace_id e cita a validação do id externo"
+      ],
+      "postmortem": false
+    },
+    {
+      "id": "error-budget-30-dias",
+      "titulo": "Do SLI ao error budget: quanto pode falhar em 30 dias",
+      "termos": ["error-budget", "slo", "sli"],
+      "nivel": 2,
+      "tempoMin": 15,
+      "ambiente": "papel",
+      "enunciado": "Defina o SLO do Trilha RM e converta em minutos de falha permitida.\n\n1. Escreva o **SLI** de disponibilidade como razão: eventos bons / eventos válidos (ex.: requests a `/api/*` com status < 500 e latência < 300 ms ÷ total de requests a `/api/*`). Escreva por que `/metrics` e health checks NÃO entram no denominador.\n2. Escolha o **SLO**: 99,5 % em janela de 30 dias.\n3. Calcule o **error budget** em minutos de indisponibilidade total equivalente para esses 30 dias.\n4. Refaça para 99,9 % e para 99 %.\n5. Liste o que consome esse budget no seu caso real: restart do PM2 no S23 (quanto dura?), queda de Wi-Fi do celular, deploy, o PRoot morto pelo phantom killer.\n\nEntregue: os minutos de error budget para **99,5 % em 30 dias**.",
+      "passos": [
+        "30 dias = 43.200 minutos",
+        "Budget = (1 − SLO) × janela",
+        "Compare com a duração real de um `pm2 restart` e de uma reconexão do cloudflared — quantos restarts por mês cabem?"
+      ],
+      "entrega": { "tipo": "numero", "esperado": 216, "tolerancia": 0.02, "unidade": "min", "rotulo": "Error budget em minutos (99,5 %, 30 dias)" },
+      "dicas": [
+        "1 − 0,995 = 0,005. Multiplique pelos minutos da janela.",
+        "Para 99,9 % o resultado é 43,2 min; para 99 %, 432 min. Cada 'nove' divide por 10 o que você pode errar."
+      ],
+      "solucao": "**216 minutos** (3 h 36 min): 0,005 × 43.200 min. Para 99,9 %: 43,2 min; para 99 %: 432 min (7,2 h).\n\nSLI bem escrito: `requests a /api/* com status < 500 E latência < 300 ms / total de requests a /api/*`, medido pelo histograma do exercício anterior (`_bucket{le=\"0.3\", status_code!~\"5..\"} / _count`). `/metrics`, `/health` e tráfego de bot saem do denominador porque não são eventos de usuário: incluí-los infla o total com eventos 'bons' baratos e mascara falha real (o SLI fica verde enquanto o usuário vê erro).\n\nError budget é o SLO lido pelo lado permissivo: 216 min/mês em que o serviço PODE estar fora sem quebrar o alvo. Ele é gasto por incidentes, deploys ruins, restarts e experimentos — e o que sobra é liberdade para arriscar (deploy na sexta, trocar biblioteca). Quando o budget acaba, a prioridade muda de feature para confiabilidade; é a regra que resolve a briga 'ship vs stability' com número, não com opinião.\n\nNo Trilha RM real: um `pm2 restart` custa ~2–5 s de porta fechada (cabem ~3.000 por mês — não é problema); uma queda de Wi-Fi do S23 de 10 min custa 10 min do budget (cabem ~21); um PRoot morto pelo phantom killer sem ninguém ver pode consumir 216 min numa única noite — o que diz onde investir: detecção (alerta externo de disponibilidade), não em restart mais rápido. SLO interno (99,5 %) deve ser mais rígido que qualquer SLA prometido (ex.: 99 %) para haver margem antes de pagar.",
+      "criterios": [
+        "SLI como razão bom/válido, excluindo health checks e /metrics do denominador",
+        "Calcula budget para as três metas (216, 43,2 e 432 min)",
+        "Lista consumidores reais do budget e conclui onde investir (detecção vs restart)"
+      ],
+      "postmortem": false
+    },
+    {
+      "id": "cpu-baixa-p99-alto",
+      "titulo": "Failure lab: CPU 30 %, p50 80 ms, p99 8 s",
+      "termos": ["metodo-diagnostico", "golden-signals", "concorrencia-performance/tail-latency"],
+      "nivel": 4,
+      "tempoMin": 45,
+      "ambiente": "node",
+      "enunciado": "Reproduza a leitura que separa 'falta máquina' de 'uma minoria espera por algo' — e prove com evidência qual das duas é.\n\nServidor Express com `pg` `Pool({ max: 5 })` e a rota `/api/decks` fazendo `SELECT pg_sleep(0.02)` (20 ms, o normal). Em 2 % das requisições, troque por `SELECT pg_sleep(3)` — simula uma query que pegou lock ou um plano ruim. Exponha em `/stats` o `pool.waitingCount` e o event loop lag (`perf_hooks.monitorEventLoopDelay`). Instrumente com o histograma do exercício `/metrics`.\n\nCarga: `npx autocannon -c 20 -d 30 http://localhost:3000/api/decks`. Durante a carga, colete: CPU do processo (Gerenciador de Tarefas / `top -p`), `/stats` a cada 2 s, e `pg_stat_activity` (`state`, `wait_event_type`, `wait_event`, `now() - query_start`).\n\nDepois da rodada, responda: o p50 subiu ou só o p99? Quantas requests estavam esperando conexão do pool no pior momento? O que o `pg_stat_activity` mostrava para as 5 conexões? Qual alerta pegaria isso antes do usuário — e qual (CPU) NÃO pegaria?\n\nEntregue: postmortem em 5 partes (sintoma → evidência → causa → correção → o que muda no processo) com p50/p99 do autocannon, CPU observada, `waitingCount` máximo e a saída do `pg_stat_activity`.",
+      "passos": [
+        "Monte a rota; confirme sem cauda (0 %) que p99 ≈ 25 ms e CPU baixa",
+        "Ligue os 2 % e rode 30 s; anote p50, p97.5, p99, Max, req/s e a CPU do processo",
+        "Leia `/stats` durante a carga: `waitingCount` deve subir toda vez que 2–3 conexões estão presas 3 s (5 conexões, 20 em voo)",
+        "`pg_stat_activity` no meio: 5 backends `active`, alguns em `PgSleep` há ~2 s — no mundo real seria `Lock`/`LWLock`/`IO`",
+        "Correção: `statement_timeout` de 500 ms na conexão (`options: '-c statement_timeout=500'`) OU pool separado (bulkhead) para a rota suspeita; rode de novo e compare p99 e req/s",
+        "Escreva o alerta certo: `histogram_quantile(0.99, rate(http_request_duration_seconds_bucket[5m])) > 1` por 5 min, e `pg_pool_waiting > 0` por 1 min"
+      ],
+      "entrega": { "tipo": "texto", "minimoChars": 450, "rotulo": "Cole o postmortem com p50/p99, CPU, waitingCount máximo e o pg_stat_activity" },
+      "dicas": [
+        "Com 5 conexões e 20 requests em voo, 2 % de queries de 3 s bastam para deixar 1–3 conexões presas quase o tempo todo: a capacidade cai de 5 para 2–3, e as requests NORMAIS entram na fila — o p50 também piora, não só o p99.",
+        "CPU fica baixa porque esperar não gasta CPU: nem o Node (I/O assíncrono) nem o Postgres (`pg_sleep`/lock é espera). É a assinatura de gargalo de fila, não de processamento."
+      ],
+      "solucao": "**Sintoma:** usuários reclamam de 'às vezes demora muito'; dashboards de CPU/RAM verdes (CPU do Node 5–15 %, PG idem). autocannon: p50 ≈ 60–200 ms (subiu de 25), p99 ≈ 3.000–8.000 ms, Max > 8 s, req/s caiu de ~200 para ~60.\n\n**Evidência:** `/stats` mostra `waitingCount` oscilando entre 5 e 15 durante toda a carga (pool de 5 saturado); event loop lag normal (< 5 ms) — o Node não está bloqueado. `pg_stat_activity`: 5 backends `active`, 1–3 deles com `wait_event_type = Timeout, wait_event = PgSleep` e `query_start` há 1–3 s; os outros alternando queries de 20 ms. Nenhum recurso acima de 30 %.\n\n**Causa:** uma minoria (2 %) de queries lentas ocupa conexões do pool por 3 s cada; com 20 requests concorrentes e 5 conexões, isso reduz a capacidade efetiva para 2–3 conexões e forma fila para TODAS as requests, inclusive as normais. A cauda de 2 % contamina a mediana via fila (Little: W sobe quando L fixo e λ constante). Não é falta de máquina — é uma dependência lenta atrás de um recurso finito (pool). No mundo real a query lenta é um lock (`wait_event_type = Lock`), um plano sem índice (`IO`) ou vacuum atrasado.\n\n**Correção:** (1) `statement_timeout = 500ms` na conexão do app: a query lenta falha rápido (erro 500 em 2 % em vez de fila para 100 %) — trade-off explícito; (2) bulkhead: pool separado (`max: 2`) para a rota/consulta suspeita, isolando a cauda; (3) investigar e consertar a query (EXPLAIN, índice, lock); (4) dimensionar pool com p99 da query, não com a média. Depois da correção: p99 volta para < 100 ms, req/s para ~200, e 2 % de erros 500 visíveis no `status_code` — falha barulhenta em vez de lentidão silenciosa.\n\n**Processo:** alerta de **sintoma** — p99 do SLI > 1 s por 5 min e `pg_pool_waiting > 0` por 1 min — nunca 'CPU > 80 %' (aqui a CPU não passou de 30 % e o usuário sofreu). Método: recursos folgados + mediana ok + cauda catastrófica = 'uma minoria espera por algo'; a pergunta seguinte é sempre 'espera por o quê?' e a resposta está em `waitingCount` (fila no app) ou `pg_stat_activity.wait_event` (fila no banco), nunca no gráfico de CPU. Adicionar `pg_pool_waiting` e `pg_pool_total` como gauges no `/metrics` do Trilha RM.",
+      "criterios": [
+        "Traz p50/p99/Max e req/s antes e durante, CPU observada e waitingCount máximo",
+        "Mostra pg_stat_activity com wait_event e explica que espera não gasta CPU",
+        "Explica como 2 % de cauda contamina o p50 via fila do pool",
+        "Correção com trade-off explícito (statement_timeout / bulkhead / consertar a query)",
+        "Alerta de sintoma (p99, saturação do pool) em vez de causa (CPU)"
+      ],
+      "postmortem": true
+    },
+    {
+      "id": "alerta-sintoma-ou-causa",
+      "titulo": "Quatro alertas: qual acorda alguém com razão?",
+      "termos": ["alerting-sintoma-vs-causa", "fadiga-de-alerta", "health-readiness-liveness"],
+      "nivel": 2,
+      "tempoMin": 15,
+      "ambiente": "papel",
+      "enunciado": "O Trilha RM e o AutoTrade rodam no S23. Você vai configurar UM alerta que acorda você às 3 h da manhã. Considere as quatro regras abaixo e escolha a única que é **sintoma do usuário, acionável e estável** (não muda quando a causa muda):\n\n(A) `cpu_percent > 80` por 5 min\n(B) `histogram_quantile(0.99, rate(http_request_duration_seconds_bucket{route=~\"/api/.*\"}[5m])) > 1` por 5 min\n(C) `process_resident_memory_bytes > 300 MB`\n(D) `pm2_restarts_total` aumentou na última hora\n\nPara cada uma das outras três, escreva em uma linha por que ela vira ruído (quando dispara sem dano ao usuário) ou por que falha em silêncio (quando há dano e ela não dispara). Depois diga em qual DASHBOARD (não alerta) cada uma das três deveria viver.\n\nEntregue: a letra escolhida.",
+      "passos": [
+        "Para cada regra, pergunte: 'se disparar às 3 h, o que eu faço?' e 'pode haver usuário sofrendo sem ela disparar?'",
+        "Lembre do lab anterior: CPU 30 %, p99 8 s",
+        "Lembre do memory leak do deck de Node: PM2 reinicia por memória e o usuário nem vê — restart é sintoma de quê?"
+      ],
+      "entrega": {
+        "tipo": "escolha",
+        "opcoes": [
+          "(A) CPU > 80 % por 5 min",
+          "(B) p99 de /api/* > 1 s por 5 min",
+          "(C) memória residente > 300 MB",
+          "(D) restarts do PM2 na última hora"
+        ],
+        "correta": 1,
+        "rotulo": "O alerta que acorda alguém"
+      },
+      "dicas": [
+        "Sintoma é o que o usuário sente: latência, erro, indisponibilidade. Causa é o que você acha que provoca: CPU, memória, restart. Causas mudam a cada incidente; sintomas são os mesmos sempre.",
+        "Um alerta que dispara e você olha e diz 'ah, é normal' está treinando você a ignorar o próximo."
+      ],
+      "solucao": "**(B).** É o SLI visto pelo usuário (latência de `/api/*`), com janela (5 min) que filtra picos isolados, e a ação é clara: alguém está sofrendo agora, investigue. Ele dispara para QUALQUER causa — pool esgotado, query lenta, CPU travada, Redis fora, Wi-Fi ruim — inclusive as que você ainda não conhece.\n\n(A) CPU > 80 %: ruído quando um job legítimo roda (backup, `--cpu-prof`, compressão) e falha em silêncio no cenário do lab anterior (CPU 30 %, p99 8 s). Não diz o que fazer. Vive no dashboard de recursos (USE), para drill-down DEPOIS que (B) disparou.\n\n(C) memória > 300 MB: teto arbitrário; o processo pode viver bem em 350 MB ou vazar até 290 e reiniciar. Se há leak, o que importa é a tendência (`deriv(process_resident_memory_bytes[1h]) > 0` por 6 h), e mesmo isso é ticket para amanhã, não alerta de madrugada. Dashboard de recursos.\n\n(D) restarts do PM2: parece sintoma, mas é causa mascarada — o PM2 reinicia em 2 s e o usuário raramente nota; e se reiniciar em loop, (B) ou um alerta de taxa de erro 5xx pegam. Vale como **anotação** no dashboard (linha vertical de 'deploy/restart' para correlação temporal) e como contador revisado semanalmente.\n\nA fadiga de alerta é risco de disponibilidade: cada alerta que dispara sem ação necessária reduz a chance de o time reagir ao que importa. Regra: alerta = sintoma + janela + ação; tudo o mais é dashboard ou ticket. Health check entra aqui como readiness: um endpoint `/health/ready` que checa dependências é insumo para o balanceador tirar a instância — não para acordar alguém.",
+      "criterios": [
+        "Escolhe (B) e justifica por sintoma + janela + ação",
+        "Explica para cada outra regra o caso de ruído e o caso de silêncio",
+        "Destina as três para dashboard/ticket/anotação em vez de alerta"
+      ],
+      "postmortem": false
+    },
+    {
+      "id": "liveness-readiness-pm2",
+      "titulo": "Liveness e readiness no Trilha RM sob PM2",
+      "termos": ["health-readiness-liveness", "pm2-logs-vs-agregador", "niveis-de-log"],
+      "nivel": 3,
+      "tempoMin": 30,
+      "ambiente": "node",
+      "enunciado": "Hoje o Trilha RM não tem health check. Projete e implemente (num lab, sem alterar o app real) os dois endpoints e explique o que o PM2 faz — e não faz — com eles.\n\n`GET /health/live`: responde 200 se o processo consegue atender um request (só isso). `GET /health/ready`: responde 200 só se o serviço pode receber tráfego: decks carregados (≥ 1 deck), diretório `data/` gravável (teste real: escrever e apagar um arquivo temporário), e — quando houver — Redis respondendo `PING` em < 200 ms. Se algo falhar, 503 com JSON dizendo **qual** verificação falhou, e log em nível `warn` (não `error`) com o motivo.\n\nDepois, provoque: (1) `chmod -w data/` (ou renomeie a pasta) e chame os dois endpoints; (2) `while(true){}` numa rota e chame `/health/live` — respondeu? por quê?; (3) leia o `ecosystem.config.cjs` do Trilha RM: o PM2 usa algum desses endpoints? O que ele realmente monitora?\n\nEntregue: o código dos dois endpoints; a tabela com o resultado dos 3 cenários (live / ready / o que o PM2 fez); e um parágrafo: quem deveria consumir cada endpoint no seu setup (PM2? cloudflared? um monitor externo? o Nginx com 2 instâncias da Fase 3?) e por que logar a falha de readiness em `warn` e não em `error`.",
+      "passos": [
+        "Implemente os dois endpoints com verificações reais (não `return 200`)",
+        "Cenário 1: data/ sem escrita → live 200, ready 503 `{ ok: false, falhou: 'data-gravavel' }`",
+        "Cenário 2: rota `/travar` com `while(true){}`; em outro terminal, `curl -m 3 localhost:3000/health/live` → timeout. Explique pelo event loop",
+        "Cenário 3: `pm2 describe trilha-rm` — veja `max_memory_restart`, `restart_delay`, `autorestart`; note que o PM2 monitora PROCESSO (vivo/memória), não HTTP",
+        "Escreva quem consome: monitor externo (UptimeRobot/cron no PC) → `/health/ready` pela URL pública; Nginx `upstream` com `max_fails` → `/health/ready` local; PM2 → nenhum (só o processo)"
+      ],
+      "entrega": { "tipo": "texto", "minimoChars": 500, "rotulo": "Cole o código dos endpoints, a tabela dos 3 cenários e o parágrafo sobre consumidores e nível de log" },
+      "dicas": [
+        "Liveness que checa dependências é errado: se o Redis cai, o orquestrador reinicia TODAS as instâncias em loop e ninguém atende ninguém. Liveness = 'o processo responde'; readiness = 'posso servir'.",
+        "Nível de log é decisão sobre quem age: `error` exige ação humana; readiness 503 é degradação tolerada e esperada (deploy, dependência reiniciando) — `warn`, com contador em métrica."
+      ],
+      "solucao": "```\nconst fs = require('node:fs/promises')\nconst path = require('node:path')\napp.get('/health/live', (req, res) => res.json({ ok: true }))\napp.get('/health/ready', async (req, res) => {\n  const checks = {}\n  checks.decks = repo.listar().length >= 1\n  try {\n    const p = path.join(DATA_DIR, `.ready-${process.pid}`)\n    await fs.writeFile(p, '1'); await fs.unlink(p); checks['data-gravavel'] = true\n  } catch { checks['data-gravavel'] = false }\n  if (redis) {\n    try { await Promise.race([redis.ping(), new Promise((_, r) => setTimeout(() => r(new Error('ping > 200ms')), 200))]); checks.redis = true }\n    catch { checks.redis = false }\n  }\n  const falhou = Object.keys(checks).filter((k) => !checks[k])\n  if (falhou.length) { req.log.warn({ checks }, 'readiness falhou'); return res.status(503).json({ ok: false, falhou, checks }) }\n  res.json({ ok: true, checks })\n})\n```\n\n| cenário | /health/live | /health/ready | PM2 |\n|---|---|---|---|\n| data/ sem escrita | 200 | 503 `falhou: ['data-gravavel']` | nada — o processo está vivo e com memória normal |\n| `while(true){}` | **timeout** (o event loop está preso; nenhum request é lido) | timeout | nada, até o `max_memory_restart` (que não vai disparar) — o PM2 não faz probe HTTP |\n| processo morre (`kill -9`) | conexão recusada | idem | reinicia em `restart_delay` ms (`autorestart: true`) |\n\nO PM2 monitora o **processo**: vivo/morto, memória (`max_memory_restart`), e reinicia. Não sabe se o HTTP responde nem se o serviço está pronto — por isso o cenário 2 (loop infinito) fica indefinidamente 'online' no `pm2 ls` enquanto ninguém é atendido. É exatamente o buraco que liveness HTTP fecharia — mas o consumidor tem que ser externo ao processo: um monitor no PC (`curl -m 5` por cron/UptimeRobot na URL pública) que, ao falhar N vezes, faz `pm2 restart` via SSH ou alerta; na Fase 3, o Nginx com `upstream` + `max_fails`/`fail_timeout` (ou `health_check` no Plus) usando `/health/ready` para tirar a instância do balanceamento sem derrubá-la. `/health/live` para quem decide **reiniciar**; `/health/ready` para quem decide **rotear**. Misturar os dois (liveness checando Redis) causa restart em cascata quando uma dependência cai.\n\n`warn` e não `error`: readiness 503 é um estado esperado do ciclo de vida (subindo, dependência reiniciando, disco cheio sendo tratado) que já está sendo tratado automaticamente por quem roteia; `error` é reservado para o que exige ação humana. Se cada 503 de readiness fosse `error`, um restart do Redis geraria centenas de linhas vermelhas e treinaria o time a ignorar `error`. O certo é `warn` + contador (`readiness_falhas_total{check}`) + alerta se o 503 persistir > 5 min — aí sim é sintoma.",
+      "criterios": [
+        "Endpoints com verificações reais e 503 dizendo qual check falhou",
+        "Tabela dos 3 cenários com o comportamento do PM2 em cada um",
+        "Explica por que o loop infinito derruba o liveness e o PM2 não percebe",
+        "Separa quem reinicia (liveness) de quem roteia (readiness) e evita restart em cascata",
+        "Justifica warn vs error por 'quem age'"
+      ],
+      "postmortem": false
+    }
+  ]
+}

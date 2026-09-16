@@ -1,0 +1,102 @@
+{
+  "deckId": "node-internals",
+  "titulo": "Práticas · Node.js internals",
+  "exercicios": [
+    {
+      "id": "ordem-event-loop",
+      "titulo": "Ordem de execução: nextTick, promises, timers e I/O",
+      "termos": ["fases-event-loop", "microtasks-vs-macrotasks", "process-nexttick"],
+      "nivel": 3,
+      "tempoMin": 15,
+      "ambiente": "node",
+      "enunciado": "Antes de rodar, escreva no papel a ordem em que as letras vão aparecer. Depois execute e compare.\n\n```\nconst fs = require('node:fs')\nsetTimeout(() => console.log('A'), 0)\nsetImmediate(() => console.log('B'))\nfs.readFile(__filename, () => {\n  console.log('C')\n  setTimeout(() => console.log('D'), 0)\n  setImmediate(() => console.log('E'))\n  process.nextTick(() => console.log('F'))\n})\nPromise.resolve().then(() => console.log('G'))\nprocess.nextTick(() => console.log('H'))\nconsole.log('I')\n```\n\nRode com `node ordem.js` 5 vezes. Uma letra pode trocar de lugar entre execuções — descubra qual e por quê antes de responder.\n\nEntregue: a saída em que **B vem antes de A** NÃO acontece; cole a saída da execução mais comum (9 letras, uma por linha).",
+      "passos": ["Escreva a previsão no papel (sem rodar)", "Rode 5 vezes: `for i in 1 2 3 4 5; do node ordem.js | tr '\\n' ' '; echo; done`", "Explique em uma frase por que a posição de A pode variar em relação a B fora de um callback de I/O"],
+      "entrega": {
+        "tipo": "saida",
+        "esperado": "I\nH\nG\nA\nB\nC\nF\nE\nD",
+        "esperadoQualquer": ["I\nH\nG\nB\nA\nC\nF\nE\nD"],
+        "rotulo": "Cole as 9 letras, uma por linha"
+      },
+      "dicas": [
+        "Código síncrono primeiro; depois a fila do nextTick esvazia inteira; depois as microtasks de Promise; só então o loop anda.",
+        "Dentro de um callback de I/O (fase poll), setImmediate (fase check) SEMPRE roda antes de um setTimeout 0 (que só vem na próxima volta, fase timers).",
+        "Fora de I/O, setTimeout 0 vs setImmediate depende de quanto o processo demorou para entrar no loop: se passou 1 ms, o timer já venceu e A sai antes de B."
+      ],
+      "solucao": "Saída mais comum:\n\nI  (síncrono)\nH  (fila nextTick esvazia antes de qualquer microtask de Promise)\nG  (microtasks de Promise)\nA  (fase timers: o setTimeout 0 já venceu na maioria das máquinas)\nB  (fase check: setImmediate)\nC  (fase poll: callback do readFile — leva alguns ms)\nF  (nextTick agendado dentro do callback roda ANTES de sair da fase)\nE  (setImmediate agendado em I/O → fase check desta mesma volta)\nD  (setTimeout 0 agendado em I/O → só na fase timers da PRÓXIMA volta)\n\nA única troca possível é A/B na primeira volta: se o processo entrou no loop em menos de 1 ms, o timer ainda não venceu e B sai antes de A. Dentro de I/O a ordem E antes de D é garantida. É exatamente isso que a documentação do Node chama de 'ordem não determinística de setTimeout vs setImmediate fora de um ciclo de I/O'.",
+      "criterios": ["Distingue fila nextTick de microtasks de Promise", "Sabe que timers → poll → check é a ordem das fases", "Explica a não-determinismo de A/B pelo tempo de entrada no loop"],
+      "postmortem": false
+    },
+    {
+      "id": "leak-heap-snapshot",
+      "titulo": "Failure lab: achar um memory leak com heap snapshot",
+      "termos": ["memory-leak", "heap-snapshot", "garbage-collector"],
+      "nivel": 4,
+      "tempoMin": 40,
+      "ambiente": "node",
+      "enunciado": "Crie um servidor HTTP com um leak proposital: um array global que guarda o `req.url` + um Buffer de 10 KB a cada request. Suba, bata 2000 requests com `autocannon -c 20 -d 10 http://localhost:3000/x` (ou `npx autocannon`), e prove o leak com dois heap snapshots (antes e depois) no Chrome DevTools (`node --inspect`) ou com `v8.writeHeapSnapshot()`.\n\nDepois corrija (limite o array, ou use WeakRef, ou simplesmente não guarde) e repita a medição.\n\nEntregue um parágrafo de postmortem: sintoma → evidência (números dos dois snapshots antes e depois da correção, qual construtor cresceu no 'Comparison') → causa → correção → o que muda no seu processo (como o PM2 mascararia isso com restart por memória).",
+      "passos": [
+        "Servidor com leak: `const lixo = []; http.createServer((req,res)=>{ lixo.push({url:req.url, b:Buffer.alloc(10240)}); res.end('ok') }).listen(3000)`",
+        "Snapshot 1 com o processo recém-subido (`node --inspect server.js` → chrome://inspect → Memory → Take snapshot; ou `process.on('SIGUSR2', ()=>require('v8').writeHeapSnapshot())`)",
+        "Carga: `npx autocannon -c 20 -d 10 http://localhost:3000/x`",
+        "Snapshot 2; aba Comparison; ordene por 'Size delta'. Buffer/ArrayBuffer ou (object) devem liderar",
+        "Corrija e repita 1–4. `process.memoryUsage().heapUsed` antes/depois em MB também serve como evidência",
+        "Leia `max_memory_restart` no ecosystem.config.cjs do Trilha RM e explique por que ele esconde exatamente este bug"
+      ],
+      "entrega": { "tipo": "texto", "minimoChars": 300, "rotulo": "Cole o postmortem (5 partes) com os números dos snapshots" },
+      "dicas": [
+        "No Comparison, o que importa não é o tamanho absoluto: é o `# Delta` positivo e constante entre snapshots sob carga igual.",
+        "Buffer.alloc grande vai para memória externa (fora do heap V8). Compare também `external` em process.memoryUsage()."
+      ],
+      "solucao": "Sintoma: heapUsed sobe ~20 MB a cada 2000 requests e nunca volta mesmo depois de GC forçado (`node --expose-gc` + `global.gc()`). Evidência: snapshot 1 ≈ 5 MB, snapshot 2 ≈ 27 MB; no Comparison, `(array)` e `Buffer` com # Delta ≈ +2000, retidos por `lixo` (Window/global → lixo → elements). Causa: referência global viva — o GC só coleta o que não é alcançável a partir das raízes, e um array global é raiz para sempre. Correção: não guardar por request; se precisar de histórico, ring buffer com tamanho fixo (`if (lixo.length > 1000) lixo.shift()`), ou estrutura com TTL. Depois da correção, snapshot 2 ≈ 5–6 MB e estável. Processo: o `max_memory_restart: '200M'` do PM2 reinicia o processo silenciosamente quando o leak chega no teto — o serviço 'funciona' e o bug vive por meses; logue `process.memoryUsage()` a cada minuto e alerte por tendência, não por teto.",
+      "criterios": [
+        "Traz números de dois snapshots (ou heapUsed) antes e depois",
+        "Nomeia o retentor (o array global) e o caminho de retenção",
+        "Explica por que o GC não coleta objeto alcançável",
+        "Diz como o PM2 mascara e o que faria para detectar por tendência"
+      ],
+      "postmortem": true
+    },
+    {
+      "id": "cpu-bound-bloqueia-loop",
+      "titulo": "Medir o event loop lag com uma rota CPU-bound",
+      "termos": ["event-loop-lag", "cpu-bound-vs-io-bound", "worker-threads"],
+      "nivel": 3,
+      "tempoMin": 30,
+      "ambiente": "node",
+      "enunciado": "Servidor Express com duas rotas: `/ping` responde `ok` na hora; `/fib/40` calcula Fibonacci recursivo de 40 (CPU-bound, ~1–2 s). Meça a latência de `/ping` (`curl -w '%{time_total}\\n' -o /dev/null -s http://localhost:3000/ping`) em três cenários:\n\n1. Sozinho.\n2. Enquanto UMA requisição de `/fib/40` roda em outro terminal.\n3. Depois de mover o cálculo para um `worker_threads` (ou `cluster` com 2 workers), de novo com `/fib/40` rodando em paralelo.\n\nEntregue: o tempo de `/ping` no cenário 2, em milissegundos inteiros (é o que o exercício corrige: tem que ser maior que 500 ms — se deu menos, seu fib não bloqueou o loop, revise).",
+      "passos": [
+        "`function fib(n){ return n<2?n:fib(n-1)+fib(n-2) }` — não use memoização, o objetivo é bloquear",
+        "Terminal A: `curl -s localhost:3000/fib/40 &` · Terminal B, 200 ms depois: `curl -w '%{time_total}\\n' -o /dev/null -s localhost:3000/ping`",
+        "Meça 3 vezes e use a mediana em ms",
+        "Cenário 3: `new Worker('./fib-worker.js', { workerData: n })` e `worker.once('message', …)`; /ping deve voltar para < 10 ms"
+      ],
+      "entrega": { "tipo": "numero", "min": 500, "max": 30000, "unidade": "ms", "rotulo": "Latência do /ping durante o /fib/40 (ms, cenário 2)" },
+      "dicas": [
+        "Se o /ping respondeu rápido no cenário 2, o curl do fib pode não ter chegado ainda: aumente o n para 42 ou dispare o /fib primeiro e espere meio segundo.",
+        "Uma única thread JS: enquanto fib roda, o event loop não gira e NENHUM callback (nem o do socket do /ping) é atendido."
+      ],
+      "solucao": "Cenário 1: /ping ≈ 1–3 ms. Cenário 2: /ping ≈ 900–1800 ms (igual ao tempo restante do fib), porque a thread principal está presa no cálculo síncrono e o socket do /ping só é lido quando o loop volta à fase poll. Cenário 3 (worker_threads): /ping volta a ≈ 1–5 ms enquanto o fib roda numa thread separada com seu próprio V8 isolate e event loop; a comunicação por postMessage copia (structured clone) — para dados grandes use SharedArrayBuffer ou transfira ArrayBuffers. cluster também resolve, mas com N processos e sem memória compartilhada; o custo é RAM. Regra: CPU-bound > ~50 ms em request path = fora da thread principal.",
+      "criterios": ["Mediu com curl e reportou a mediana", "Explica que o socket do /ping só é lido quando o loop gira", "Conhece o custo do structured clone ao mandar dados para o worker"],
+      "postmortem": false
+    },
+    {
+      "id": "backpressure-pipeline",
+      "titulo": "Backpressure: pipe vs write sem controle",
+      "termos": ["backpressure", "streams", "highwatermark"],
+      "nivel": 3,
+      "tempoMin": 25,
+      "ambiente": "node",
+      "enunciado": "Gere um arquivo de 500 MB (`node -e \"require('fs').writeFileSync('grande.bin', Buffer.alloc(500*1024*1024))\"` ou `fallocate -l 500M grande.bin`). Copie-o de três jeitos e anote o pico de `process.memoryUsage().rss` em MB (imprima no `finish`/`close`):\n\nA) `fs.readFile` + `fs.writeFile` (tudo em memória).\nB) Readable `.on('data', chunk => writable.write(chunk))` ignorando o retorno `false` do write.\nC) `stream.pipeline(readable, writable, cb)`.\n\nEntregue: qual das três abordagens teve o MENOR pico de RSS.",
+      "entrega": {
+        "tipo": "escolha",
+        "opcoes": ["A) readFile + writeFile", "B) on('data') + write() sem olhar o retorno", "C) stream.pipeline"],
+        "correta": 2,
+        "rotulo": "Menor pico de memória"
+      },
+      "dicas": ["Em B, se o destino for mais lento que a origem (ex.: escreva num disco USB ou num socket), o buffer interno do Writable cresce sem limite: write() devolve false e você ignora.", "highWaterMark padrão de streams de arquivo é 64 KB — o pipeline pausa a leitura quando o writable passa disso."],
+      "solucao": "C. `pipeline` (e `pipe`) implementam backpressure: quando `writable.write()` devolve false (buffer interno acima do highWaterMark, 16 KB objeto / 64 KB fs), o readable é pausado e só volta no evento `drain`. RSS fica em ~50–70 MB independente do tamanho do arquivo. A) carrega os 500 MB inteiros no heap externo (RSS > 550 MB) e pode estourar em arquivos maiores. B) parece stream, mas sem respeitar o `false` o Writable acumula chunks em memória se o destino for mais lento — em disco local rápido você pode nem notar (o que torna o bug traiçoeiro), mas para um socket lento ou uma resposta HTTP para cliente 3G, a memória sobe até o destino drenar. Sempre use pipeline: ele também propaga erros e destrói os dois lados.",
+      "criterios": ["Sabe o que o retorno false de write() significa", "Explica drain e highWaterMark", "Sabe por que B não estoura em disco local rápido mas estoura em rede"],
+      "postmortem": false
+    }
+  ]
+}

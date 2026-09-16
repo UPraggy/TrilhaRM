@@ -1,0 +1,184 @@
+{
+  "deckId": "concorrencia-performance",
+  "titulo": "Práticas · Concorrência e Performance Engineering",
+  "exercicios": [
+    {
+      "id": "pool-esgotou-max-2",
+      "titulo": "Failure lab: pool max: 2 contra 50 requisições paralelas",
+      "termos": ["connection-pool-sizing", "contention", "littles-law"],
+      "nivel": 4,
+      "tempoMin": 40,
+      "ambiente": "postgres",
+      "enunciado": "Reproduza o incidente clássico 'o banco está lento' em que o banco está ocioso.\n\nScript Node com `pg`: `new Pool({ max: 2, connectionTimeoutMillis: 1000 })` e 50 chamadas paralelas de `pool.query('SELECT pg_sleep(0.5)')` via `Promise.allSettled`. A cada 100 ms, imprima `pool.totalCount`, `pool.idleCount` e `pool.waitingCount`. Ao final, conte quantas promessas resolveram e quantas rejeitaram, e imprima a mensagem de erro da primeira rejeição.\n\nEnquanto roda (são só ~12 s), em outro terminal:\n\n```\npsql -c \"SELECT pid, state, wait_event_type, wait_event, now() - query_start AS ha FROM pg_stat_activity WHERE datname = current_database() AND pid <> pg_backend_pid();\"\n```\n\nDepois responda com números: quantas conexões o Postgres realmente viu? Quantas requisições esperaram na fila do pool? Quantas estouraram o `connectionTimeoutMillis`? Por que aumentar `max` para 50 resolve ESTE cenário e não resolveria se o `pg_sleep` fosse um `UPDATE` esperando um lock?\n\nEntregue: um postmortem em 5 partes (sintoma → evidência → causa → correção → o que muda no processo) com os números do pool, do `pg_stat_activity` e a mensagem de erro exata.",
+      "passos": [
+        "`npm i pg`; DATABASE_URL apontando para o seu PG local (crie um banco `lab`)",
+        "Rode e observe `waitingCount` saltar para 48 e cair de 2 em 2 a cada 500 ms",
+        "Rode o `pg_stat_activity` no meio: só 2 backends ativos, `wait_event = PgSleep` (num incidente real seria `Lock`, `LWLock`, `IO`)",
+        "Repita com `max: 10` e depois `max: 50`: anote tempo total e quantidade de erros",
+        "Calcule pela Lei de Little quantas conexões seriam necessárias para 50 requisições simultâneas de 0,5 s sem fila: L = λ × W"
+      ],
+      "entrega": { "tipo": "texto", "minimoChars": 400, "rotulo": "Cole o postmortem com os números do pool, do pg_stat_activity e o erro exato" },
+      "dicas": [
+        "O `connectionTimeoutMillis` do pg-pool também vale para quem está NA FILA esperando uma conexão livre, não só para abrir conexão nova — o erro é `timeout exceeded when trying to connect`.",
+        "Se o gargalo é o número de conexões e o banco está ocioso, mais conexões ajudam. Se o gargalo é um lock numa linha, 50 conexões viram 50 processos esperando o mesmo lock: a fila só mudou de lugar (do app para o Postgres)."
+      ],
+      "solucao": "**Sintoma:** 50 requisições, ~45 falham em ~1 s com `Error: timeout exceeded when trying to connect`; as que passam levam 0,5–1 s. Para quem olha só o app, 'o banco não está respondendo'.\n\n**Evidência:** `totalCount = 2`, `idleCount = 0`, `waitingCount = 48` logo no início, caindo para 46, 44… a cada 500 ms. `pg_stat_activity` mostra exatamente **2** backends do app, `state = active`, `wait_event_type = Timeout`, `wait_event = PgSleep`, `ha ≈ 0,3 s` — o Postgres está ocioso; a fila está no processo Node. Em ~1 s, os 44–46 itens que ainda estavam na fila estouram o `connectionTimeoutMillis` (o pg-pool aplica esse timeout à espera na fila, não só ao handshake). Resolvem 4–6 (as 2 iniciais, mais 2 aos 500 ms e, com sorte, 2 aos ~1.000 ms).\n\n**Causa:** capacidade do pool = max / tempo médio de serviço = 2 / 0,5 s = **4 req/s**. Chegaram 50 de uma vez → pela Lei de Little, para atender 50 simultâneas com W = 0,5 s sem fila seriam necessárias L = 50 conexões; com 2, a fila cresce e o timeout de aquisição (1 s) é menor que o tempo de espera (até 12 s). Não é lentidão do banco: é dimensionamento do pool × latência da query × timeout de aquisição.\n\n**Correção:** aqui, três alavancas e a ordem importa: (1) reduzir W — a query (índice, menos linhas, cache); (2) reduzir λ — coalescing, cache, rate limit; (3) só então aumentar max, sabendo que cada conexão é um processo no Postgres (memória `work_mem` por conexão, CPU de coordenação) e que o ganho para de aparecer quando o banco vira o gargalo (~2–4 × cores para carga CPU-bound). Com `max: 10` o total cai para ~2,5 s e os erros somem; com `max: 50`, ~0,5 s. Mas se o `pg_sleep` fosse um `UPDATE` esperando lock numa linha quente, 50 conexões = 50 backends em `wait_event_type = Lock`, mesmo throughput, mais memória: a fila só muda do app para o banco. Adicione `statement_timeout` no lado do banco e um timeout de aquisição coerente com o p99 da fila esperado.\n\n**Processo:** expor `waitingCount` como gauge (`pg_pool_waiting`) e alertar por ele — é o sinal de saturação do serviço (golden signal), antes de o usuário sentir; toda análise de 'banco lento' começa comparando `waitingCount` no app com `pg_stat_activity` no banco: se o app espera e o banco está ocioso, é pool; se ambos esperam, é query/lock. Dimensionar pool com L = λ × W medidos, não com número redondo.",
+      "criterios": [
+        "Traz totalCount/idleCount/waitingCount e o que o pg_stat_activity mostrou (2 backends, PgSleep)",
+        "Cita a mensagem de erro exata e explica que o timeout vale para a fila",
+        "Usa Little's Law (L = λ × W) para dimensionar e explica capacidade = max / W",
+        "Explica por que aumentar o pool não resolve quando o gargalo é lock/CPU do banco",
+        "Propõe a métrica de saturação (waitingCount) e a rotina de diagnóstico app × banco"
+      ],
+      "postmortem": true
+    },
+    {
+      "id": "littles-law-medir-pool",
+      "titulo": "Lei de Little: prever e medir 50 requisições em um pool de 2",
+      "termos": ["littles-law", "throughput", "latencia"],
+      "nivel": 3,
+      "tempoMin": 20,
+      "ambiente": "postgres",
+      "enunciado": "Mesmo cenário do lab do pool, agora SEM timeout de aquisição — deixe tudo terminar e meça.\n\n`new Pool({ max: 2 })` (sem `connectionTimeoutMillis`), 50 × `pool.query('SELECT pg_sleep(0.5)')` em `Promise.all`. Meça o tempo total com `performance.now()` e imprima em ms inteiros.\n\nANTES de rodar, calcule: capacidade do pool = max / W; tempo total = N / capacidade. Escreva o número.\n\nEntregue: o tempo total medido, em ms.",
+      "passos": [
+        "Previsão no papel: 2 conexões / 0,5 s = 4 req/s → 50 / 4 = 12,5 s",
+        "Rode 2 vezes e anote (deve dar 12.500–13.500 ms; o excedente é round-trip e agendamento)",
+        "Repita com `max: 10` (previsão: 2,5 s) e com `max: 50` (previsão: 0,5 s) — confirme",
+        "Inverta a pergunta: para atender 200 req/s com W = 50 ms, quantas conexões? (L = 200 × 0,05 = 10)"
+      ],
+      "entrega": { "tipo": "numero", "min": 12000, "max": 15500, "unidade": "ms", "rotulo": "Tempo total das 50 queries com max: 2 (ms)" },
+      "dicas": [
+        "Little: L = λ × W. Aqui L (itens em serviço) está fixo em 2 pelo pool e W = 0,5 s, então λ máximo = L / W = 4 req/s.",
+        "50 requisições em lotes de 2, cada lote 0,5 s → 25 lotes → 12,5 s. O que passar disso é overhead de rede local + event loop."
+      ],
+      "solucao": "Medido ≈ 12.550–13.200 ms para 50 queries com `max: 2` e `pg_sleep(0.5)`. A previsão é direta: L = 2 conexões ocupadas, W = 0,5 s por query → λ máximo = L / W = 4 req/s → 50 / 4 = 12,5 s. Com `max: 10`: 2,5 s. Com `max: 50`: ~0,5 s (todas em paralelo, uma conexão cada — e 50 processos no Postgres).\n\nA lição não é 'aumente o pool': é que **throughput = concorrência / latência** para qualquer fila estável, e você dimensiona sem simular. Para 200 req/s com queries de 50 ms: L = 200 × 0,05 = 10 conexões em uso médio — e o pool precisa de folga para a variância (p99 da query, rajadas), então 15–20. O mesmo raciocínio dimensiona workers de fila, threads de um worker pool, instâncias atrás do Nginx. E mostra o efeito colateral: reduzir W (índice que leva a query de 50 ms para 5 ms) libera 10× mais capacidade do que qualquer mexida no pool.",
+      "criterios": [
+        "Previu 12,5 s pela Lei de Little antes de medir",
+        "Explica throughput = concorrência / latência e aplica ao pool",
+        "Consegue inverter a conta: dado λ e W, dimensionar L"
+      ],
+      "postmortem": false
+    },
+    {
+      "id": "p99-escondido-pela-media",
+      "titulo": "p99 de 2 s escondido atrás de uma média de 40 ms",
+      "termos": ["percentis", "tail-latency", "autocannon-k6-wrk"],
+      "nivel": 3,
+      "tempoMin": 25,
+      "ambiente": "node",
+      "enunciado": "Injete cauda em uma rota e veja qual estatística a mostra e qual a esconde.\n\n```\nconst express = require('express')\nconst app = express()\napp.get('/ping', (req, res) => {\n  if (Math.random() < 0.02) setTimeout(() => res.send('lento'), 2000)\n  else res.send('ok')\n})\napp.listen(3000)\n```\n\nCarga: `npx autocannon -c 10 -d 20 http://localhost:3000/ping`. Leia a tabela de latência: 2.5%, 50%, 97.5%, 99%, Avg, Stdev, Max.\n\nDepois troque `0.02` por `0.005` (0,5 %) e rode de novo: o p99 ainda mostra a cauda? E o p99.9? (autocannon aceita `--latency` para percentis extras.)\n\nEntregue: o valor do **p99 (99%)** da PRIMEIRA rodada (2 % de requests lentas), em ms.",
+      "passos": [
+        "Rode a carga e copie a tabela inteira para o caderno",
+        "Compare Avg (~40 ms) com p50 (~1–3 ms) e p99 (~2.000 ms): a média não descreve NENHUM usuário",
+        "Com 0,5 % lentas, p99 volta para ~2 ms e a cauda só aparece em p99.9 — 1 em 200 usuários ainda espera 2 s e o dashboard de p99 diz 'tudo bem'",
+        "Olhe o req/s: por que caiu com as lentas, se o servidor está ocioso? (cada conexão do autocannon espera a resposta antes do próximo request)"
+      ],
+      "entrega": { "tipo": "numero", "min": 1800, "max": 2600, "unidade": "ms", "rotulo": "p99 da rodada com 2 % de requests lentas (ms)" },
+      "dicas": [
+        "pN é o valor abaixo do qual N % das medições ficam. Com 2 % das requests em ~2.000 ms, o 1 % mais lento está inteiro dentro do grupo lento — o p99 cai lá.",
+        "A média com 2 % de 2.000 ms e 98 % de ~2 ms dá ≈ 0,02 × 2.000 + 0,98 × 2 ≈ 42 ms: um número que nenhum usuário viveu."
+      ],
+      "solucao": "p99 ≈ 2.000–2.010 ms (a granularidade do histograma HDR do autocannon coloca em 2.003, 2.007…). p50 ≈ 1–3 ms, Avg ≈ 40 ms, Max ≈ 2.0xx ms. Em ~4.800 requests (10 conexões × ~24 req/s cada), ~96 são lentas; o 1 % mais lento (48 requests) está todo dentro das 96 lentas → p99 = ~2 s.\n\nCom 0,5 % lentas, ~24 lentas em 4.800: o p99 (48 mais lentas) inclui 24 lentas e 24 rápidas → o valor do percentil cai para o grupo rápido (~2–3 ms) e a cauda **desaparece do p99**. Só p99.9 (as 5 mais lentas) mostra os 2 s. Ou seja: o percentil que você monitora define a cauda que você enxerga; para um serviço com 1.000 req/min, p99 esconde 10 usuários por minuto esperando 2 s.\n\nMédia e desvio padrão são estatísticas de distribuição normal; latência é bimodal e assimétrica — a média cai num vale onde não há requests. Reporte p50 para 'o típico', p99/p99.9 para 'o pior que aceito', e Max para achar o caso patológico. Em fan-out (uma página que faz 20 chamadas), a probabilidade de encaixar pelo menos uma p99 é 1 − 0,99²⁰ ≈ 18 %: a cauda de um componente vira a mediana da página.\n\nO req/s caiu porque autocannon é closed-loop: cada conexão espera a resposta; uma resposta de 2 s trava aquela conexão por 2 s. Um gerador open-loop (k6 com `constant-arrival-rate`) manteria a taxa e revelaria acúmulo de fila no servidor.",
+      "criterios": [
+        "Leu p50, p99, Avg e Max da tabela e explica a divergência entre Avg e p50",
+        "Explica por que com 0,5 % de lentas o p99 não mostra a cauda e o p99.9 mostra",
+        "Cita o efeito de fan-out (cauda de um vira mediana do conjunto)"
+      ],
+      "postmortem": false
+    },
+    {
+      "id": "lost-update-contador",
+      "titulo": "Race condition no Postgres: read-modify-write com 50 clientes",
+      "termos": ["race-condition", "atomicidade", "optimistic-vs-pessimistic-locking"],
+      "nivel": 3,
+      "tempoMin": 30,
+      "ambiente": "postgres",
+      "enunciado": "Um contador, 50 incrementos concorrentes, quatro implementações. Descubra qual perde atualizações e por quê.\n\n```\nCREATE TABLE contador (id int PRIMARY KEY, v int NOT NULL, versao int NOT NULL DEFAULT 0);\nINSERT INTO contador VALUES (1, 0);\n```\n\n**v1 — read-modify-write:** para cada uma das 50 tarefas (`Promise.all`, `Pool({ max: 10 })`): `client = await pool.connect()`; `SELECT v FROM contador WHERE id = 1`; `await sleep(50)` (simula processamento); `UPDATE contador SET v = $1 WHERE id = 1` com `v + 1` calculado no Node; `client.release()`.\n\n**v2 — atômico no banco:** `UPDATE contador SET v = v + 1 WHERE id = 1`.\n\n**v3 — lock pessimista:** `BEGIN; SELECT v FROM contador WHERE id = 1 FOR UPDATE; sleep(50); UPDATE …; COMMIT`.\n\n**v4 — lock otimista:** `SELECT v, versao`; sleep(50); `UPDATE contador SET v = $1, versao = versao + 1 WHERE id = 1 AND versao = $2`; se `rowCount === 0`, releia e tente de novo (conte as tentativas).\n\nZere o contador entre versões (`UPDATE contador SET v = 0, versao = 0`). Para cada versão, imprima o valor final e o tempo total.\n\nEntregue: o que você observou no valor final da **v1** e a explicação certa.",
+      "passos": [
+        "Rode v1 três vezes e anote os três valores finais (variam entre execuções — é a assinatura de race condition)",
+        "Rode v2, v3 e v4: as três devem dar 50. Compare os tempos: v3 serializa (≈ 50 × 50 ms = 2,5 s); v4 gasta em retries; v2 é a mais rápida",
+        "Em v4, imprima quantos retries houve no total (com 10 clientes simultâneos, dezenas)",
+        "Explique em uma frase quando você escolheria v3 em vez de v4 (alta contenção na mesma linha → pessimista; baixa → otimista)"
+      ],
+      "entrega": {
+        "tipo": "escolha",
+        "opcoes": [
+          "Exatamente 50 — o Postgres serializa UPDATEs na mesma linha, então não há perda",
+          "Menos de 50 — lost update: vários clientes leram o mesmo v antes de qualquer UPDATE e gravaram o mesmo v + 1",
+          "Mais de 50 — a reconexão do pool repetiu incrementos",
+          "Erro de deadlock em parte das tarefas, o resto grava 50"
+        ],
+        "correta": 1,
+        "rotulo": "Valor final da v1"
+      },
+      "dicas": [
+        "O Postgres serializa o UPDATE, sim — mas o valor que ele grava foi calculado no Node a partir de um SELECT antigo. A atomicidade que falta não é a do UPDATE: é a do par SELECT+UPDATE.",
+        "Com `max: 10` e sleep de 50 ms, ~10 clientes leem o mesmo v e gravam o mesmo v + 1 → cada 'rodada' de 10 avança 1. Espere algo entre 5 e 15."
+      ],
+      "solucao": "**v1 termina com ~5–15**, variando a cada execução. O UPDATE em si é atômico e serializado pelo lock de linha, mas a **operação lógica** (ler, calcular, gravar) são dois comandos separados sem coordenação: 10 clientes leem `v = 0`, todos calculam 1, todos gravam 1. Cada leva de 10 avança o contador em 1 em vez de 10 — lost update, o bug intermitente que 'não reproduz em dev' porque em dev há um cliente.\n\n**v2 (`SET v = v + 1`) = 50, a mais rápida.** A leitura e a escrita acontecem dentro do mesmo comando, sob o lock de linha: o segundo UPDATE espera o primeiro commitar e relê a linha. Quando a lógica cabe numa expressão SQL, é sempre a resposta certa (e vale para Redis: `INCR` em vez de `GET`+`SET`).\n\n**v3 (`FOR UPDATE`) = 50, ~2,5 s.** Pessimista: quem lê com FOR UPDATE trava a linha até o COMMIT; os outros 49 esperam em fila (`wait_event_type = Lock` no `pg_stat_activity`). Serializa tudo — throughput = 1 / W. Escolha quando a contenção é alta e o retry seria caro (saldo de uma conta quente, estoque de um item em promoção).\n\n**v4 (versão) = 50, com dezenas de retries.** Otimista: ninguém trava; quem chega com versão velha vê `rowCount = 0` e tenta de novo. Ótimo quando conflitos são raros (edição de perfil, documento de um usuário); péssimo na linha única quente deste exercício, onde 9 de cada 10 tentativas falham.\n\nRegra: primeiro tente tornar a operação atômica no próprio comando (v2); se precisa ler para decidir, escolha pessimista sob alta contenção e otimista sob baixa; e nunca confie em 'li agora mesmo' — entre o SELECT e o UPDATE, o mundo mudou.",
+      "criterios": [
+        "Explica que a atomicidade faltante é a do par SELECT+UPDATE, não a do UPDATE",
+        "Sabe por que v2 resolve e quando a expressão no próprio comando é suficiente",
+        "Compara pessimista vs otimista por nível de contenção, com os tempos medidos"
+      ],
+      "postmortem": false
+    },
+    {
+      "id": "flame-graph-hot-path",
+      "titulo": "Achar o hot path com --cpu-prof e flame graph",
+      "termos": ["profiling-cpu-memoria", "flame-graph", "hot-path"],
+      "nivel": 4,
+      "tempoMin": 40,
+      "ambiente": "node",
+      "enunciado": "Substitua o palpite pelo profile. Monte um servidor com três candidatos a gargalo e descubra qual realmente domina.\n\n```\nconst express = require('express')\nconst app = express()\nconst base = Array.from({ length: 20000 }, (_, i) => ({ id: i, nome: 'item ' + i, tags: ['a', 'b', 'c'] }))\n\nfunction clonar(d) { return JSON.parse(JSON.stringify(d)) }\nfunction ordenar(d) { return [...d].sort((a, b) => b.nome.localeCompare(a.nome)) }\nfunction filtrar(d) { return d.filter((x) => /item \\d*7\\d*/.test(x.nome)) }\n\napp.get('/relatorio', (req, res) => res.json({ n: filtrar(ordenar(clonar(base))).length }))\napp.listen(3000, () => console.log('ouvindo'))\nprocess.on('SIGINT', () => process.exit(0))\nsetTimeout(() => process.exit(0), 40000)\n```\n\nRode `node --cpu-prof --cpu-prof-dir=prof server.js`, gere carga com `npx autocannon -c 5 -d 20 http://localhost:3000/relatorio` e espere o processo sair sozinho (40 s) — o `.cpuprofile` é gravado na saída. Abra com `npx speedscope prof/*.cpuprofile` (flame graph + 'Sandwich' com self time) ou no Chrome DevTools → Performance → Load profile.\n\nAntes de abrir, escreva qual das três funções você ACHA que domina.\n\nEntregue: (1) sua aposta; (2) a função com maior **self time** no profile e o percentual aproximado; (3) o que há embaixo dela na pilha (é o seu código ou é V8/builtin?); (4) uma mudança de código que ataque SÓ esse hot path e a nova medição de req/s antes/depois. Opcional (vale nota 5): repita no AutoTrade — `pm2 restart autotrade-live --node-args=\"--cpu-prof --cpu-prof-dir=/tmp/prof\"` por 10 min e traga o hot path real.",
+      "passos": [
+        "Rode a carga e anote o req/s e o p50 de antes",
+        "Abra o profile: no speedscope, aba 'Sandwich' ordena por self time; no DevTools, 'Bottom-Up'",
+        "Identifique o topo: `localeCompare` (dentro do sort), `JSON.parse`/`stringify` ou a regex — e quanto cada um pesa",
+        "Aplique UMA correção mirada (ex.: `Intl.Collator` reutilizado ou comparação por `<` em vez de `localeCompare`; ou `structuredClone`; ou pré-compilar a regex fora do handler) e meça de novo",
+        "Explique por que otimizar os outros dois não teria mudado o req/s (Amdahl: o ganho é limitado pela fração que você atacou)"
+      ],
+      "entrega": { "tipo": "texto", "minimoChars": 400, "rotulo": "Cole aposta, função dominante + %, o que há embaixo, a correção e req/s antes/depois" },
+      "dicas": [
+        "Em 20.000 itens, `sort` faz ~300.000 comparações por request; `localeCompare` sem Collator cria/consulta o ICU a cada chamada — costuma ser o platô mais largo, com folga.",
+        "Self time é o tempo NA função, sem os filhos. Total time inclui os filhos. O hot path é onde o self time se concentra; a caixa larga no topo do flame graph."
+      ],
+      "solucao": "Resultado típico: **`localeCompare` (chamado pelo `sort` em `ordenar`) domina com 60–80 % do self time**; `JSON.parse`/`JSON.stringify` (`clonar`) ficam com 10–25 %; a regex em `filtrar` é desprezível (< 5 %). A maioria das apostas cai em `JSON.parse(JSON.stringify())` porque é o 'anti-pattern famoso' — e o profile mostra que a intuição errou: são 300 mil comparações com ICU por request contra um clone linear de 20 mil objetos.\n\nEmbaixo de `localeCompare` há builtins do V8/ICU (não é o seu código), o que já diz a correção: não é 'otimizar a função', é chamá-la menos ou trocar por algo mais barato. Opções: `const col = new Intl.Collator('pt-BR'); d.sort((a, b) => col.compare(b.nome, a.nome))` (reutiliza o collator — 3–5× mais rápido), ou comparação por `<`/`>` quando a ordenação não precisa ser linguística (10×+), ou pré-ordenar `base` uma vez fora do handler (o dado é estático — aí o custo some do request path). Medição esperada: de ~15–30 req/s para 60–150 req/s com o Collator, e centenas com pré-ordenação.\n\nOtimizar a regex primeiro daria zero ganho visível: pela Lei de Amdahl, acelerar infinitamente uma fração de 3 % do tempo dá speedup máximo de 1,03×. Processo: medir → localizar o platô → mudar UMA coisa → medir. No AutoTrade a leitura é a mesma: se o hot path do `--cpu-prof` de 10 min for JSON.parse do WebSocket ou cálculo de indicador, esse é o lugar — e não o que 'parece pesado'.",
+      "criterios": [
+        "Registrou a aposta antes de medir e comparou com o resultado",
+        "Identificou a função dominante por self time e o percentual",
+        "Distingue self time de total time e o que é builtin vs código próprio",
+        "Aplicou uma correção mirada e trouxe req/s antes/depois",
+        "Usa Amdahl para justificar por que não otimizou o resto"
+      ],
+      "postmortem": false
+    },
+    {
+      "id": "offset-le-1-9-milhoes",
+      "titulo": "OFFSET lê e joga fora: provar com EXPLAIN ANALYZE",
+      "termos": ["pagination-offset-keyset", "bottleneck-analysis"],
+      "nivel": 3,
+      "tempoMin": 20,
+      "ambiente": "postgres",
+      "enunciado": "Página 95.000 de uma listagem paginada por OFFSET. Quanto o banco lê para devolver 20 linhas?\n\n```\nCREATE TABLE eventos AS\n  SELECT g AS id, md5(g::text) AS payload FROM generate_series(1, 2000000) g;\nALTER TABLE eventos ADD PRIMARY KEY (id);\nANALYZE eventos;\n\nEXPLAIN (ANALYZE, BUFFERS)\n  SELECT * FROM eventos ORDER BY id LIMIT 20 OFFSET 1900000;\n\nEXPLAIN (ANALYZE, BUFFERS)\n  SELECT * FROM eventos WHERE id > 1900000 ORDER BY id LIMIT 20;\n```\n\nNos dois planos, olhe o nó imediatamente abaixo do `Limit` e leia `actual … rows=N`. Compare também `Buffers: shared hit/read` e o `actual time` de cada um.\n\nEntregue: o `rows=` real (actual rows) do nó filho do `Limit` na consulta com OFFSET.",
+      "passos": [
+        "Crie a tabela (2 M linhas, ~150 MB, uns 10 s)",
+        "Rode os dois EXPLAIN duas vezes (a primeira aquece o cache; compare shared read vs hit)",
+        "Anote: rows do nó filho do Limit, buffers e tempo, para OFFSET e para keyset",
+        "Responda: o que o keyset NÃO consegue fazer que o OFFSET faz? (pular direto para a página 37)"
+      ],
+      "entrega": { "tipo": "numero", "esperado": 1900020, "tolerancia": 0, "rotulo": "actual rows do nó abaixo do Limit (consulta com OFFSET)" },
+      "dicas": [
+        "O Limit pede ao filho offset + limit linhas e descarta as primeiras `offset`. O filho não sabe que elas vão para o lixo: produz todas.",
+        "Não importa se o planner escolheu Index Scan, Index Only Scan ou Seq Scan + Sort: o nó filho reporta o que entregou ao Limit."
+      ],
+      "solucao": "**rows = 1.900.020.** O plano com OFFSET é `Limit → Index Scan using eventos_pkey` (ou `Sort → Seq Scan` se o planner preferir): o Limit puxa 1.900.020 linhas do filho e descarta 1.900.000. Buffers: ~10–15 mil páginas lidas, tempo de 150–500 ms mesmo com cache quente. O keyset (`WHERE id > 1900000 ORDER BY id LIMIT 20`) é `Limit → Index Scan` com `Index Cond: (id > 1900000)`, **rows = 20**, ~4 buffers, < 0,1 ms. Custo constante para qualquer página — e a diferença cresce linearmente com a profundidade: a página 1.000 custa 1.000× a página 1.\n\nPor que ninguém vê em dev: com 500 linhas, OFFSET 480 lê 500 — imperceptível. Em produção, um crawler ou um 'ver mais' infinito chega na página 5.000 e cada clique vira um scan de 100 mil linhas; o gargalo aparece como CPU e I/O do banco, não como erro.\n\nO que o keyset perde: pular para uma página arbitrária ('ir para a página 37') e contagem total barata — para UI que precisa disso, OFFSET com teto (ex.: máximo 100 páginas) ou índice de cobertura. Keyset exige coluna(s) de ordenação únicas e indexadas (`ORDER BY criado_em, id` com cursor composto quando `criado_em` repete). Para API e scroll infinito, keyset é a resposta; para o CentralBabita, avaliar tela por tela.",
+      "criterios": [
+        "Leu actual rows do nó filho do Limit e entendeu que o descarte acontece depois",
+        "Comparou buffers e tempo entre OFFSET e keyset",
+        "Explica a limitação do keyset (página arbitrária) e a exigência de índice/unicidade"
+      ],
+      "postmortem": false
+    }
+  ]
+}

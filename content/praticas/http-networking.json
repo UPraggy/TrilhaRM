@@ -1,0 +1,191 @@
+{
+  "deckId": "http-networking",
+  "titulo": "Práticas · HTTP e redes por dentro",
+  "exercicios": [
+    {
+      "id": "keep-alive-portas-efemeras",
+      "titulo": "Keep-alive na prática: contar portas efêmeras com e sem Agent",
+      "termos": ["http1-1", "connection-pool", "socket-porta-ephemeral"],
+      "nivel": 3,
+      "tempoMin": 20,
+      "ambiente": "node",
+      "enunciado": "Um cliente HTTP/1.1 que não reutiliza conexão paga um handshake TCP por request e deixa uma porta efêmera em TIME_WAIT para trás. Prove isso contando portas.\n\nSuba um servidor HTTP em 127.0.0.1:3000 e, no mesmo script, faça 20 requests **sequenciais** (um termina, o outro começa) de dois jeitos: (1) `agent: false` e (2) `new http.Agent({ keepAlive: true, maxSockets: 1 })`. Em cada request, guarde `res.socket.localPort` num `Set` e, ao final de cada rodada, imprima `set.size`.\n\n```\nconst http = require('node:http')\nconst srv = http.createServer((req, res) => res.end('ok')).listen(3000, rodar)\n\nasync function rodar() {\n  const modos = [\n    ['sem keep-alive', false],\n    ['com keep-alive', new http.Agent({ keepAlive: true, maxSockets: 1 })]\n  ]\n  for (const [nome, agent] of modos) {\n    const portas = new Set()\n    for (let i = 0; i < 20; i++) {\n      await new Promise((ok, erro) => {\n        const req = http.get({ host: '127.0.0.1', port: 3000, path: '/', agent }, (res) => {\n          portas.add(res.socket.localPort)\n          res.resume()\n          res.on('end', ok)\n        })\n        req.on('error', erro)\n      })\n    }\n    console.log(portas.size)\n  }\n  process.exit(0)\n}\n```\n\nAntes de rodar, escreva no papel os dois números que espera. Depois de rodar, confira o rastro no kernel: `ss -tan state time-wait '( dport = :3000 )' | wc -l` (Linux/PRoot) ou `netstat -ano | grep ':3000' | grep -c TIME_WAIT` (Windows).\n\nEntregue: as duas linhas impressas pelo script (quantidade de portas distintas sem e com keep-alive).",
+      "passos": [
+        "Rode `node portas.js` e anote as duas linhas",
+        "Logo depois, conte os sockets em TIME_WAIT para a porta 3000 — devem ser ~20",
+        "Espere 60 s e conte de novo: sumiram (2×MSL)",
+        "Troque `maxSockets: 1` por `maxSockets: 5` e rode com os 20 requests em paralelo (`Promise.all`): quantas portas agora?"
+      ],
+      "entrega": {
+        "tipo": "saida",
+        "esperado": "20\n1",
+        "rotulo": "Cole as duas linhas do script (sem keep-alive, com keep-alive)"
+      },
+      "dicas": [
+        "Com `agent: false` o Node manda `Connection: close`; cada request abre um socket novo e o kernel dá uma porta efêmera nova (a anterior está reservada em TIME_WAIT).",
+        "Com o Agent keep-alive, o socket volta para o pool no `end` da resposta e o próximo request o reutiliza: a mesma 4-tupla, a mesma porta local."
+      ],
+      "solucao": "Saída:\n\n```\n20\n1\n```\n\nSem keep-alive: 20 conexões, 20 handshakes (SYN/SYN-ACK/ACK), 20 portas efêmeras distintas — e cada uma fica 60 s em TIME_WAIT no lado que fechou primeiro (aqui, o servidor responde e fecha; mas o cliente também destrói, e a 4-tupla fica reservada de qualquer jeito). Com `keepAlive: true` e requests sequenciais, o Agent devolve o socket ao `freeSockets` quando a resposta termina e o próximo `http.get` pega o mesmo socket: 1 porta, 1 handshake para 20 requests. Com `maxSockets: 5` e 20 requests em paralelo, o Agent abre até 5 sockets e enfileira o resto: 5 portas.\n\nPor que importa: um cliente Node falando com uma API a 5.000 req/s sem keep-alive esgota as ~28k portas efêmeras em ~6 s (28k / 60 s de TIME_WAIT ≈ 470 conexões novas/s sustentáveis). O erro aparece como `EADDRNOTAVAIL` no cliente, não como erro no servidor. Node ≥ 19 já usa um Agent global com `keepAlive: true`; `fetch` (undici) também mantém pool. Quem quebra isso é quem cria `agent: false`, `Connection: close`, ou um Agent novo por request.",
+      "criterios": [
+        "Explica por que sem keep-alive cada request gasta uma porta efêmera nova",
+        "Sabe que o socket volta ao pool do Agent no fim da resposta",
+        "Relaciona TIME_WAIT (60 s) com o teto de conexões novas por segundo"
+      ],
+      "postmortem": false
+    },
+    {
+      "id": "etag-304-revalidacao",
+      "titulo": "ETag e 304: revalidar sem baixar o corpo",
+      "termos": ["cache-http", "http1-1", "cache/http-cache-vs-app-cache"],
+      "nivel": 2,
+      "tempoMin": 15,
+      "ambiente": "http",
+      "enunciado": "Express gera ETag fraco (`W/\"...\"`) por padrão em `res.json`/`res.send`. Use isso para ver a revalidação condicional acontecer.\n\nSuba um servidor Express com a rota `GET /dados` devolvendo `{ decks: [1, 2, 3] }`. Depois, no Git Bash:\n\n```\nETAG=$(curl -sI http://localhost:3000/dados | grep -i '^etag' | awk '{print $2}' | tr -d '\\r')\necho \"ETag: $ETAG\"\ncurl -s -o /dev/null -w '%{http_code}\\n' http://localhost:3000/dados\ncurl -s -o /dev/null -w '%{http_code}\\n' -H \"If-None-Match: $ETAG\" http://localhost:3000/dados\n```\n\nDepois mude o JSON devolvido (ex.: `[1, 2, 3, 4]`), repita o segundo curl com o ETag antigo e veja o que acontece.\n\nEntregue: os dois códigos HTTP impressos pelos dois curls (com o JSON original), um por linha.",
+      "passos": [
+        "`npm i express` e a rota `/dados`",
+        "Rode os 4 comandos acima; confira que o `-I` (HEAD) trouxe o header ETag",
+        "Adicione `res.set('Cache-Control', 'max-age=60')` e explique por que o browser nem revalidaria nos primeiros 60 s",
+        "Adicione `Cache-Control: no-cache` e explique por que isso NÃO é 'não cachear' — é 'sempre revalidar'"
+      ],
+      "entrega": {
+        "tipo": "saida",
+        "esperado": "200\n304",
+        "rotulo": "Cole os dois códigos HTTP, um por linha"
+      },
+      "dicas": [
+        "O 304 só aparece quando o `If-None-Match` casa com o ETag atual; com o corpo mudado, o ETag muda e volta 200 com o corpo novo.",
+        "Se o grep não achar o header, veja se o curl está imprimindo `ETag:` ou `etag:` — o grep já é `-i`, então o problema deve ser outro (rota errada, porta errada)."
+      ],
+      "solucao": "Saída:\n\n```\n200\n304\n```\n\nO primeiro GET traz 200 com corpo e o header `ETag: W/\"1b-...\"` (hash fraco do corpo). O segundo manda `If-None-Match` com esse ETag; o Express compara (via `fresh`) e responde **304 Not Modified sem corpo** — economiza banda, não economiza o round-trip nem o processamento do handler (o JSON foi gerado do mesmo jeito para calcular o hash). Com o corpo alterado, o hash muda e volta 200.\n\nDois headers, dois papéis: `Cache-Control: max-age=60` diz por quanto tempo o cliente pode usar a cópia **sem perguntar** (zero requests); ETag/Last-Modified dizem como perguntar barato **depois** que venceu. `no-cache` = pode guardar, mas revalide sempre; `no-store` = não guarde. Para API JSON de leitura (ex.: `/api/decks` do Trilha RM, que só muda quando o arquivo muda), `Cache-Control: no-cache` + ETag forte baseado no mtime do arquivo dá 304 barato sem regerar o JSON.",
+      "criterios": [
+        "Distingue o papel de Cache-Control (tempo sem perguntar) e ETag (como perguntar barato)",
+        "Sabe que 304 economiza corpo, não CPU do handler, quando o ETag é calculado do corpo",
+        "Explica no-cache vs no-store"
+      ],
+      "postmortem": false
+    },
+    {
+      "id": "nginx-ip-real-atras-do-proxy",
+      "titulo": "Atrás do Nginx: qual IP o Node vê?",
+      "termos": ["reverse-proxy", "proxy-protocol-e-ip-real", "nat"],
+      "nivel": 3,
+      "tempoMin": 30,
+      "ambiente": "nginx",
+      "enunciado": "Coloque o Nginx na frente de um servidor Node e descubra, medindo, o que o Node enxerga como cliente.\n\nNode em 127.0.0.1:3000 logando, por request: `req.socket.remoteAddress`, `req.headers['x-forwarded-for']`, `req.headers['x-real-ip']` e `req.ip` (Express). Nginx em 0.0.0.0:8080 com:\n\n```\nserver {\n  listen 8080;\n  location / {\n    proxy_pass http://127.0.0.1:3000;\n    proxy_set_header Host $host;\n    proxy_set_header X-Real-IP $remote_addr;\n    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;\n    proxy_set_header X-Forwarded-Proto $scheme;\n  }\n}\n```\n\nAcesse `http://<IP-do-PC-na-LAN>:8080/` a partir de OUTRO aparelho (o S23 no Wi-Fi) e leia o log do Node.\n\nEntregue: o que apareceu em `req.socket.remoteAddress` quando o celular acessou pelo Nginx.",
+      "passos": [
+        "Windows: baixe o zip do nginx.org, edite `conf/nginx.conf` e rode `nginx.exe` na pasta (para parar: `nginx -s stop`). Libere a porta 8080 no firewall do Windows se o celular não alcançar",
+        "Acesse direto (`:3000`) e via proxy (`:8080`) do celular; compare os 4 valores logados",
+        "No Express, adicione `app.set('trust proxy', 'loopback')` e veja `req.ip` mudar",
+        "Faça um `curl -H 'X-Forwarded-For: 1.2.3.4' http://<IP>:3000/` DIRETO no Node (sem passar pelo Nginx) e observe o problema de confiar no header"
+      ],
+      "entrega": {
+        "tipo": "escolha",
+        "opcoes": [
+          "O IP do celular na LAN (ex.: 192.168.0.x) — o proxy é transparente em L4",
+          "127.0.0.1 (ou ::ffff:127.0.0.1) — a conexão TCP que chega no Node é a do Nginx",
+          "O IP do PC na LAN — o Nginx faz SNAT com o IP da interface",
+          "O IP público do pfSense — o NAT reescreve a origem"
+        ],
+        "correta": 1,
+        "rotulo": "req.socket.remoteAddress visto pelo Node"
+      },
+      "dicas": [
+        "Reverse proxy L7 abre UMA conexão nova para o backend; a conexão do cliente termina no Nginx. Quem está do outro lado do socket do Node é o Nginx.",
+        "O IP original só chega se alguém escrever num header — e header é texto que qualquer cliente pode forjar se falar direto com o backend."
+      ],
+      "solucao": "Resposta: **127.0.0.1** (ou `::ffff:127.0.0.1` quando o Node escuta em dual-stack). O Nginx termina a conexão TCP do celular e abre outra, dele para o Node, a partir do loopback. Para o kernel do Node não existe celular: existe o Nginx. O IP real só viaja em `X-Real-IP` / `X-Forwarded-For` porque VOCÊ mandou o Nginx escrever (`$remote_addr` = IP do cliente visto pelo Nginx; `$proxy_add_x_forwarded_for` = XFF que já veio + o IP do cliente, formando a cadeia `cliente, proxy1, proxy2`).\n\n`req.ip` do Express continua 127.0.0.1 até `app.set('trust proxy', 'loopback')`: aí ele lê o XFF **da direita para a esquerda**, pulando os proxies confiáveis, e devolve o primeiro IP não confiável — o cliente. Sem trust proxy, rate limit por IP, geolocalização e log de auditoria veem todo mundo como 127.0.0.1 (um rate limit por IP bloquearia todos os usuários juntos). Com trust proxy mal configurado (`true` para tudo) e o Node exposto direto, qualquer cliente forja `X-Forwarded-For: 1.2.3.4` e vira quem quiser — por isso o backend deve escutar SÓ em loopback ou aceitar só do IP do proxy.\n\nEm proxy L4 (HAProxy `mode tcp`, pfSense com port forward puro) não existe header HTTP para escrever: ou o backend vê o IP do proxy e pronto, ou você liga o PROXY protocol nos dois lados (`send-proxy` no HAProxy, `proxy_protocol` no `listen` do Nginx). NAT (DNAT/port forward) é diferente: reescreve o destino e mantém a origem, então atrás do pfSense o Node vê o IP real do cliente — mas atrás do Nginx não.",
+      "criterios": [
+        "Explica que o proxy L7 termina a conexão e abre outra",
+        "Sabe como o Express usa trust proxy para ler o XFF da direita para a esquerda",
+        "Diferencia proxy L7 (header), proxy L4 (PROXY protocol) e NAT (origem preservada)"
+      ],
+      "postmortem": false
+    },
+    {
+      "id": "connect-vs-read-timeout-dns-morto",
+      "titulo": "Failure lab: DNS aponta para IP morto — connect timeout vs read timeout",
+      "termos": ["connection-timeout-vs-read-timeout", "dns", "retries-idempotencia"],
+      "nivel": 4,
+      "tempoMin": 35,
+      "ambiente": "http",
+      "enunciado": "Duas falhas que parecem iguais no log ('a API não respondeu') e são opostas no diagnóstico. Provoque as duas e meça com `curl -w`.\n\n**Falha A — destino morto (connect).** Aponte um nome para um IP que não responde: adicione `10.255.255.1 api.morta.local` no `/etc/hosts` (no PRoot do celular) ou em `C:\\Windows\\System32\\drivers\\etc\\hosts` (Notepad como administrador). Se preferir não mexer em hosts, use o IP direto.\n\n**Falha B — destino vivo que nunca responde (read).** `node -e \"require('http').createServer(() => {}).listen(3001)\"` — aceita a conexão e não escreve nada.\n\nMeça as duas com:\n\n```\ncurl -sS -o /dev/null --connect-timeout 3 -m 8 \\\n  -w 'connect=%{time_connect} ttfb=%{time_starttransfer} total=%{time_total} exit=%{exitcode}\\n' \\\n  http://api.morta.local/\ncurl -sS -o /dev/null --connect-timeout 3 -m 8 \\\n  -w 'connect=%{time_connect} ttfb=%{time_starttransfer} total=%{time_total} exit=%{exitcode}\\n' \\\n  http://localhost:3001/\n```\n\nDepois reproduza as duas em Node (`http.request` com `timeout`, e `fetch` do Node 22) e descubra qual timeout cada API expõe.\n\nEntregue: um postmortem em 5 partes (sintoma → evidência → causa → correção → o que muda no processo) cobrindo as DUAS falhas, com os números do `-w` de cada uma, e respondendo: retry ajuda em qual delas?",
+      "passos": [
+        "Rode os dois curls e anote `time_connect`, `time_starttransfer`, `total` e `exit` (28 = timeout; 7 = falha de conexão imediata, ex.: ICMP unreachable)",
+        "Se a Falha A voltou rápido com exit 7, o roteador respondeu 'unreachable' — troque por um IP roteável que descarta SYN (ex.: uma porta filtrada) ou aceite e anote: falha de connect, só que rápida",
+        "Node: `const req = http.request({ host, port, timeout: 3000 }); req.on('timeout', () => req.destroy(new Error('timeout')))` — observe que o MESMO timeout dispara nos dois casos; separe-os com `req.on('socket', s => s.once('connect', () => marcaConectado()))`",
+        "fetch (undici): imprima os defaults `connect.timeout` (10 s), `headersTimeout` e `bodyTimeout` (300 s) e explique o que um `AbortSignal.timeout(5000)` cobre",
+        "Conserte o hosts e mostre que o Node pega o IP novo no próximo request sem restart (não há cache de DNS no processo), exceto se um socket keep-alive antigo ainda estiver vivo"
+      ],
+      "entrega": { "tipo": "texto", "minimoChars": 400, "rotulo": "Cole o postmortem (5 partes) com os números do -w das duas falhas" },
+      "dicas": [
+        "Na Falha A o `time_connect` fica em 0.000 e o total bate no `--connect-timeout` (3 s): o SYN nunca teve resposta. Na Falha B o `time_connect` é ~0.001 e o total bate no `-m` (8 s): o TCP abriu, o HTTP nunca começou.",
+        "Retry só ajuda se a segunda tentativa tem chance de cair em outro lugar (outro IP no DNS, outro pod) ou se a falha era transitória. Repetir para o MESMO IP morto só multiplica o tempo de falha por N."
+      ],
+      "solucao": "**Falha A (connect).** Sintoma: request 'pendurado' e depois erro. Evidência: `connect=0.000 ttfb=0.000 total=3.0 exit=28` — o handshake TCP nunca completou; `ss -tan` mostra o socket em SYN-SENT; tcpdump mostra SYN retransmitido sem SYN-ACK. (Se o roteador devolveu ICMP unreachable: `exit=7` em milissegundos — também é falha de connect, só que barulhenta.) Causa: o nome resolveu para um IP que não responde (DNS errado, host desligado, firewall descartando). Correção: `--connect-timeout` curto (1–3 s) — quem não responde SYN em 1 s não vai responder em 30; em Node, `timeout` do `http.request` cobre isso mas não distingue; `undici` tem `connect: { timeout }` separado. Retry aqui só ajuda se houver outro IP para tentar (DNS com vários A) ou se a queda for transitória — repetir para o mesmo IP morto só atrasa o erro.\n\n**Falha B (read).** Sintoma: idêntico para o usuário. Evidência: `connect=0.001 ttfb=0.000 total=8.0 exit=28` — TCP abriu na hora, nenhum byte de resposta chegou; no servidor, `ss` mostra ESTABLISHED e o processo vivo. Causa: servidor aceitou e não respondeu (event loop bloqueado, handler que nunca chama `res.end`, upstream travado). Correção: read/headers timeout coerente com o p99 real do endpoint (ex.: 5 s para uma rota de 200 ms) e um deadline total; em `fetch`, `AbortSignal.timeout(ms)` cobre o request inteiro, enquanto os defaults do undici (headersTimeout 300 s) deixam você esperar 5 minutos. Retry em read timeout é PERIGOSO em POST: o servidor pode ter executado e só não respondeu — sem Idempotency-Key você duplica pedido/cobrança. GET/PUT/DELETE podem repetir; POST só com chave.\n\n**Processo.** Todo cliente HTTP do sistema (AutoTrade → exchange, Trilha RM → OpenRouter) declara os três timeouts explicitamente (connect curto, read pelo p99, total como deadline) e loga qual dos três estourou — 'timeout' sem qualificação não diagnostica. Retry só para operações idempotentes, com backoff e limite. Em incidente, `curl -w` com esses campos é a primeira ferramenta: separa 'não chegou' de 'chegou e não voltou' em 10 s. DNS: o Node não cacheia (usa getaddrinfo a cada request); quem cacheia é o resolver do SO e o TTL do registro — mas sockets keep-alive existentes continuam no IP antigo até fechar.",
+      "criterios": [
+        "Traz os números do -w das duas falhas e lê time_connect vs time_starttransfer",
+        "Explica a diferença connect timeout (handshake) × read timeout (bytes) × deadline total",
+        "Responde sobre retry: quando ajuda, quando duplica efeito (POST sem idempotência)",
+        "Cita o que o Node/undici expõe (timeout, connect.timeout, headersTimeout, AbortSignal.timeout)",
+        "Fecha com mudança de processo: timeouts explícitos e log de qual estourou"
+      ],
+      "postmortem": true
+    },
+    {
+      "id": "caminho-completo-trilha-rm",
+      "titulo": "Narrar o caminho completo de um request ao Trilha RM",
+      "termos": ["caminho-completo-request", "tls-handshake", "reverse-proxy"],
+      "nivel": 4,
+      "tempoMin": 30,
+      "ambiente": "papel",
+      "enunciado": "Você abre o Trilha RM no browser do PC pelo hostname público (túnel cloudflared) e ele carrega `/api/decks`. Narre TUDO o que acontece entre o Enter e o JSON na tela, salto por salto, como se estivesse bissectando um 'está lento' em produção.\n\nPara cada salto, preencha uma linha de tabela com 5 colunas: **onde** (componente) · **timeout** que governa esse trecho (e quem o configura) · **cache** que pode responder ali · **log** que prova que o request passou · **como falha** (o erro que o usuário/você veria).\n\nSaltos mínimos que precisam aparecer: resolver DNS do SO e recursivo → TCP → TLS (SNI, cadeia, versão) → borda da Cloudflare → túnel (conexão de SAÍDA do cloudflared no S23, sobre HTTP/2 ou QUIC) → cloudflared → Express em `localhost:8790` (PM2) → leitura de `content/decks/*.json` / `data/progresso.json` → resposta → parse no browser. Marque quantos RTTs a primeira conexão gasta até o primeiro byte, e quantos a segunda (keep-alive + resumption).\n\nDepois responda: se o S23 perder Wi-Fi por 30 s, em qual salto o erro aparece e com que código? E se o PM2 reiniciar o processo no meio?\n\nEntregue: a tabela (≥ 9 saltos × 5 colunas), a contagem de RTTs na 1ª e na 2ª conexão, e as respostas aos dois cenários de falha.",
+      "passos": [
+        "Meça o ponto de partida real: `curl -w '%{time_namelookup} %{time_connect} %{time_appconnect} %{time_starttransfer} %{time_total}\\n' -o /dev/null -s https://<seu-host>/api/decks` duas vezes seguidas",
+        "Confira a versão de TLS/HTTP negociada com `curl -vso /dev/null https://<seu-host>/ 2>&1 | grep -E 'SSL connection|ALPN|HTTP/'`",
+        "No celular: `pm2 logs trilha-rm --lines 5` e o log do cloudflared — descubra o que cada um registra por request (tem request-id? tem tempo?)",
+        "Desenhe a tabela; onde não souber o timeout, escreva 'desconhecido — onde eu descobriria' em vez de inventar"
+      ],
+      "entrega": { "tipo": "texto", "minimoChars": 600, "rotulo": "Cole a tabela de saltos + RTTs + os dois cenários de falha" },
+      "dicas": [
+        "1ª conexão: DNS (0–1 RTT, depende do cache do SO) + TCP (1 RTT) + TLS 1.3 (1 RTT) + request/response (1 RTT) = 3–4 RTTs até o primeiro byte, ANTES de contar o túnel e o Node. 2ª conexão com keep-alive: 1 RTT.",
+        "O túnel é uma conexão que o S23 abriu PARA a Cloudflare; a borda não 'entra' no celular. Se o Wi-Fi cai, a borda perde o túnel e responde ela mesma — o erro vem com código Cloudflare (5xx da família 5xx/1033), não um reset TCP do seu Node."
+      ],
+      "solucao": "Tabela de referência (resumida — a sua deve ter os valores medidos):\n\n1. **Browser / cache HTTP** — timeout: nenhum ainda; cache: memória/disco do browser (só se `Cache-Control` permitir; `/api/decks` sem header = revalidação heurística ou nenhuma); log: DevTools Network; falha: `ERR_NAME_NOT_RESOLVED` se o próximo salto falhar.\n2. **Resolver do SO → recursivo (pfSense/ISP/1.1.1.1)** — timeout: resolver (Windows ~1 s por tentativa, `options timeout:` no resolv.conf); cache: TTL do registro (Cloudflare usa TTL curto); log: `Resolve-DnsName`/`dig`, log do Unbound no pfSense; falha: `ERR_NAME_NOT_RESOLVED` / `EAI_AGAIN`.\n3. **TCP até a borda Cloudflare** — timeout: `--connect-timeout` do cliente, SYN retries do kernel (~21 s no Windows, ~2 min no Linux); cache: nenhum; log: `ss`/`netstat`, tcpdump; falha: `ERR_CONNECTION_TIMED_OUT`/`ECONNREFUSED`. 1 RTT.\n4. **TLS** — TLS 1.3 = 1 RTT (0 com resumption); SNI leva o hostname em claro para a borda escolher o certificado; cadeia validada contra a store do SO/browser; falha: `ERR_CERT_*`, `UNABLE_TO_VERIFY_LEAF_SIGNATURE` no Node (o AutoTrade já viu isso — docs/32). Cache: session tickets.\n5. **Borda Cloudflare (proxy L7)** — timeout: origin timeout ~100 s; cache: edge cache (só para o que os headers permitem; `/api/*` normalmente bypass); log: Cloudflare dashboard/analytics; falha: 502/504/**1033 (túnel indisponível)**, 522/524. Adiciona `CF-Ray`, `CF-Connecting-IP`, `X-Forwarded-For`.\n6. **Túnel** — conexão de SAÍDA do cloudflared (S23) para a borda, HTTP/2 ou QUIC, mantida com keepalives; timeout: heartbeat do túnel; falha: túnel cai → borda responde 1033/530 sozinha.\n7. **cloudflared no S23** — proxy L7 local para `http://localhost:8790`; timeout: `originRequest.connectTimeout` (30 s default) e `noHappyEyeballs` etc.; log: `cloudflared` stdout (PM2); falha: 502 'Bad Gateway' se a porta 8790 não responde.\n8. **Express (PM2)** — timeout: `server.requestTimeout` (300 s), `headersTimeout` (60 s), `keepAliveTimeout` (5 s); cache: cache do repositório de decks em memória (recarrega por mtime); log: pm2 logs (sem request-id hoje — é o próximo passo do lab de observabilidade); falha: 500, ou conexão recusada durante restart.\n9. **Disco (fs)** — leitura de JSON; timeout: nenhum (fs síncrono bloqueia o loop!); cache: page cache do kernel; falha: `ENOENT`, JSON inválido → 500.\n10. **Resposta → browser** — `Content-Length`/chunked, gzip? (hoje não; poderia ser no cloudflared/borda), parse no browser.\n\n**RTTs:** 1ª conexão ≈ DNS (0–1) + TCP (1) + TLS 1.3 (1) + HTTP (1) = 3–4 RTTs até o primeiro byte, mais o RTT interno borda↔túnel↔Node. 2ª conexão com keep-alive: 1 RTT (HTTP). Com RTT de 30 ms para a borda, isso é a diferença entre ~120 ms e ~30 ms **antes** de qualquer processamento.\n\n**S23 sem Wi-Fi 30 s:** o túnel cai; a borda não tem para onde mandar e responde ela mesma com erro Cloudflare (1033 'Argo Tunnel error' / 530). O DNS, TCP e TLS até a borda continuam funcionando — o que engana quem só olha 'consegui conectar'. Quando o Wi-Fi volta, o cloudflared reconecta sozinho (backoff).\n\n**PM2 reinicia o Node:** durante o gap, a porta 8790 recusa conexão; o cloudflared devolve 502 para a borda, que repassa 502. Conexões keep-alive em voo recebem reset. Zero-downtime exige `pm2 reload` em modo cluster ou duas instâncias atrás de proxy (lab da Fase 3).",
+      "criterios": [
+        "Tabela com ≥ 9 saltos e as 5 colunas preenchidas (timeout, cache, log, falha)",
+        "Conta RTTs corretamente na 1ª conexão (3–4) e na 2ª (1)",
+        "Entende que o túnel é conexão de saída do celular e que a borda responde sozinha quando ele cai",
+        "Distingue o que cada camada loga e onde faltaria request-id",
+        "Cenário de restart: 502 do cloudflared, não erro de TLS/DNS"
+      ],
+      "postmortem": false
+    },
+    {
+      "id": "rtt-sequencial-vs-paralelo",
+      "titulo": "Latência manda: 20 requests em série contra 50 ms de RTT",
+      "termos": ["latencia-vs-banda", "http1-1", "http2"],
+      "nivel": 2,
+      "tempoMin": 15,
+      "ambiente": "node",
+      "enunciado": "Simule um RTT de 50 ms e meça o que 20 requests custam em série e em paralelo — em loopback, onde banda é 'infinita'.\n\nServidor: `http.createServer((req, res) => setTimeout(() => res.end('ok'), 50)).listen(3000)`.\n\nCliente (mesmo processo ou outro): com um `new http.Agent({ keepAlive: true })`, faça (a) 20 requests **sequenciais** (await um a um) e (b) 20 requests **em paralelo** (`Promise.all`). Meça cada rodada com `performance.now()` e imprima os dois totais em ms inteiros.\n\nAntes de rodar, calcule no papel os dois números.\n\nEntregue: o total da rodada SEQUENCIAL, em ms (inteiro).",
+      "passos": [
+        "Escreva a previsão: sequencial ≈ 20 × 50 ms; paralelo ≈ 50 ms + overhead",
+        "Rode 3 vezes; use a mediana",
+        "Troque `keepAlive: true` por `agent: false` na rodada sequencial: quanto mudou? (em loopback, quase nada — o handshake local custa µs; numa rede com 50 ms de RTT real, custaria +1 RTT por request)",
+        "Explique em uma frase por que HTTP/2 resolve isso para o browser e o que ele NÃO resolve (o RTT em si)"
+      ],
+      "entrega": { "tipo": "numero", "min": 1000, "max": 1700, "unidade": "ms", "rotulo": "Total dos 20 requests sequenciais (ms)" },
+      "dicas": [
+        "Sequencial: cada request espera o anterior terminar, então o tempo soma: 20 × (50 ms + ~1 ms). Paralelo: os 20 esperam o MESMO 50 ms, ao mesmo tempo.",
+        "No Windows o setTimeout(50) pode disparar em 50–65 ms por causa da granularidade do timer do SO — por isso a faixa aceita vai até 1.700."
+      ],
+      "solucao": "Sequencial ≈ 1.020–1.300 ms; paralelo ≈ 55–90 ms. A banda não entrou na conta em nenhum momento: são 2 bytes de corpo. O que domina é a **latência multiplicada pela dependência**: N requests que esperam uns pelos outros custam N × RTT, não importa se o link é 1 Gbps ou 10 Gbps. É exatamente o problema N+1 visto pela rede (ver deck de concorrência) e o motivo de a primeira regra de performance de front-end ser 'menos round-trips', não 'menos bytes'.\n\nHTTP/1.1 com keep-alive economiza o handshake, mas cada conexão continua atendendo um request por vez (head-of-line blocking) — o browser abre até 6 conexões por host para compensar. HTTP/2 multiplexa dezenas de streams numa conexão e elimina o HOL no nível HTTP (fica o HOL do TCP, que o HTTP/3/QUIC resolve). Nenhum dos três reduz o RTT: quem depende de 20 respostas em série continua pagando 20 RTTs. Solução de arquitetura: agregar (um endpoint que devolve o conjunto), paralelizar o que não depende, ou aproximar o servidor do cliente (CDN/edge).\n\nSem keep-alive em loopback a diferença é pequena (handshake local ~0,1 ms); com 50 ms de RTT real seria +50 ms por request: 2.000 ms em vez de 1.000.",
+      "criterios": [
+        "Previu ~1.000 ms sequencial e ~50 ms paralelo antes de medir",
+        "Explica que RTT × dependência domina e a banda é irrelevante aqui",
+        "Sabe o que HTTP/2 resolve (HOL HTTP, multiplexação) e o que não resolve (RTT)"
+      ],
+      "postmortem": false
+    }
+  ]
+}
