@@ -6,6 +6,7 @@ import { useStore } from '../store.jsx'
 const LINKS = [
   { to: '/', rotulo: 'Início', Ico: IcoCasa, end: true },
   { to: '/praticas', rotulo: 'Praticar', Ico: IcoTerminal },
+  { to: '/treinos', rotulo: 'Treinos', Ico: IcoChama },
   { to: '/glossario', rotulo: 'Glossário', Ico: IcoLivro },
   { to: '/matriz', rotulo: 'Matriz', Ico: IcoGrade },
   { to: '/cursos', rotulo: 'Cursos', Ico: IcoCurso },

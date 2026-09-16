@@ -10,6 +10,8 @@ import { criarProgresso } from './progresso.js'
 import { carregarEnv, criarMentor } from './mentor.js'
 import { corrigir, criarPraticas, notaAutomatica, notaChecklist } from './praticas.js'
 import { hojeISO, vencido } from './sm2.js'
+import { criarTreinos } from './treinos.js'
+import { criarProgressoTreinos } from './progresso-treinos.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const RAIZ = path.resolve(__dirname, '..')
@@ -26,6 +28,8 @@ const repo = criarRepositorio(CONTEUDO)
 const praticas = criarPraticas(CONTEUDO, repo)
 const cursos = criarCursos(CONTEUDO, repo)
 const progresso = criarProgresso(ARQ_PROGRESSO)
+const treinos = criarTreinos(CONTEUDO, repo)
+const progTreinos = criarProgressoTreinos(progresso, { arquivo: path.join(RAIZ, 'data', 'progresso-treinos.json') })
 const mentor = criarMentor({ arquivoConfig: ARQ_CONFIG, repo, progresso })
 
 const app = express()
@@ -44,9 +48,9 @@ api.get('/saude', (_req, res) => {
     ok: true,
     hoje: hojeISO(),
     decks: repo.listar().length,
-    praticas: praticas.listar().length,
+    praticas: praticas.listar().length, treinos: treinos.listar().length,
     cursos: cursos.listar().length,
-    erros: [...repo.erros(), ...praticas.erros(), ...cursos.erros()],
+    erros: [...repo.erros(), ...praticas.erros(), ...treinos.erros(), ...cursos.erros()],
   })
 })
 
@@ -466,6 +470,122 @@ api.post('/mentor/avaliar', async (req, res) => {
   const { deckId, termoId, resposta, idioma } = req.body || {}
   const r = await mentor.avaliar({ deckId, termoId, resposta, idioma })
   res.status(r.status).json(r.corpo)
+})
+
+// ---- treinos especiais (content/treinos/*.json) ---------------------------
+function acharTreino(req, res) {
+  const t = treinos.obter(String(req.params.id))
+  if (!t) {
+    res.status(404).json({ erro: 'treino não encontrado' })
+    return null
+  }
+  return t
+}
+function acharEtapa(req, res) {
+  const t = acharTreino(req, res)
+  if (!t) return null
+  const e = t.etapas.find((x) => x.id === String(req.params.etapaId))
+  if (!e) {
+    res.status(404).json({ erro: 'etapa não encontrada' })
+    return null
+  }
+  return { treino: t, etapa: e }
+}
+
+// lista: cabeçalho + progresso de cada treino (sem as etapas, que são grandes)
+api.get('/treinos', (_req, res) => {
+  const lista = treinos.listar().map((t) => ({
+    id: t.id,
+    titulo: t.titulo,
+    subtitulo: t.subtitulo,
+    objetivo: t.objetivo,
+    nivel: t.nivel,
+    duracaoDias: t.duracaoDias,
+    tempoTotalMin: t.tempoTotalMin,
+    decks: t.decks,
+    tags: t.tags,
+    recompensa: t.recompensa,
+    etapas: t.etapas.length,
+    tipos: t.tipos,
+    progresso: progTreinos.resumo(t),
+  }))
+  res.json({ treinos: lista, erros: treinos.erros() })
+})
+
+// detalhe: treino público (sem gabarito), estado de cada etapa e o gabarito só do que já foi concluído/revelado
+api.get('/treinos/:id', (req, res) => {
+  const t = acharTreino(req, res)
+  if (!t) return
+  const estados = {}
+  const gabaritos = {}
+  const revelar = []
+  for (const e of t.etapas) {
+    const s = progTreinos.etapa(t.id, e.id)
+    if (s) estados[e.id] = s
+    if (s && (s.estado === 'concluida' || s.revelou)) {
+      revelar.push(e.id)
+      const g = treinos.gabarito(e)
+      if (g) gabaritos[e.id] = g
+    }
+  }
+  res.json({ treino: treinos.publico(t, { revelar }), progresso: progTreinos.resumo(t), estados, gabaritos })
+})
+
+api.post('/treinos/:id/iniciar', (req, res) => {
+  const t = acharTreino(req, res)
+  if (!t) return
+  res.json(progTreinos.iniciar(t))
+})
+
+// zera a temporada inteira (o "recomeçar" da tela final)
+api.post('/treinos/:id/reabrir', (req, res) => {
+  const t = acharTreino(req, res)
+  if (!t) return
+  res.json({ progresso: progTreinos.reabrirTreino(t) })
+})
+
+api.post('/treinos/:id/etapa/:etapaId/abrir', (req, res) => {
+  const r = acharEtapa(req, res)
+  if (!r) return
+  res.json({ estado: progTreinos.abrirEtapa(r.treino.id, r.etapa.id) })
+})
+
+// body { texto } - rascunho da entrega (começar no PC, terminar no celular)
+api.put('/treinos/:id/etapa/:etapaId/rascunho', (req, res) => {
+  const r = acharEtapa(req, res)
+  if (!r) return
+  res.json({ estado: progTreinos.rascunho(r.treino.id, r.etapa.id, req.body?.texto) })
+})
+
+// body { n } - só faz sentido em etapa do tipo desafio (as dicas são do exercício)
+api.post('/treinos/:id/etapa/:etapaId/dica', (req, res) => {
+  const r = acharEtapa(req, res)
+  if (!r) return
+  const dicas = r.etapa.tipo === 'desafio' ? r.etapa.corpo.exercicio.dicas : []
+  if (!dicas.length) return res.status(400).json({ erro: 'etapa sem dicas' })
+  const n = Math.max(1, Math.min(dicas.length, Number(req.body?.n) || 1))
+  res.json({ estado: progTreinos.dica(r.treino.id, r.etapa.id, n), dicas: dicas.slice(0, n) })
+})
+
+// libera o gabarito da etapa (solução do desafio, respostas do cronometrado, modelo do simulado)
+api.post('/treinos/:id/etapa/:etapaId/revelar', (req, res) => {
+  const r = acharEtapa(req, res)
+  if (!r) return
+  res.json({ estado: progTreinos.revelar(r.treino.id, r.etapa.id), gabarito: treinos.gabarito(r.etapa) })
+})
+
+// entrega da etapa: a correção objetiva é a MESMA das práticas (corrigir/notaAutomatica/notaChecklist)
+api.post('/treinos/:id/etapa/:etapaId/responder', (req, res) => {
+  const r = acharEtapa(req, res)
+  if (!r) return
+  const out = progTreinos.responderEtapa(r.treino, r.etapa, req.body)
+  res.status(out.status).json(out.corpo)
+})
+
+api.post('/treinos/:id/etapa/:etapaId/reabrir', (req, res) => {
+  const r = acharEtapa(req, res)
+  if (!r) return
+  res.json(progTreinos.reabrirEtapa(r.treino, r.etapa.id))
 })
 
 // URL publica do tunel Cloudflare (gravada por tunnel.cjs; muda a cada restart do cloudflared)

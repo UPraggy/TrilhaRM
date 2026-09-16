@@ -68,6 +68,20 @@ export const api = {
     req(`/api/cursos/${encodeURIComponent(id)}/atividade/${encodeURIComponent(atvId)}/responder`, { method: 'POST', body: JSON.stringify(corpo) }),
   cursoAtividadeMentor: (id, atvId, resposta) =>
     req(`/api/cursos/${encodeURIComponent(id)}/atividade/${encodeURIComponent(atvId)}/mentor`, { method: 'POST', body: JSON.stringify({ resposta }) }),
+  // treinos especiais (content/treinos)
+  treinos: () => req('/api/treinos'),
+  treino: (id) => req(`/api/treinos/${encodeURIComponent(id)}`),
+  treinoIniciar: (id) => req(`/api/treinos/${encodeURIComponent(id)}/iniciar`, { method: 'POST', body: '{}' }),
+  treinoReabrir: (id) => req(`/api/treinos/${encodeURIComponent(id)}/reabrir`, { method: 'POST', body: '{}' }),
+  treinoEtapaAbrir: (id, etapaId) => req(`/api/treinos/${encodeURIComponent(id)}/etapa/${encodeURIComponent(etapaId)}/abrir`, { method: 'POST', body: '{}' }),
+  treinoEtapaRascunho: (id, etapaId, texto) =>
+    req(`/api/treinos/${encodeURIComponent(id)}/etapa/${encodeURIComponent(etapaId)}/rascunho`, { method: 'PUT', body: JSON.stringify({ texto }) }),
+  treinoEtapaDica: (id, etapaId, n) =>
+    req(`/api/treinos/${encodeURIComponent(id)}/etapa/${encodeURIComponent(etapaId)}/dica`, { method: 'POST', body: JSON.stringify({ n }) }),
+  treinoEtapaRevelar: (id, etapaId) => req(`/api/treinos/${encodeURIComponent(id)}/etapa/${encodeURIComponent(etapaId)}/revelar`, { method: 'POST', body: '{}' }),
+  treinoEtapaResponder: (id, etapaId, corpo) =>
+    req(`/api/treinos/${encodeURIComponent(id)}/etapa/${encodeURIComponent(etapaId)}/responder`, { method: 'POST', body: JSON.stringify(corpo) }),
+  treinoEtapaReabrir: (id, etapaId) => req(`/api/treinos/${encodeURIComponent(id)}/etapa/${encodeURIComponent(etapaId)}/reabrir`, { method: 'POST', body: '{}' }),
 }
 
 export const { obterConfig, salvarConfig, listarModelos, avaliarComMentor } = api

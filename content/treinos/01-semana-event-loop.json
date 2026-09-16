@@ -1,0 +1,261 @@
+{
+  "id": "semana-event-loop",
+  "titulo": "Semana do Event Loop",
+  "subtitulo": "7 dias medindo o que o Node faz enquanto o seu código espera",
+  "objetivo": "Explicar as fases do event loop olhando para uma medição sua, e defender numa entrevista por que um endpoint ficou lento com a CPU em 30%.",
+  "nivel": 4,
+  "duracaoDias": 7,
+  "tempoTotalMin": 265,
+  "decks": ["node-internals", "concorrencia-performance"],
+  "termos": ["event-loop", "fases-event-loop", "event-loop-lag"],
+  "tags": ["node", "performance", "diagnostico", "entrevista"],
+  "preRequisitos": [
+    "Node 22 no PATH (node -v)",
+    "Git Bash ou Termux para rodar os scripts",
+    "npx autocannon disponível (ou instale na hora: npx autocannon --help)"
+  ],
+  "recompensa": "Você abre um gráfico de lag do loop, aponta a fase que travou e prova com número — e consegue explicar isso em 2 minutos para um entrevistador.",
+  "etapas": [
+    {
+      "id": "d1-aquecimento",
+      "tipo": "aquecimento",
+      "titulo": "Reconhecer o vocabulário antes de medir",
+      "dia": 1,
+      "tempoMin": 15,
+      "resumo": "15 termos do deck node-internals no modo flashcards, sem consultar nada.",
+      "termos": ["event-loop", "fases-event-loop"],
+      "aquecimento": {
+        "modo": "flashcards",
+        "fonte": "deck:node-internals",
+        "quantidade": 15,
+        "soVencidos": false,
+        "meta": "Tente responder em voz alta ANTES de virar a carta. Nota honesta: 2 é 'explico', não 'já vi isso'."
+      }
+    },
+    {
+      "id": "d1-leitura-fases",
+      "tipo": "leitura",
+      "titulo": "Ler as 6 fases como uma volta, não como uma fila",
+      "dia": 1,
+      "tempoMin": 15,
+      "resumo": "O modelo mental que faz o resto da semana fazer sentido.",
+      "termos": ["fases-event-loop", "libuv"],
+      "leitura": {
+        "markdown": "O erro mais comum é imaginar o event loop como **uma fila só**. Não é. Cada volta (\"tick\" do loop) passa por fases, nesta ordem:\n\n1. **timers** — callbacks de `setTimeout` e `setInterval` cujo prazo já venceu.\n2. **pending callbacks** — alguns callbacks de sistema adiados da volta anterior (erros de TCP, por exemplo).\n3. **idle/prepare** — uso interno do libuv.\n4. **poll** — o coração: aqui o loop **espera** por I/O e executa os callbacks que chegaram (leitura de arquivo, socket, resposta do banco).\n5. **check** — callbacks de `setImmediate`.\n6. **close callbacks** — `socket.on('close')` e afins.\n\nEntre **cada** callback, o Node esvazia duas filas que não são fases: primeiro a de `process.nextTick`, depois a de microtasks (`Promise.then`, `await`). Por isso um `process.nextTick` recursivo consegue **matar o loop de fome**: ele nunca deixa a volta continuar.\n\n```\n// dentro de um callback de I/O (fase poll), isso é GARANTIDO:\nsetImmediate(() => console.log('B')) // fase check, MESMA volta\nsetTimeout(() => console.log('A'), 0) // fase timers, PRÓXIMA volta\n// saída: B depois A\n```\n\nO que **não** é garantido é a ordem de `setTimeout(0)` contra `setImmediate` no escopo principal: depende de quantos milissegundos o processo levou para entrar no loop. Se você já viu isso alternar entre execuções, não é bug — é a fase timers checando um prazo que às vezes já venceu e às vezes não.\n\nO libuv é quem dorme no `poll` (`epoll` no Linux, IOCP no Windows) e quem mantém a **thread pool** de 4 threads usada por `fs`, `dns.lookup`, `zlib` e `crypto`. Operação de rede não usa a pool; leitura de arquivo usa. É por isso que 5 leituras pesadas em paralelo fazem a 5ª esperar.",
+        "fonte": "Node.js docs — Event Loop, Timers, and process.nextTick()",
+        "link": "https://nodejs.org/en/learn/asynchronous-work/event-loop-timers-and-nexttick",
+        "perguntas": [
+          "Em qual fase roda o callback de fs.readFile?",
+          "Por que setImmediate dentro de um callback de I/O sempre vence um setTimeout(0)?",
+          "Quantas threads tem a pool do libuv por padrão, e quem a usa?"
+        ]
+      }
+    },
+    {
+      "id": "d2-ordem-de-execucao",
+      "tipo": "desafio",
+      "titulo": "Prever a ordem e depois provar no terminal",
+      "dia": 2,
+      "tempoMin": 25,
+      "resumo": "Escreva a previsão no papel, rode 5 vezes e cole a saída.",
+      "termos": ["fases-event-loop", "microtasks-vs-macrotasks", "process-nexttick"],
+      "desafio": {
+        "ambiente": "node",
+        "nivel": 3,
+        "enunciado": "Salve como `ordem.js`:\n\n```\nconst fs = require('node:fs')\n\nprocess.nextTick(() => console.log('nextTick'))\nPromise.resolve().then(() => console.log('promise'))\nsetTimeout(() => console.log('timeout'), 0)\nfs.readFile(__filename, () => {\n  setTimeout(() => console.log('io-timeout'), 0)\n  setImmediate(() => console.log('io-immediate'))\n})\nconsole.log('sync')\n```\n\nAntes de rodar, escreva no papel as 6 linhas na ordem que você espera. Depois rode 5 vezes:\n\n```\nfor i in 1 2 3 4 5; do node ordem.js | tr '\\n' ' '; echo; done\n```\n\nDuas linhas podem trocar de lugar entre execuções — descubra quais e por quê.\n\nEntregue: a saída de UMA execução, 6 linhas, uma por linha.",
+        "passos": [
+          "Escreva a previsão no papel, sem rodar",
+          "Rode 5 vezes com o for acima",
+          "Explique em uma frase qual par de linhas pode trocar e por quê"
+        ],
+        "entrega": {
+          "tipo": "saida",
+          "esperado": "sync\nnextTick\npromise\ntimeout\nio-immediate\nio-timeout",
+          "esperadoQualquer": ["sync\nnextTick\npromise\nio-immediate\ntimeout\nio-timeout"],
+          "rotulo": "Cole as 6 linhas, uma por linha"
+        },
+        "dicas": [
+          "Código síncrono primeiro; depois a fila do nextTick INTEIRA; depois as microtasks de Promise. Só então a volta do loop começa.",
+          "Dentro do callback do readFile (fase poll), setImmediate é fase check da MESMA volta e setTimeout(0) só vem na fase timers da volta seguinte."
+        ],
+        "solucao": "Ordem mais comum:\n\nsync          (síncrono)\nnextTick      (fila do nextTick esvazia antes das microtasks)\npromise       (microtasks)\ntimeout       (fase timers — o prazo de 0 ms já venceu)\nio-immediate  (fase check da volta em que o readFile completou)\nio-timeout    (fase timers da volta SEGUINTE)\n\nO único par que pode trocar é `timeout` × `io-immediate`: se a leitura do arquivo terminar antes de o processo chegar na fase timers, o callback de I/O roda primeiro e a saída vira sync/nextTick/promise/io-immediate/timeout/io-timeout. O que NUNCA muda: `io-immediate` antes de `io-timeout` (check da mesma volta vence timers da próxima) e `nextTick` antes de `promise`.",
+        "criterios": [
+          "Cita a fase de cada linha, não só a ordem",
+          "Explica por que io-immediate vence io-timeout sem citar 'é mais rápido'"
+        ]
+      }
+    },
+    {
+      "id": "d3-perguntas-relampago",
+      "tipo": "cronometrado",
+      "titulo": "Responder 8 perguntas em 8 minutos",
+      "dia": 3,
+      "tempoMin": 10,
+      "resumo": "Sem consultar nada. Depois marque o que acertou — honestidade é o preço do método.",
+      "cronometrado": {
+        "minutos": 8,
+        "acertosMin": 6,
+        "criterio": "6 de 8 sem abrir nenhuma aba.",
+        "perguntas": [
+          {
+            "id": "q-fase-io",
+            "pergunta": "Em que fase do loop roda o callback de fs.readFile?",
+            "resposta": "poll",
+            "termos": ["fases-event-loop"]
+          },
+          {
+            "id": "q-nexttick-vs-promise",
+            "pergunta": "Quem esvazia primeiro: a fila do process.nextTick ou a de microtasks (Promise)?",
+            "resposta": "A fila do process.nextTick, inteira, antes de qualquer microtask de Promise.",
+            "termos": ["process-nexttick"]
+          },
+          {
+            "id": "q-setimmediate-io",
+            "pergunta": "Dentro de um callback de I/O, quem roda antes: setImmediate ou setTimeout(fn, 0)?",
+            "resposta": "setImmediate (fase check da mesma volta); o setTimeout só na fase timers da volta seguinte.",
+            "termos": ["microtasks-vs-macrotasks"]
+          },
+          {
+            "id": "q-threadpool",
+            "pergunta": "Qual o tamanho padrão da thread pool do libuv e qual variável muda isso?",
+            "resposta": "4 threads; UV_THREADPOOL_SIZE.",
+            "termos": ["thread-pool-libuv"]
+          },
+          {
+            "id": "q-quem-usa-pool",
+            "pergunta": "fs, dns.lookup, zlib e crypto usam a thread pool. E uma requisição HTTP de saída, usa?",
+            "resposta": "Não: I/O de rede é assíncrono no kernel (epoll/IOCP), não passa pela pool.",
+            "termos": ["libuv"]
+          },
+          {
+            "id": "q-lag",
+            "pergunta": "O que exatamente o 'event loop lag' mede?",
+            "resposta": "O atraso entre o momento em que um timer deveria disparar e o momento em que ele realmente disparou — ou seja, quanto tempo a volta do loop ficou presa.",
+            "termos": ["event-loop-lag"]
+          },
+          {
+            "id": "q-cpu-bound",
+            "pergunta": "Por que um JSON.parse de 5 MB derruba o p99 de TODAS as rotas, e não só da rota que chamou?",
+            "resposta": "Porque é trabalho CPU-bound rodando na thread do loop: enquanto ele não termina, nenhum outro callback (de nenhuma rota) é executado.",
+            "termos": ["cpu-bound-vs-io-bound"]
+          },
+          {
+            "id": "q-starvation",
+            "pergunta": "O que acontece com um process.nextTick que se re-agenda dentro de si mesmo?",
+            "resposta": "Mata o loop de fome: a fila do nextTick é esvaziada antes de a volta continuar, então o loop nunca avança de fase.",
+            "termos": ["process-nexttick"]
+          }
+        ]
+      }
+    },
+    {
+      "id": "d4-medir-o-lag",
+      "tipo": "mao-na-massa",
+      "titulo": "Medir o lag, quebrar o loop e consertar com worker_threads",
+      "dia": 4,
+      "tempoMin": 75,
+      "resumo": "Um endpoint que trava, um número antes e um número depois.",
+      "termos": ["event-loop-lag", "worker-threads", "cpu-bound-vs-io-bound"],
+      "mao-na-massa": {
+        "contexto": "Você tem 75 minutos. A meta não é o código bonito: é sair com DOIS números medidos por você e a explicação do que mudou entre eles.",
+        "stack": ["node", "express"],
+        "tempoCaixa": 75,
+        "entregavel": "Uma pasta `lab-loop/` com server.js, worker.js e um README de 10 linhas com os dois números.",
+        "passos": [
+          "Suba um Express com GET /ping (responde { ok: true }) e GET /pesado, que faz JSON.parse de uma string de ~5 MB e devolve o tamanho",
+          "Instrumente o lag: a cada 100 ms, compare o horário previsto com o real (setInterval + process.hrtime.bigint) e logue o p99 a cada 5 s",
+          "Meça em paralelo: `npx autocannon -c 20 -d 15 http://localhost:3000/ping` enquanto dispara /pesado num loop de curl. Anote p99 do /ping e o lag máximo",
+          "Mova o JSON.parse para um worker_threads (ou new Worker por requisição, se for mais rápido de escrever)",
+          "Meça de novo, exatamente do mesmo jeito, e anote os dois números novos",
+          "Escreva o README: número antes, número depois, e a frase de uma linha do porquê"
+        ],
+        "criterioPronto": [
+          "O /ping responde 200 durante todo o teste, nas duas versões",
+          "O p99 do /ping caiu pelo menos pela metade depois do worker",
+          "O lag máximo do loop ficou abaixo de 100 ms na versão com worker",
+          "O README tem os quatro números (p99 e lag, antes e depois) e não só adjetivos",
+          "Você consegue dizer, sem olhar, qual fase do loop ficava presa na versão ruim"
+        ]
+      }
+    },
+    {
+      "id": "d5-postmortem",
+      "tipo": "desafio",
+      "titulo": "Escrever o postmortem do incidente",
+      "dia": 5,
+      "tempoMin": 35,
+      "resumo": "Failure lab: sintoma → evidência → causa → correção → o que muda no processo.",
+      "termos": ["event-loop-lag", "concorrencia-performance/percentis", "concorrencia-performance/bottleneck-analysis"],
+      "desafio": {
+        "ambiente": "papel",
+        "nivel": 4,
+        "postmortem": true,
+        "enunciado": "Cenário real: 14h07, o alerta dispara. A API Node (PM2, 1 instância, 2 vCPU) está com p50 de 80 ms, p95 de 900 ms e p99 de 8 s. CPU do host em 32%, memória em 55%, banco com p99 de 12 ms e zero erros. O deploy da manhã incluiu um endpoint novo de importação que recebe um CSV e faz a validação em memória.\n\nEscreva o postmortem seguindo exatamente: **sintoma → evidência → causa → correção → o que muda no processo**.\n\nEntregue: o texto do postmortem (mínimo ~10 linhas), citando qual medição você pediria primeiro e por que a CPU em 32% é a pista mais importante do caso.",
+        "passos": [
+          "Separe sintoma (o que o usuário viu) de evidência (o número)",
+          "Diga qual medição pediria PRIMEIRO e o que cada resultado possível eliminaria",
+          "Termine com a mudança de processo, não com 'ter mais cuidado'"
+        ],
+        "entrega": {
+          "tipo": "texto",
+          "minimoChars": 600,
+          "rotulo": "Cole o postmortem"
+        },
+        "criterios": [
+          "Usa a distância entre p50 e p99 como evidência de enfileiramento, não de lentidão geral",
+          "Explica por que CPU em 32% com p99 em 8 s aponta para uma thread só (o loop) presa, e não para falta de capacidade",
+          "Pede uma medição concreta (lag do loop, --cpu-prof ou flame graph) antes de propor solução",
+          "A correção separa o CPU-bound do caminho da requisição (worker, fila, streaming) em vez de 'otimizar o parse'",
+          "A mudança de processo é verificável (alerta de lag do loop, teste de carga no CI, limite de payload)"
+        ],
+        "solucao": "Sintoma: a partir das 14h07 os clientes veem timeouts esporádicos; o p99 de TODAS as rotas sobe junto, inclusive as que só leem cache.\n\nEvidência: p50 80 ms × p99 8 s (fator 100) com CPU em 32%, memória estável e banco saudável. Quando o p50 fica bom e o p99 explode, o problema não é throughput nem I/O externo: é fila. Com uma thread só de JavaScript, a fila é o event loop.\n\nCausa: o endpoint de importação faz a validação do CSV de forma síncrona no caminho da requisição. Cada chamada prende a fase poll por segundos; todo callback pendente (de qualquer rota) espera. A CPU do HOST fica em 32% porque só um dos núcleos está saturado — a média esconde a thread única em 100%.\n\nConfirmação: medir o lag do loop (comparar o disparo previsto × real de um timer de 100 ms) ou rodar com --cpu-prof durante 30 s e olhar o flame graph. Se o lag acompanhar os picos de p99, está provado.\n\nCorreção: tirar o trabalho CPU-bound do caminho da requisição — worker_threads para a validação, ou aceitar o arquivo, responder 202 e processar numa fila. Streaming linha a linha em vez de carregar tudo em memória. Limite de tamanho de payload no proxy.\n\nProcesso: alerta em cima do lag do loop (não só de CPU), teste de carga com payload realista no CI antes do merge, e a regra escrita: nenhum handler pode fazer trabalho CPU-bound acima de X ms sem sair da thread do loop."
+      }
+    },
+    {
+      "id": "d6-ensinar",
+      "tipo": "ensinar",
+      "titulo": "Explicar o event loop para quem nunca ouviu falar",
+      "dia": 6,
+      "tempoMin": 45,
+      "resumo": "Degrau 5 da escala: se você não consegue ensinar, você não sabe.",
+      "termos": ["event-loop", "fases-event-loop"],
+      "ensinar": {
+        "publico": "um dev júnior do time, que sabe JavaScript mas acha que Node é 'multithread por baixo'",
+        "formato": "audio",
+        "duracaoMin": 5,
+        "roteiro": [
+          "Uma analogia sua (balcão, cozinha, caixa de supermercado) — não a que você leu",
+          "As fases, na ordem, sem decorar nomes: o que acontece em cada uma",
+          "Onde o nextTick e as promises entram (e por que não são fases)",
+          "O caso real que você mediu no dia 4, com os números",
+          "O erro que quase todo mundo comete: achar que async torna o código paralelo"
+        ],
+        "criterios": [
+          "Zero jargão sem definição na primeira vez que aparece",
+          "Pelo menos um número medido por você",
+          "A analogia sobrevive à pergunta 'e o que acontece se um pedido demorar 8 segundos?'",
+          "Termina com um 'como eu provaria isso' concreto"
+        ],
+        "minimoChars": 500
+      }
+    },
+    {
+      "id": "d7-retrospectiva",
+      "tipo": "retrospectiva",
+      "titulo": "Fechar a semana com uma frase que serve na entrevista",
+      "dia": 7,
+      "tempoMin": 20,
+      "resumo": "O que mudou entre o dia 1 e hoje, e o que ainda não dá para defender.",
+      "retrospectiva": {
+        "perguntas": [
+          "O que você sabia dizer no dia 1 e agora consegue PROVAR com um número?",
+          "Qual medição te surpreendeu, e o que você esperava antes de medir?",
+          "Se um entrevistador perguntar 'por que a CPU estava em 30% com p99 de 8 s?', qual é a sua resposta de 60 segundos?",
+          "O que desta semana você ainda não conseguiria ensinar sem consultar nada?"
+        ],
+        "proximoPasso": "Nota abaixo de 3: refaça só as etapas d2 e d4 na semana que vem, medindo de novo. Nota 4 ou 5: puxe o deck concorrencia-performance e faça o treino de simulado de entrevista.",
+        "notaFinal": true
+      }
+    }
+  ]
+}

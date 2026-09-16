@@ -1,0 +1,234 @@
+{
+  "id": "simulado-entrevista-senior",
+  "titulo": "Simulado de entrevista sênior",
+  "subtitulo": "90 minutos no formato real: vocabulário, conversa em PT e EN, código e system design no papel",
+  "objetivo": "Sustentar uma entrevista sênior de ponta a ponta: responder em PT e EN com trade-off explícito, escrever código correto sob pressão e desenhar um sistema no papel defendendo cada escolha.",
+  "nivel": 4,
+  "tempoTotalMin": 90,
+  "decks": ["vocabulario-entrevista-en", "arquitetura-software", "node-internals", "concorrencia-performance"],
+  "termos": [
+    "vocabulario-entrevista-en/the-trade-off-here-is",
+    "vocabulario-entrevista-en/let-me-think-out-loud",
+    "arquitetura-software/api-idempotente"
+  ],
+  "tags": ["entrevista", "ingles", "system-design", "node"],
+  "preRequisitos": [
+    "90 minutos sem interrupção e um cronômetro",
+    "Papel e caneta (o system design é no papel, de propósito)",
+    "Gravador de voz do celular ligado nas etapas faladas"
+  ],
+  "recompensa": "Você tem uma gravação sua respondendo em inglês, um desenho de sistema que sobrevive a três 'por quê?' seguidos e uma solução em Node escrita em 20 minutos — as três coisas que a entrevista cobra e o deck sozinho não treina.",
+  "etapas": [
+    {
+      "id": "aquecimento-en",
+      "tipo": "aquecimento",
+      "titulo": "Aquecer o vocabulário de entrevista em inglês",
+      "tempoMin": 10,
+      "resumo": "12 termos do deck de inglês técnico antes de abrir a boca.",
+      "termos": ["vocabulario-entrevista-en/the-trade-off-here-is", "vocabulario-entrevista-en/to-scale-horizontally"],
+      "aquecimento": {
+        "modo": "quiz",
+        "fonte": "deck:vocabulario-entrevista-en",
+        "quantidade": 12,
+        "soVencidos": false,
+        "meta": "Leia cada expressão em voz alta antes de responder. Boca quente, cabeça quente."
+      }
+    },
+    {
+      "id": "conversa-pt-en",
+      "tipo": "simulado",
+      "titulo": "Responder 6 perguntas — 3 em PT, 3 em EN",
+      "tempoMin": 30,
+      "resumo": "Cronômetro ligado, resposta falada em voz alta, gravador ligado. Só depois você vê o gabarito e se dá a nota.",
+      "simulado": {
+        "idioma": "misto",
+        "minutosPorPergunta": 5,
+        "criterios": [
+          "Começa reformulando a pergunta ou pedindo o contexto que falta, em vez de sair respondendo",
+          "Dá um trade-off explícito ('o custo disso é…'), não só a escolha",
+          "Usa um exemplo concreto de algo que você fez de verdade",
+          "Termina dizendo o que mediria para saber se a escolha foi certa",
+          "Em inglês: frase curta, sem tradução literal de PT, e sem travar em busca da palavra perfeita"
+        ],
+        "perguntas": [
+          {
+            "id": "q1-pt-idempotencia",
+            "idioma": "pt",
+            "pergunta": "O cliente reclama que a cobrança saiu duas vezes. O retry do app dispara depois de 10 s sem resposta. Como você garante que isso não aconteça mais, sem tirar o retry?",
+            "contexto": "Entrevistador técnico, quer ver se você conhece idempotência de verdade ou só a palavra.",
+            "pontosEsperados": [
+              "Chave de idempotência gerada pelo CLIENTE e enviada no header",
+              "Servidor guarda o resultado da primeira execução e devolve o mesmo resultado para a mesma chave",
+              "Janela de retenção da chave e o que fazer quando ela expira",
+              "Timeout do cliente menor que o timeout do servidor cria a duplicata — dá para citar a corrida",
+              "Retry só com backoff e só em erro seguro (5xx/timeout), nunca em 4xx"
+            ],
+            "respostaModelo": "Primeiro separo as duas coisas: retry é do cliente, idempotência é do servidor. O retry sozinho SEMPRE vai duplicar, porque o timeout do cliente pode estourar depois de o servidor ter commitado. A correção é o cliente mandar uma chave de idempotência (um UUID por tentativa de cobrança, não por request), o servidor gravar essa chave junto com a resposta numa tabela com unique constraint e, na segunda chamada com a mesma chave, devolver a resposta gravada em vez de executar de novo. O trade-off é armazenamento e uma janela de retenção — 24 h costuma bastar — e o cuidado de gravar a chave na MESMA transação do efeito. Eu mediria pela taxa de acerto do cache de idempotência e por um alerta de cobranças com o mesmo valor e cliente em menos de 1 min.",
+            "seguimento": "E se o processamento levar 30 segundos e o cliente reenviar no meio?",
+            "termos": ["arquitetura-software/api-idempotente"]
+          },
+          {
+            "id": "q2-pt-p99",
+            "idioma": "pt",
+            "pergunta": "p50 em 80 ms, p99 em 8 s, CPU do host em 30%. Por onde você começa?",
+            "contexto": "Pergunta de diagnóstico. Eles querem o método, não a resposta.",
+            "pontosEsperados": [
+              "A distância entre p50 e p99 indica enfileiramento, não lentidão média",
+              "CPU baixa no host não exclui uma thread saturada (event loop)",
+              "Nomear a próxima medição concreta antes de propor solução",
+              "Separar hipóteses: GC, CPU-bound no loop, pool de conexões, dependência externa lenta"
+            ],
+            "respostaModelo": "Eu começo dizendo o que esse par de números já elimina: se o p50 está bom, o caminho normal está bom; o que sobe no p99 é fila. Com CPU do host em 30% e Node, a suspeita número um é uma thread só saturada — o event loop preso por trabalho CPU-bound — porque a média entre núcleos esconde isso. A próxima medição é o lag do loop e um --cpu-prof de 30 s no pico; se o lag acompanhar o p99, está provado. As hipóteses alternativas que eu testaria em seguida são pool de conexões pequeno (fila antes do banco) e GC de pausa longa. Só depois de um dos três bater eu falo em solução.",
+            "seguimento": "E se o lag estiver limpo e o p99 continuar alto?",
+            "termos": ["concorrencia-performance/percentis", "node-internals/event-loop-lag"]
+          },
+          {
+            "id": "q3-pt-monolito",
+            "idioma": "pt",
+            "pergunta": "O time quer quebrar o monólito em microsserviços. Você está no papel de sênior: o que você diz na reunião?",
+            "contexto": "Testa maturidade. Concordar na hora e discordar na hora são igualmente ruins.",
+            "pontosEsperados": [
+              "Perguntar qual dor concreta motiva a quebra (deploy, escala, times, isolamento de falha)",
+              "Monólito modular como passo intermediário e mais barato",
+              "Custo real: rede, consistência, observabilidade distribuída, on-call",
+              "Lei de Conway: a arquitetura vai seguir o desenho dos times",
+              "Estratégia incremental (strangler fig) em vez de reescrita"
+            ],
+            "respostaModelo": "Primeiro eu pergunto qual é a dor: se é deploy travado, tempo de build, escala de um pedaço só ou times pisando um no outro. Cada uma dessas tem solução diferente e só uma delas realmente pede microsserviço. Na maioria dos casos eu proponho monólito modular primeiro — fronteiras de módulo reais, banco ainda compartilhado — porque isso paga 80% do benefício com 20% do custo e, se as fronteiras estiverem erradas, sai barato consertar. O custo que eu coloco na mesa é: latência de rede virando p99, consistência que deixa de ser transacional, e a conta de observabilidade e de on-call. Se ainda assim fizer sentido, eu tiro UM pedaço pelo strangler fig, o que tem fronteira mais limpa, e a gente aprende com ele antes de decidir o resto.",
+            "seguimento": "E se o CTO já anunciou a decisão publicamente?",
+            "termos": ["arquitetura-software/monolito-modular", "arquitetura-software/strangler-fig"]
+          },
+          {
+            "id": "q4-en-experience",
+            "idioma": "en",
+            "pergunta": "Tell me about a production incident you owned end to end. What happened, what did you do, and what changed afterwards?",
+            "contexto": "Opening behavioural question, 3 minutes max. Speak out loud, record yourself.",
+            "pontosEsperados": [
+              "Situation → action → measurable outcome, in that order",
+              "First person and ownership ('I paged…', 'I rolled back…'), no vague 'we'",
+              "One number: downtime, error rate, latency before and after",
+              "The process change at the end, not just the fix",
+              "Natural use of: to roll back, root cause, postmortem, runbook"
+            ],
+            "respostaModelo": "Sure. Last year our trading bot stopped taking positions overnight. The symptom was silent: no errors, just zero orders. I was on call, so I checked the logs first and found the process was alive but stuck. The root cause was a position that had been sold outside the bot, so the slot stayed locked forever — and a null balance was being read as zero, which confirmed the wrong state. I rolled back to the previous build to stop the bleeding, then patched the slot reconciliation and shipped it the next morning. What changed afterwards matters more than the fix: we added an alert on 'zero orders in 6 hours', which is a symptom alert, not a cause alert, and I wrote the runbook so the next person does not need me. Since then we have caught two similar stalls within minutes instead of overnight.",
+            "seguimento": "What would you have done differently if you had been paged at 3am?",
+            "termos": ["vocabulario-entrevista-en/root-cause", "vocabulario-entrevista-en/postmortem", "vocabulario-entrevista-en/to-roll-back"]
+          },
+          {
+            "id": "q5-en-tradeoff",
+            "idioma": "en",
+            "pergunta": "We need to add a cache in front of the database. Walk me through the trade-offs.",
+            "contexto": "They want to hear you reason out loud in English, not a memorised list.",
+            "pontosEsperados": [
+              "Clarify first: read-heavy? how stale can data be? what is the hit rate you expect?",
+              "Invalidation is the hard part — name a concrete strategy (TTL, write-through, event-based)",
+              "Failure modes: stampede on cold start, stale reads, cache as a single point of failure",
+              "Explicit phrase: 'the trade-off here is…'",
+              "Say what you would measure: hit rate, p99 before/after, staleness window"
+            ],
+            "respostaModelo": "Let me think out loud for a second. Before adding anything, I would clarify two things: how read-heavy this is, and how stale the data is allowed to be — that second answer decides the whole design. If we can live with, say, 30 seconds of staleness, a simple TTL cache gets us most of the win with almost no complexity. The trade-off here is correctness for latency: every cached read is a read that might be wrong. The hard part is never the cache, it is the invalidation, so I would rather have a short TTL I understand than a clever write-through I cannot debug at 3am. I would also plan for the cold start: without a lock or a jittered TTL you get a stampede the moment the cache restarts. And I would measure hit rate and p99 before and after — if the hit rate is below sixty percent, the cache is mostly overhead and I would drop it.",
+            "seguimento": "How would you handle a key that is read a thousand times per second and written once a minute?",
+            "termos": ["vocabulario-entrevista-en/the-trade-off-here-is", "vocabulario-entrevista-en/to-be-stale", "vocabulario-entrevista-en/to-invalidate"]
+          },
+          {
+            "id": "q6-en-pushback",
+            "idioma": "en",
+            "pergunta": "Your tech lead wants to ship on Friday afternoon. You think it is risky. What do you say?",
+            "contexto": "They are testing whether you can disagree without being difficult.",
+            "pontosEsperados": [
+              "Disagree with the plan, not with the person",
+              "Name the concrete risk and who pays for it",
+              "Offer an alternative that still ships (feature flag, canary, Monday morning)",
+              "Explicit phrases: 'to push back on', 'heads up', 'I would lean towards'",
+              "Accept the decision if it is not yours to make, and write down the mitigation"
+            ],
+            "respostaModelo": "I would push back on the timing, not on the release itself. My concern is specific: if something breaks at 6pm on a Friday, the people who can fix it are already gone, so a ten-minute rollback becomes a weekend incident — and the on-call person pays for it, not us. So I would lean towards one of two options: ship it behind a feature flag today and turn it on Monday morning, or do a canary to five percent now and watch it for an hour. Both let us ship without betting the weekend on it. If the lead still wants the full release, that is his call — I would just ask for a heads up to the on-call person and make sure the rollback is one command and documented.",
+            "seguimento": "And if he says the client was already promised Friday?",
+            "termos": ["vocabulario-entrevista-en/to-push-back-on", "vocabulario-entrevista-en/id-lean-towards", "vocabulario-entrevista-en/heads-up"]
+          }
+        ]
+      }
+    },
+    {
+      "id": "codigo-node",
+      "tipo": "desafio",
+      "titulo": "Escrever um single-flight em Node em 20 minutos",
+      "tempoMin": 20,
+      "resumo": "Código de entrevista: enunciado curto, cronômetro ligado, saída exata.",
+      "termos": ["node-internals/promise-internals", "concorrencia-performance/batching"],
+      "desafio": {
+        "ambiente": "node",
+        "nivel": 4,
+        "enunciado": "Clássico de entrevista: **single-flight** (ou request coalescing). Chamadas concorrentes com a MESMA chave devem compartilhar uma única execução; quando ela termina, a próxima chamada executa de novo.\n\nImplemente `umDeCadaVez(fn)` em JavaScript puro (sem dependências) e rode exatamente este teste em `single-flight.js`:\n\n```\nfunction umDeCadaVez(fn) {\n  // sua implementação aqui\n}\n\nlet chamadas = 0\nconst buscar = umDeCadaVez(async (id) => {\n  chamadas++\n  await new Promise((r) => setTimeout(r, 50))\n  return `v:${id}`\n})\n\nasync function main() {\n  const r = await Promise.all([buscar('a'), buscar('a'), buscar('b')])\n  console.log(r.join(','))\n  console.log(chamadas)\n  const depois = await buscar('a')\n  console.log(depois, chamadas)\n}\nmain()\n```\n\nRegra: NÃO mude o teste. Se a sua implementação estiver certa, a saída tem 3 linhas.\n\nEntregue: a saída exata de `node single-flight.js`.",
+        "passos": [
+          "Pense no caso de erro ANTES de escrever: promessa rejeitada não pode ficar guardada",
+          "Rode o teste; se a 2ª linha der 3, você não está compartilhando a promessa",
+          "Se a 3ª linha der 2, você está cacheando para sempre — não é single-flight, é cache"
+        ],
+        "entrega": {
+          "tipo": "saida",
+          "esperado": "v:a,v:a,v:b\n2\nv:a 3",
+          "rotulo": "Cole as 3 linhas da saída"
+        },
+        "dicas": [
+          "Um Map de chave → promessa em andamento resolve tudo. A chave pode ser o primeiro argumento (ou JSON.stringify dos argumentos).",
+          "Limpe a entrada do Map no finally, não no then: rejeição também precisa liberar a chave."
+        ],
+        "solucao": "```\nfunction umDeCadaVez(fn) {\n  const emVoo = new Map()\n  return function (...args) {\n    const chave = JSON.stringify(args)\n    if (emVoo.has(chave)) return emVoo.get(chave)\n    const p = Promise.resolve()\n      .then(() => fn.apply(this, args))\n      .finally(() => emVoo.delete(chave))\n    emVoo.set(chave, p)\n    return p\n  }\n}\n```\n\nSaída:\n\nv:a,v:a,v:b\n2\nv:a 3\n\nPor que 2 na segunda linha: as duas chamadas de 'a' pegam a MESMA promessa, então `fn` roda uma vez para 'a' e uma para 'b'. Por que 3 na terceira: o `finally` apagou a chave quando a primeira terminou, então a chamada seguinte executa de novo — é single-flight, não cache.\n\nDetalhes que o entrevistador procura: (1) `Promise.resolve().then(...)` protege contra `fn` que lança de forma síncrona; (2) o `finally` roda também na rejeição, senão um erro envenena a chave para sempre; (3) usar os argumentos como chave é uma decisão — com objetos grandes você prefere receber uma função de chave por parâmetro.",
+        "criterios": [
+          "Compartilha a promessa em vez de guardar o resultado",
+          "Libera a chave no finally (funciona com rejeição)",
+          "Não quebra se fn lançar de forma síncrona"
+        ]
+      }
+    },
+    {
+      "id": "design-no-papel",
+      "tipo": "mao-na-massa",
+      "titulo": "Desenhar no papel o encurtador de URL com 50k req/s de leitura",
+      "tempoMin": 25,
+      "resumo": "System design de verdade: papel, caneta, 25 minutos e você defendendo cada caixa.",
+      "termos": ["arquitetura-software/api-gateway", "concorrencia-performance/pagination-offset-keyset", "arquitetura-software/database-per-service"],
+      "mao-na-massa": {
+        "contexto": "Entrevista de system design: 'Desenhe um encurtador de URL. 50 mil leituras por segundo, 100 escritas por segundo, redirecionamento em menos de 50 ms no p99.' Você tem 25 minutos, papel e caneta — sem editor, sem Google. Fale em voz alta enquanto desenha e grave.",
+        "stack": ["papel", "node", "postgres", "redis"],
+        "tempoCaixa": 25,
+        "entregavel": "Uma foto do desenho + 5 linhas escritas com as três decisões que você defenderia e o que mudaria se o tráfego fosse 10×.",
+        "passos": [
+          "Gaste os 3 primeiros minutos só em perguntas de requisito: URLs customizadas? expiração? estatísticas de clique? quanto de staleness é aceitável?",
+          "Escreva os números: 50k leituras/s, 100 escritas/s, quantos bytes por registro, quanto disco em 1 ano",
+          "Desenhe o caminho de LEITURA primeiro (é o caminho quente) e só depois o de escrita",
+          "Decida a geração da chave curta e defenda: contador + base62, hash truncado com tratamento de colisão, ou pré-alocação de blocos",
+          "Marque no desenho onde está o cache, qual o TTL e o que acontece quando ele cai (stampede)",
+          "Termine escrevendo as três decisões e o 'e se for 10×'"
+        ],
+        "criterioPronto": [
+          "O desenho separa claramente caminho de leitura e caminho de escrita",
+          "Tem números escritos: QPS, tamanho estimado por registro e volume em 1 ano",
+          "A escolha da chave curta está justificada contra pelo menos uma alternativa",
+          "O cache tem TTL definido e uma resposta para 'e se o cache reiniciar agora?'",
+          "Você respondeu em voz alta a três 'por quê?' seguidos sem mudar a decisão do meio",
+          "As 5 linhas finais existem e não usam a palavra 'escalável' sem um número do lado"
+        ]
+      }
+    },
+    {
+      "id": "retrospectiva-simulado",
+      "tipo": "retrospectiva",
+      "titulo": "Ouvir a própria gravação e fechar a conta",
+      "tempoMin": 5,
+      "resumo": "A parte que dói e é a que mais rende: ouvir você mesmo respondendo.",
+      "retrospectiva": {
+        "perguntas": [
+          "Ouvindo a gravação: onde você travou, e foi por falta de conteúdo ou de palavra (em inglês)?",
+          "Em quantas das 6 perguntas você disse um trade-off explícito sem ser cobrado?",
+          "No código: o que te custou tempo — o algoritmo ou o caso de erro?",
+          "No system design, qual foi a pergunta de requisito que você esqueceu de fazer?",
+          "Qual das 5 etapas você repetiria amanhã, e o que mudaria na resposta?"
+        ],
+        "proximoPasso": "Se a nota final ficou abaixo de 3: refaça só a etapa do simulado daqui a 3 dias, gravando de novo, e compare as duas gravações. Se ficou 4 ou 5: marque uma entrevista de verdade esta semana — o próximo degrau é público, não é treino.",
+        "notaFinal": true
+      }
+    }
+  ]
+}

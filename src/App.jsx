@@ -10,6 +10,8 @@ import Curso from './pages/Curso.jsx'
 import Licao from './pages/Licao.jsx'
 import Config from './pages/Config.jsx'
 import Praticas from './pages/Praticas.jsx'
+import Treinos from './pages/Treinos.jsx'
+import Treino from './pages/Treino.jsx'
 import Pratica from './pages/Pratica.jsx'
 
 export default function App() {
@@ -27,6 +29,8 @@ export default function App() {
         <Route path="/config" element={<Config />} />
         <Route path="/praticas" element={<Praticas />} />
         <Route path="/pratica/:deckId/:exId" element={<Pratica />} />
+        <Route path="/treinos" element={<Treinos />} />
+        <Route path="/treino/:id" element={<Treino />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>
