@@ -10,6 +10,7 @@ import { criarProgresso } from './progresso.js'
 import { carregarEnv, criarMentor } from './mentor.js'
 import { corrigir, criarPraticas, notaAutomatica, notaChecklist } from './praticas.js'
 import { hojeISO, vencido } from './sm2.js'
+import { criarTelegram } from './telegram.js'
 import { criarTreinos } from './treinos.js'
 import { criarProgressoTreinos } from './progresso-treinos.js'
 
@@ -30,6 +31,18 @@ const cursos = criarCursos(CONTEUDO, repo)
 const progresso = criarProgresso(ARQ_PROGRESSO)
 const treinos = criarTreinos(CONTEUDO, repo)
 const progTreinos = criarProgressoTreinos(progresso, { arquivo: path.join(RAIZ, 'data', 'progresso-treinos.json') })
+const telegram = criarTelegram({
+  arquivoConfig: ARQ_CONFIG, // o token mora ao lado da key do OpenRouter, fora do git
+  arquivoEstado: path.join(RAIZ, 'data', 'telegram.json'),
+  arquivoTunnel: path.join(RAIZ, 'data', 'tunnel-url.txt'), // o mesmo que tunnel.cjs escreve
+  repo,
+  praticas,
+  cursos,
+  treinos,
+  progresso,
+  progTreinos,
+  porta: PORT,
+})
 const mentor = criarMentor({ arquivoConfig: ARQ_CONFIG, repo, progresso })
 
 const app = express()
@@ -48,7 +61,7 @@ api.get('/saude', (_req, res) => {
     ok: true,
     hoje: hojeISO(),
     decks: repo.listar().length,
-    praticas: praticas.listar().length, treinos: treinos.listar().length,
+    praticas: praticas.listar().length, treinos: treinos.listar().length, telegram: telegram.estado(),
     cursos: cursos.listar().length,
     erros: [...repo.erros(), ...praticas.erros(), ...treinos.erros(), ...cursos.erros()],
   })
@@ -596,6 +609,35 @@ api.get('/tunnel', (_req, res) => {
   res.json({ url, ativo: Boolean(url) })
 })
 
+// ---- bot do Telegram ------------------------------------------------------
+// A API nunca devolve o token inteiro (so `tokenMascarado`) e o bot so atende o chat conectado.
+api.get('/telegram', (_req, res) => {
+  res.json(telegram.obterConfig())
+})
+
+// body { telegramToken?, lembrete?, avisos?, chat? } - "__apagar__" no token remove e para o bot
+api.put('/telegram', async (req, res) => {
+  const { telegramToken, lembrete, avisos, chat } = req.body || {}
+  const r = await telegram.salvarConfig({ telegramToken, lembrete, avisos, chat })
+  if (!r.ok) return res.status(400).json({ erro: r.erro })
+  res.json({ ok: true, config: r.config })
+})
+
+// religar depois de corrigir o token (o 409 para o polling de proposito)
+api.post('/telegram/iniciar', async (_req, res) => {
+  const r = await telegram.iniciar()
+  res.json({ ok: Boolean(r.ok), config: telegram.obterConfig() })
+})
+
+api.post('/telegram/parar', async (_req, res) => {
+  await telegram.parar()
+  res.json({ ok: true, config: telegram.obterConfig() })
+})
+
+api.post('/telegram/teste', async (_req, res) => {
+  res.json(await telegram.enviarTeste())
+})
+
 api.use((_req, res) => res.status(404).json({ erro: 'rota não encontrada' }))
 app.use('/api', api)
 
@@ -637,12 +679,17 @@ const server = app.listen(PORT, '0.0.0.0', () => {
   const erros = repo.erros()
   console.log(`[trilharm] http://localhost:${PORT}  decks=${repo.listar().length}  dist=${fs.existsSync(DIST) ? 'sim' : 'não'}`)
   if (erros.length) console.warn('[trilharm] avisos de conteúdo:\n  - ' + erros.join('\n  - '))
+  telegram.iniciar().then((r) => {
+    if (r.ok) console.log('[trilharm] telegram: ligado')
+    else console.log('[trilharm] telegram:', r.erro || 'não ligou')
+  })
 })
 
 function desligar(sinal) {
   console.log(`[trilharm] ${sinal} - encerrando`)
+  telegram.parar() // para o long polling e aborta o fetch pendente (senao o proximo boot pega 409)
   server.close(() => {
-    Promise.all([progresso.aguardarEscrita(), mentor.aguardarEscrita()]).then(() => process.exit(0))
+    Promise.all([progresso.aguardarEscrita(), mentor.aguardarEscrita(), telegram.aguardarEscrita()]).then(() => process.exit(0))
   })
   setTimeout(() => process.exit(0), 3000).unref()
 }

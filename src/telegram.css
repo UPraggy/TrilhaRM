@@ -1,0 +1,176 @@
+/* Bot do Telegram — estilos do bloco da tela /config (importado por ConfigTelegram.jsx).
+   Não toca em src/styles.css: só usa as variáveis de lá (--peri, --amber, --surface, --line, --r…).
+   Mobile-first: desenhado para 360 px. Todo filho de flex/grid leva min-width: 0 — sem isso o token
+   mascarado e a URL do túnel esticam o card e a tela ganha rolagem horizontal. */
+
+.tg-card {
+  min-width: 0;
+}
+
+.tg-topo {
+  gap: 8px;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+.tg-topo h2 {
+  min-width: 0;
+  margin: 0;
+}
+
+.tg-chip {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+.tg-chip--green {
+  color: var(--green);
+  border-color: rgba(123, 191, 94, 0.4);
+}
+.tg-chip--amber {
+  color: var(--amber);
+  border-color: rgba(234, 169, 78, 0.4);
+}
+.tg-chip--rose {
+  color: var(--rose-soft);
+  border-color: rgba(197, 64, 42, 0.5);
+}
+.tg-chip--dim {
+  color: var(--fg-3);
+}
+
+.tg-intro {
+  margin-top: 8px;
+}
+
+/* ---- alerta do 409 (o token já usado por outro bot) ---------------------- */
+.tg-alerta {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  margin: 12px 0 0;
+  padding: 10px 12px;
+  border: 1px solid rgba(197, 64, 42, 0.5);
+  border-left-width: 3px;
+  border-radius: var(--r-sm);
+  background: rgba(197, 64, 42, 0.1);
+  color: var(--fg-1);
+  font-size: 0.86rem;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+.tg-alerta b {
+  color: var(--rose-soft);
+}
+.tg-alerta--leve {
+  border-color: rgba(234, 169, 78, 0.45);
+  background: rgba(234, 169, 78, 0.08);
+}
+
+/* ---- campos -------------------------------------------------------------- */
+.tg-linha {
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+}
+.tg-input {
+  flex: 1 1 160px;
+  min-width: 0; /* sem isto o input de senha empurra o botão para fora do card em 360 px */
+}
+.tg-input--hora {
+  flex: 0 1 140px;
+}
+.tg-quebra {
+  display: block;
+  margin-top: 6px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* ---- grade de estado ----------------------------------------------------- */
+.tg-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 10px;
+  margin-top: 14px;
+}
+@media (min-width: 640px) {
+  .tg-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.tg-box {
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--surface-2);
+}
+.tg-box__rotulo {
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--fg-3);
+}
+.tg-box__valor {
+  margin-top: 4px;
+  min-width: 0;
+  color: var(--fg-1);
+  overflow-wrap: anywhere;
+}
+.tg-amber {
+  color: var(--amber);
+}
+
+.tg-url {
+  display: block;
+  margin-top: 4px;
+  min-width: 0;
+  color: var(--peri);
+  font-size: 0.8rem;
+  overflow-wrap: anywhere;
+}
+
+.tg-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+  margin-top: 10px;
+  color: var(--fg-2);
+  font-size: 0.8rem;
+  line-height: 1.35;
+}
+.tg-check input {
+  flex: 0 0 auto;
+  margin-top: 2px;
+  accent-color: var(--amber);
+}
+.tg-check span {
+  min-width: 0;
+}
+
+/* ---- ações --------------------------------------------------------------- */
+.tg-acoes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+  margin-top: 14px;
+}
+.tg-acoes .btn {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: var(--tap);
+}
+@media (min-width: 640px) {
+  .tg-acoes .btn {
+    flex: 0 0 auto;
+  }
+}
+
+.tg-rodape {
+  margin: 14px 0 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}

@@ -68,6 +68,12 @@ export const api = {
     req(`/api/cursos/${encodeURIComponent(id)}/atividade/${encodeURIComponent(atvId)}/responder`, { method: 'POST', body: JSON.stringify(corpo) }),
   cursoAtividadeMentor: (id, atvId, resposta) =>
     req(`/api/cursos/${encodeURIComponent(id)}/atividade/${encodeURIComponent(atvId)}/mentor`, { method: 'POST', body: JSON.stringify({ resposta }) }),
+  // bot do Telegram
+  telegramConfig: () => req('/api/telegram'),
+  telegramSalvar: (patch) => req('/api/telegram', { method: 'PUT', body: JSON.stringify(patch) }),
+  telegramIniciar: () => req('/api/telegram/iniciar', { method: 'POST', body: '{}' }),
+  telegramParar: () => req('/api/telegram/parar', { method: 'POST', body: '{}' }),
+  telegramTeste: () => req('/api/telegram/teste', { method: 'POST', body: '{}' }),
   // treinos especiais (content/treinos)
   treinos: () => req('/api/treinos'),
   treino: (id) => req(`/api/treinos/${encodeURIComponent(id)}`),

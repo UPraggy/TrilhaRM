@@ -12,7 +12,8 @@ module.exports = {
       },
       watch: false,
       autorestart: true,
-      max_memory_restart: '200M',
+      max_memory_restart: '250M', // o long polling do Telegram segura um fetch aberto o tempo todo
+      kill_timeout: 8000, // da tempo de abortar o getUpdates antes do SIGKILL (senao o boot novo pega 409)
       time: true,
     },
     {

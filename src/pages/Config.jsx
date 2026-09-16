@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useStore } from '../store.jsx'
+import ConfigTelegram from '../components/ConfigTelegram.jsx'
 import { obterConfig, salvarConfig, listarModelos, avaliarComMentor } from '../api.js'
 
 /**
@@ -201,6 +202,8 @@ export default function Config() {
           </div>
         )}
       </div>
+
+      <ConfigTelegram mostrarAviso={mostrarAviso} />
 
       <p className="dim small" style={{ marginTop: 14 }}>
         Esta tela não tem senha — o app roda atrás do túnel do dono. A key nunca é devolvida inteira pela API (só os 4 últimos caracteres).
