@@ -75,4 +75,4 @@ uma tag HTML) e os **botões inline continuam iguais**. `/revisar`, `/lembrete`,
 seguem sendo texto puro, de propósito: são listas e confirmações, não cabem numa imagem.
 
 O PNG do link fica em cache enquanto a URL do túnel não mudar; os outros são gerados na hora
-(~40 ms cada, 15-20 KB).
+(~50 ms cada, 15-20 KB).

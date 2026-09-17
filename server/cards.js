@@ -9,7 +9,6 @@
 import {
   alturaCaixaAlta,
   alturaTexto,
-  arco,
   circulo,
   codificarPNG,
   cortarTexto,
