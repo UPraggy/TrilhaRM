@@ -18,8 +18,12 @@
 //   Nunca ficamos em loop de 409 — é o erro que quebra os dois bots ao mesmo tempo.
 // - parse_mode 'HTML' com escape de & < > : é o que menos quebra (o MarkdownV2 do Telegram exige
 //   escapar 18 caracteres e qualquer título de deck com '-' derruba a mensagem).
+// - Desde os cards: as mensagens principais vão como sendPhoto (PNG gerado por server/cards.js) com
+//   o texto na legenda (limite 1024). Se a imagem falhar por QUALQUER motivo — geração, rede, 400 do
+//   Telegram — cai para o sendMessage de antes. O bot nunca fica mudo por causa de uma imagem.
 import fs from 'node:fs'
 import path from 'node:path'
+import { cardHoje, cardLink, cardMatriz, cardOfensiva, cardSugestao, cardTreino } from './cards.js'
 import { hojeISO, vencido } from './sm2.js'
 
 export const API_TELEGRAM = 'https://api.telegram.org'
@@ -31,6 +35,9 @@ const LEMBRETE_PADRAO = '08:30'
 const HORA_RISCO = 20 // a partir das 20h, se faltar avaliação, avisa que a ofensiva está em risco
 const PCT_DECK_FORTE = 70 // % de termos em nível >= 3 que dispara o "deck dominado"
 const MAX_TEXTO = 3800 // limite do Telegram é 4096; sobra para o rodapé
+const MAX_LEGENDA = 1024 // limite duro da legenda do sendPhoto
+const TIMEOUT_FOTO_MS = 45_000 // upload de PNG é mais lento que sendMessage
+export const NOMES_CARDS = ['link', 'hoje', 'ofensiva', 'matriz', 'sugestao', 'treino']
 
 export const MSG_409 =
   'Este token já está em uso por outro bot (provavelmente o do AutoTrade): o Telegram respondeu ' +
@@ -73,6 +80,18 @@ export function mascararToken(token) {
 /** formato real de token do BotFather: <id numérico>:<35 chars> */
 export function tokenValido(token) {
   return /^\d{5,}:[A-Za-z0-9_-]{20,}$/.test(String(token || '').trim())
+}
+
+/**
+ * Corta o texto para caber na legenda do sendPhoto (1024). O corte é sempre em quebra de linha:
+ * cada linha nossa fecha as tags que abre, então cortar no \n nunca deixa <b> pendurado — e tag
+ * aberta faz o Telegram recusar a mensagem inteira com 400.
+ */
+export function legendaCurta(txt, limite = MAX_LEGENDA) {
+  const s = String(txt === null || txt === undefined ? '' : txt)
+  if (s.length <= limite) return s
+  const corte = s.lastIndexOf('\n', limite - 2)
+  return corte > 0 ? `${s.slice(0, corte)}\n…` : `${s.slice(0, limite - 1)}…`
 }
 
 /** 'HH:MM' -> { h, m } | null */
@@ -245,6 +264,60 @@ export function criarTelegram({
     }
   }
 
+  /**
+   * sendPhoto = multipart/form-data montado na mão (nada de FormData/Blob: em Node antigo o
+   * Buffer vira "[object Object]" silenciosamente e o Telegram devolve 400 sem dizer por quê).
+   */
+  async function chamarFoto(campos, png, ms = TIMEOUT_FOTO_MS) {
+    const { token } = tokenAtual()
+    if (!token) return { ok: false, codigo: 0, erro: 'sem token' }
+    const fronteira = `----trilharm${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`
+    const partes = []
+    for (const [chave, valor] of Object.entries(campos)) {
+      if (valor === undefined || valor === null) continue
+      partes.push(Buffer.from(`--${fronteira}\r\nContent-Disposition: form-data; name="${chave}"\r\n\r\n${valor}\r\n`, 'utf8'))
+    }
+    partes.push(
+      Buffer.from(
+        `--${fronteira}\r\nContent-Disposition: form-data; name="photo"; filename="trilharm.png"\r\n` +
+          'Content-Type: image/png\r\n\r\n',
+        'utf8',
+      ),
+    )
+    partes.push(png)
+    partes.push(Buffer.from(`\r\n--${fronteira}--\r\n`, 'utf8'))
+    const corpo = Buffer.concat(partes)
+    const ctrl = new AbortController()
+    controladores.add(ctrl)
+    const timer = setTimeout(() => ctrl.abort(), ms)
+    try {
+      const r = await buscar(`${apiBase}/bot${token}/sendPhoto`, {
+        method: 'POST',
+        headers: { 'Content-Type': `multipart/form-data; boundary=${fronteira}`, 'Content-Length': String(corpo.length) },
+        body: corpo,
+        signal: ctrl.signal,
+      })
+      const texto = await r.text()
+      let dados = null
+      try {
+        dados = texto ? JSON.parse(texto) : null
+      } catch {
+        dados = null
+      }
+      if (!r.ok || !dados || dados.ok !== true) {
+        const codigo = (dados && Number(dados.error_code)) || r.status || 0
+        return { ok: false, codigo, erro: (dados && dados.description) || `HTTP ${r.status}` }
+      }
+      return { ok: true, resultado: dados.result }
+    } catch (e) {
+      const abortado = e && (e.name === 'AbortError' || e.code === 'ABORT_ERR')
+      return { ok: false, codigo: 0, rede: true, abortado, erro: abortado ? 'timeout/abort' : e.message }
+    } finally {
+      clearTimeout(timer)
+      controladores.delete(ctrl)
+    }
+  }
+
   async function enviar(texto, { botoes = null, chatId = null } = {}) {
     const destino = chatId || carregarEstado().chatId
     if (!destino) return { ok: false, codigo: 0, erro: 'sem chat conectado' }
@@ -259,6 +332,41 @@ export function criarTelegram({
     const r = await chamar('sendMessage', corpo)
     if (!r.ok) log('sendMessage falhou:', r.codigo, r.erro)
     return r
+  }
+
+  async function enviarFoto(png, legenda, { botoes = null, chatId = null } = {}) {
+    const destino = chatId || carregarEstado().chatId
+    if (!destino) return { ok: false, codigo: 0, erro: 'sem chat conectado' }
+    const campos = {
+      chat_id: destino,
+      caption: legendaCurta(legenda),
+      parse_mode: 'HTML',
+    }
+    const teclado = (botoes || []).filter(Boolean)
+    if (teclado.length) {
+      campos.reply_markup = JSON.stringify({ inline_keyboard: teclado.map((l) => (Array.isArray(l) ? l : [l])) })
+    }
+    return chamarFoto(campos, png)
+  }
+
+  /**
+   * Manda o card como foto com o texto na legenda; se a imagem não sair (geração quebrada, upload
+   * recusado, rede fora) manda o MESMO texto por sendMessage. O `fazerPng` é preguiçoso de propósito:
+   * erro na hora de desenhar não pode derrubar o aviso.
+   */
+  async function enviarCard(fazerPng, texto, { botoes = null, chatId = null } = {}) {
+    let png = null
+    try {
+      png = fazerPng()
+    } catch (e) {
+      log('card não gerou, indo de texto:', e.message)
+    }
+    if (png && Buffer.isBuffer(png)) {
+      const r = await enviarFoto(png, texto, { botoes, chatId })
+      if (r.ok) return r
+      log('sendPhoto falhou, indo de texto:', r.codigo, r.erro)
+    }
+    return enviar(texto, { botoes, chatId })
   }
 
   // ---- links --------------------------------------------------------------
@@ -349,7 +457,42 @@ export function criarTelegram({
       pct3: totalTermos ? Math.round((acima3 / totalTermos) * 100) : 0,
       praticasFeitas: p.praticas || {},
       cursosEstado: p.cursos || {},
+      historico: Array.isArray(p.historico) ? p.historico : [], // [{ dia, avaliacoes }] — alimenta o histograma
+      novos: decks.reduce((soma, d) => soma + d.novos, 0),
     }
+  }
+
+  /** avaliações dos últimos 28 dias, com os dias sem estudo valendo 0 (o histograma precisa deles) */
+  function ultimos28(pan) {
+    const porDia = new Map((pan.historico || []).map((h) => [h.dia, Number(h.avaliacoes) || 0]))
+    const fim = new Date(`${pan.dia}T12:00:00`)
+    const saida = []
+    for (let i = 27; i >= 0; i--) {
+      const d = new Date(fim)
+      d.setDate(d.getDate() - i)
+      saida.push(porDia.get(hojeISO(d)) || 0)
+    }
+    return saida
+  }
+
+  /** % de termos em nível >= 3 por fase, ponderado pelo tamanho dos decks */
+  function fasesDaMatriz(pan) {
+    const porFase = new Map()
+    for (const d of pan.decks) {
+      const chave = Number.isFinite(d.fase) ? d.fase : 99
+      if (!porFase.has(chave)) porFase.set(chave, { numero: chave, decks: 0, total: 0, acima3: 0 })
+      const f = porFase.get(chave)
+      f.decks += 1
+      f.total += d.total
+      f.acima3 += Math.round((d.pct3 / 100) * d.total)
+    }
+    return [...porFase.values()]
+      .sort((a, b) => a.numero - b.numero)
+      .map((f) => ({
+        titulo: `Fase ${f.numero}`,
+        detalhe: `${f.decks} deck${f.decks === 1 ? '' : 's'} · ${f.total} termos`,
+        pct: f.total ? Math.round((f.acima3 / f.total) * 100) : 0,
+      }))
   }
 
   /** nível-alvo da sugestão: perto do que ele já domina, nunca abaixo de 2 nem acima de 5 */
@@ -574,6 +717,116 @@ export function criarTelegram({
     }
   }
 
+  // ---- cards (PNG) --------------------------------------------------------
+  // O card do link é o mais caro (QR + 800x418) e o mais repetido: fica em cache enquanto a URL não
+  // mudar. Os outros dependem do progresso, que muda a cada avaliação — não vale cachear.
+  let cacheCardLink = { url: null, png: null }
+
+  function pngLink() {
+    const u = urlDoTunel()
+    const alvo = u || '' // sem túnel o card mostra o painel "sem QR": QR de 127.0.0.1 no celular não abre nada
+    if (cacheCardLink.png && cacheCardLink.url === alvo) return cacheCardLink.png
+    const png = cardLink(alvo, { nota: u ? 'túnel do cloudflared' : `LAN: 127.0.0.1:${porta}` })
+    cacheCardLink = { url: alvo, png }
+    return png
+  }
+
+  function pngHoje(pan) {
+    const s = pan.streak || {}
+    return cardHoje({
+      vencidos: pan.vencidos,
+      novos: pan.novos,
+      avaliacoesHoje: s.avaliacoesHoje || 0,
+      minimoDia: s.minimoDia || 10,
+      streak: s.atual || 0,
+      dia: pan.dia,
+    })
+  }
+
+  function pngOfensiva(pan) {
+    const s = pan.streak || {}
+    return cardOfensiva({ atual: s.atual || 0, melhor: s.melhor || 0, ultimos28: ultimos28(pan), minimoDia: s.minimoDia || 10 })
+  }
+
+  function pngMatriz(pan) {
+    return cardMatriz({
+      fases: fasesDaMatriz(pan),
+      nota: `nível médio ${pan.nivelMedio.toFixed(2)} · ${pan.pct3}% em nível ≥3`,
+    })
+  }
+
+  function pngSugestao(s) {
+    if (!s) {
+      return cardSugestao({
+        tipo: 'pratica',
+        titulo: 'Tudo concluído por aqui',
+        subtitulo: 'exercícios, treinos e lições em dia — bom momento para revisar',
+        nota: 'sem sugestão nova',
+      })
+    }
+    const d = s.dados
+    if (s.tipo === 'pratica') {
+      return cardSugestao({
+        tipo: 'pratica',
+        titulo: d.titulo,
+        subtitulo: `${d.deckTitulo} · ambiente: ${d.ambiente}`,
+        tempoMin: d.tempoMin,
+        nivel: d.nivel,
+        nota: d.emAndamento ? 'exercício em andamento' : 'sugestão do dia',
+      })
+    }
+    if (s.tipo === 'treino') {
+      const dur = d.duracaoDias ? `${d.duracaoDias} dias` : `${d.tempoTotalMin} min`
+      return cardSugestao({
+        tipo: 'treino',
+        titulo: d.titulo,
+        subtitulo: `${dur} · ${d.concluidas}/${d.total} etapas concluídas`,
+        nivel: d.nivel,
+        nota: d.estado === 'andamento' ? 'temporada em andamento' : 'temporada nova',
+      })
+    }
+    return cardSugestao({
+      tipo: 'curso',
+      titulo: d.licaoTitulo,
+      subtitulo: `${d.cursoTitulo} · ${d.feitas}/${d.total} lições`,
+      nota: 'continuar de onde parei',
+    })
+  }
+
+  /** treino: quem já começou vê o progresso da temporada; quem não começou vê o convite */
+  function pngTreino(pan) {
+    const t = sugerirTreino(pan)
+    if (!t) return pngSugestao(null)
+    if (t.estado === 'andamento' || t.concluidas > 0) {
+      return cardTreino({
+        titulo: t.titulo,
+        etapaAtual: t.concluidas,
+        totalEtapas: t.total,
+        pct: t.pct,
+        nota: `nível ${t.nivel}`,
+      })
+    }
+    return pngSugestao({ tipo: 'treino', dados: t })
+  }
+
+  /** um card por nome — é o que a rota GET /api/cards/:nome.png serve */
+  function card(nome) {
+    const chave = String(nome || '').toLowerCase()
+    if (!NOMES_CARDS.includes(chave)) return { ok: false, erro: `card desconhecido: ${chave}` }
+    try {
+      if (chave === 'link') return { ok: true, png: pngLink() }
+      const pan = panorama()
+      if (chave === 'hoje') return { ok: true, png: pngHoje(pan) }
+      if (chave === 'ofensiva') return { ok: true, png: pngOfensiva(pan) }
+      if (chave === 'matriz') return { ok: true, png: pngMatriz(pan) }
+      if (chave === 'sugestao') return { ok: true, png: pngSugestao(sugestaoDoDia(pan)) }
+      return { ok: true, png: pngTreino(pan) }
+    } catch (e) {
+      log(`card ${chave} falhou:`, e.message)
+      return { ok: false, erro: e.message }
+    }
+  }
+
   // ---- comandos -----------------------------------------------------------
   async function executarComando(cmd, args) {
     const e = carregarEstado()
@@ -582,7 +835,9 @@ export function criarTelegram({
       salvarEstado()
       const pan = panorama()
       const h = textoHoje(pan)
-      await enviar(`👋 Conectado. Eu aviso quando a URL do túnel mudar e mando a tarefa do dia.\n\n${h.texto}`, { botoes: h.botoes })
+      await enviarCard(() => pngHoje(pan), `👋 Conectado. Eu aviso quando a URL do túnel mudar e mando a tarefa do dia.\n\n${h.texto}`, {
+        botoes: h.botoes,
+      })
       return
     }
     if (cmd === 'ajuda' || cmd === 'help' || cmd === 'menu') {
@@ -591,7 +846,7 @@ export function criarTelegram({
     }
     if (cmd === 'link') {
       const l = textoLink()
-      return void (await enviar(l.texto, { botoes: l.botoes }))
+      return void (await enviarCard(pngLink, l.texto, { botoes: l.botoes }))
     }
     if (cmd === 'hoje') {
       const pan = panorama()
@@ -600,19 +855,22 @@ export function criarTelegram({
         e.ultimoTipoSugestao = h.tipo
         salvarEstado()
       }
-      return void (await enviar(h.texto, { botoes: h.botoes }))
+      return void (await enviarCard(() => pngHoje(pan), h.texto, { botoes: h.botoes }))
     }
     if (cmd === 'revisar') {
       const r = textoRevisar(panorama())
       return void (await enviar(r.texto, { botoes: r.botoes }))
     }
     if (cmd === 'matriz') {
-      const m = textoMatriz(panorama())
-      return void (await enviar(m.texto, { botoes: m.botoes }))
+      const pan = panorama()
+      const m = textoMatriz(pan)
+      return void (await enviarCard(() => pngMatriz(pan), m.texto, { botoes: m.botoes }))
     }
     if (cmd === 'ofensiva') {
       const pan = panorama()
-      return void (await enviar(textoOfensiva(pan), { botoes: [[botao('Estudar', '/estudar/misto?fonte=tudo')].filter(Boolean)] }))
+      return void (await enviarCard(() => pngOfensiva(pan), textoOfensiva(pan), {
+        botoes: [[botao('Estudar', '/estudar/misto?fonte=tudo')].filter(Boolean)],
+      }))
     }
     if (cmd === 'pratica' || cmd === 'treino' || cmd === 'curso') {
       const pan = panorama()
@@ -622,7 +880,9 @@ export function criarTelegram({
         e.ultimoTipoSugestao = s.tipo
         salvarEstado()
       }
-      return void (await enviar(bs.texto, { botoes: [[bs.botao].filter(Boolean)] }))
+      // /treino de quem já começou mostra o progresso da temporada; o resto mostra o cartão da tarefa
+      const fazer = cmd === 'treino' ? () => pngTreino(pan) : () => pngSugestao(s)
+      return void (await enviarCard(fazer, bs.texto, { botoes: [[bs.botao].filter(Boolean)] }))
     }
     if (cmd === 'lembrete') {
       const h = horarioValido(args)
@@ -708,7 +968,7 @@ export function criarTelegram({
       return true
     }
     const l = textoLink()
-    await enviar(`🔄 <b>URL nova do túnel</b>\n${l.texto.split('\n').slice(1).join('\n')}`, { botoes: l.botoes })
+    await enviarCard(pngLink, `🔄 <b>URL nova do túnel</b>\n${l.texto.split('\n').slice(1).join('\n')}`, { botoes: l.botoes })
     return true
   }
 
@@ -735,7 +995,7 @@ export function criarTelegram({
       // 1. lembrete diário (a partir do horário; se o app estava desligado, manda quando voltar)
       if (alvo && !e.enviados.lembrete && agoraMin >= alvo.h * 60 + alvo.m) {
         const h = textoHoje(pan)
-        const r = await enviar(`⏰ <b>Hora de estudar</b>\n\n${h.texto}`, { botoes: h.botoes })
+        const r = await enviarCard(() => pngHoje(pan), `⏰ <b>Hora de estudar</b>\n\n${h.texto}`, { botoes: h.botoes })
         if (r.ok) {
           e.enviados.lembrete = true
           if (h.tipo) {
@@ -763,7 +1023,8 @@ export function criarTelegram({
       } else if (!e.enviados.risco && quando.getHours() >= HORA_RISCO) {
         const falta = minimo - hoje
         const caminho = pan.vencidos ? '/estudar/misto?fonte=revisao' : '/estudar/misto?fonte=tudo'
-        const r = await enviar(
+        const r = await enviarCard(
+          () => pngOfensiva(pan),
           `⚠️ <b>Ofensiva em risco</b>\nFaltam <b>${falta}</b> avaliações para fechar o dia (${hoje}/${minimo}).` + rodapeLink(caminho),
           { botoes: [[botao('Salvar a ofensiva', caminho)].filter(Boolean)] },
         )
@@ -1009,7 +1270,9 @@ export function criarTelegram({
     const e = carregarEstado()
     if (!e.chatId) return { ok: false, erro: 'nenhum chat conectado: mande /start para o bot no Telegram' }
     const l = textoLink()
-    const r = await enviar(`✅ <b>Teste do Trilha RM</b>\nSe você está lendo isso, o bot está ligado.\n\n${l.texto}`, { botoes: l.botoes })
+    const r = await enviarCard(pngLink, `✅ <b>Teste do Trilha RM</b>\nSe você está lendo isso, o bot está ligado.\n\n${l.texto}`, {
+      botoes: l.botoes,
+    })
     return r.ok ? { ok: true } : { ok: false, erro: `${r.codigo || 'rede'}: ${r.erro}` }
   }
 
@@ -1018,13 +1281,33 @@ export function criarTelegram({
     parar,
     tick,
     enviar,
+    enviarFoto,
     enviarTeste,
+    card, // { ok, png } — a rota GET /api/cards/:nome.png chama isto
+    cards: NOMES_CARDS,
     obterConfig,
     salvarConfig,
     comandos: COMANDOS,
     estado: () => status,
     aguardarEscrita: () => filaEscrita,
     // usados pelos testes (harness da 8796) e por quem quiser inspecionar sem mexer no chat
-    _interno: { panorama, textoHoje, textoLink, textoRevisar, textoMatriz, sugestaoDoDia, processarUpdate, carregarEstado },
+    _interno: {
+      panorama,
+      textoHoje,
+      textoLink,
+      textoRevisar,
+      textoMatriz,
+      sugestaoDoDia,
+      processarUpdate,
+      carregarEstado,
+      ultimos28,
+      fasesDaMatriz,
+      pngLink,
+      pngHoje,
+      pngOfensiva,
+      pngMatriz,
+      pngSugestao,
+      pngTreino,
+    },
   }
 }

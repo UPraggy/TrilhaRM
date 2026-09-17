@@ -37,6 +37,16 @@ const ROTULO_ESTADO = {
   'token-invalido': { texto: 'token recusado', classe: 'tg-chip--rose' },
 }
 
+/** os cards que a rota GET /api/cards/:nome.png serve (a mesma lista de server/telegram.js) */
+const CARDS = [
+  { nome: 'link', rotulo: 'link (QR)' },
+  { nome: 'hoje', rotulo: 'hoje' },
+  { nome: 'ofensiva', rotulo: 'ofensiva' },
+  { nome: 'matriz', rotulo: 'matriz' },
+  { nome: 'sugestao', rotulo: 'sugestão' },
+  { nome: 'treino', rotulo: 'treino' },
+]
+
 export default function ConfigTelegram({ mostrarAviso }) {
   const [cfg, setCfg] = useState(null)
   const [erro, setErro] = useState(null)
@@ -44,6 +54,9 @@ export default function ConfigTelegram({ mostrarAviso }) {
   const [hora, setHora] = useState('')
   const [salvando, setSalvando] = useState(false)
   const [teste, setTeste] = useState(null) // { estado: 'rodando'|'ok'|'erro', texto }
+  // o <img> é cache-bustado na mão: a URL do túnel muda sozinha e o card precisa acompanhar
+  const [versaoCard, setVersaoCard] = useState(() => Date.now())
+  const [cardQuebrado, setCardQuebrado] = useState(false)
   const montado = useRef(true)
 
   const avisar = (msg) => (mostrarAviso ? mostrarAviso(msg) : setTeste({ estado: 'ok', texto: msg }))
@@ -117,6 +130,12 @@ export default function ConfigTelegram({ mostrarAviso }) {
 
   const estado = cfg ? ROTULO_ESTADO[cfg.estado] || { texto: cfg.estado, classe: 'tg-chip--dim' } : null
   const url = cfg && cfg.tunnel ? cfg.tunnel.url : null
+
+  // URL nova = card novo: recarrega a imagem sem depender de F5
+  useEffect(() => {
+    setCardQuebrado(false)
+    setVersaoCard(Date.now())
+  }, [url])
 
   return (
     <div className="card tg-card">
@@ -226,6 +245,42 @@ export default function ConfigTelegram({ mostrarAviso }) {
             <div className="tg-box__valor dim">sem túnel no ar (só LAN)</div>
           )}
           {cfg && cfg.tunnel && cfg.tunnel.mudouEm && <div className="dim small">mudou em {new Date(cfg.tunnel.mudouEm).toLocaleString()}</div>}
+        </div>
+      </div>
+
+      <div className="tg-previa">
+        <div className="tg-box__rotulo">Card do link — é esta imagem que chega no Telegram</div>
+        {cardQuebrado ? (
+          <p className="dim small tg-previa__erro">
+            A rota <code>GET /api/cards/link.png</code> ainda não está ligada no <code>server/index.js</code>. O passo a passo (três linhas) está
+            em <code>INTEGRACAO-CARDS.md</code>.
+          </p>
+        ) : (
+          <img
+            className="tg-previa__img"
+            src={`/api/cards/link.png?v=${versaoCard}`}
+            alt="Card com o QR do link atual do app"
+            width={800}
+            height={418}
+            loading="lazy"
+            onError={() => setCardQuebrado(true)}
+          />
+        )}
+        <div className="tg-previa__acoes">
+          <button
+            className="btn btn--sm"
+            onClick={() => {
+              setCardQuebrado(false)
+              setVersaoCard(Date.now())
+            }}
+          >
+            Recarregar o card
+          </button>
+          {CARDS.map((c) => (
+            <a key={c.nome} className="tg-previa__link mono small" href={`/api/cards/${c.nome}.png?v=${versaoCard}`} target="_blank" rel="noreferrer">
+              {c.rotulo}
+            </a>
+          ))}
         </div>
       </div>
 

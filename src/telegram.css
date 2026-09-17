@@ -150,6 +150,52 @@
   min-width: 0;
 }
 
+/* ---- prévia do card (a imagem que o bot manda) --------------------------- */
+.tg-previa {
+  min-width: 0;
+  margin-top: 14px;
+  padding: 10px 12px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--surface-2);
+}
+
+.tg-previa__img {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 800 / 418; /* reserva o espaço antes de carregar: sem pulo de layout */
+  margin-top: 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--bg);
+  object-fit: contain;
+}
+
+.tg-previa__erro {
+  margin: 8px 0 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.tg-previa__acoes {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  margin-top: 10px;
+}
+
+.tg-previa__link {
+  color: var(--peri);
+  text-decoration: none;
+  border-bottom: 1px dotted var(--line-2);
+}
+.tg-previa__link:hover {
+  color: var(--amber);
+}
+
 /* ---- ações --------------------------------------------------------------- */
 .tg-acoes {
   display: flex;

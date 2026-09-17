@@ -639,6 +639,15 @@ api.post('/telegram/teste', async (_req, res) => {
   res.json(await telegram.enviarTeste())
 })
 
+// ---- cards PNG (as mesmas imagens que o bot manda no Telegram) -------------
+// GET /api/cards/link.png | hoje | ofensiva | matriz | sugestao | treino
+api.get('/cards/:nome.png', (req, res) => {
+  const r = telegram.card(req.params.nome)
+  if (!r.ok) return res.status(404).json({ erro: r.erro })
+  res.set('Content-Type', 'image/png')
+  res.send(r.png)
+})
+
 api.use((_req, res) => res.status(404).json({ erro: 'rota não encontrada' }))
 app.use('/api', api)
 
