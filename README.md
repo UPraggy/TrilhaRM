@@ -94,6 +94,23 @@ Para gerar um curso novo em qualquer IA, copie o prompt de
 na pasta e rode o validador. A especificação completa está em
 [`content/cursos/README.md`](content/cursos/README.md). O formato JSON antigo continua sendo aceito.
 
+## Bot do Telegram
+
+O app tem um bot que **avisa a URL nova do túnel** (ele observa `data/tunnel-url.txt`), responde a um
+menu de comandos (`/link /hoje /revisar /pratica /treino /curso /matriz /ofensiva /lembrete /parar
+/ajuda`) e manda a tarefa do dia no horário configurado.
+
+Ligar: `@BotFather` → `/newbot` → colar o token em **Config → Bot do Telegram** → mandar `/start`.
+O token fica em `data/config.json` (gitignored) e a API nunca devolve ele inteiro.
+
+> O bot roda **onde está o túnel** (o celular). Com o token no PC o `/link` responde `127.0.0.1`, e o
+> mesmo token em dois servidores derruba os dois com **409 Conflict** — um token por bot, um bot por
+> aparelho.
+
+As mensagens vão com **imagem**: seis cards PNG desenhados pelo próprio app, sem nenhuma dependência
+(`server/png.js` é um encoder PNG escrito do zero e `server/qrcode.js` um gerador de QR Code). O card
+do link traz o **QR do túnel**. As mesmas imagens abrem em `/api/cards/<nome>.png`.
+
 ## Conteúdo hoje (16/09/2026)
 
 | Fase | Decks | Termos | Exercícios |
