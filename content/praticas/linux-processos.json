@@ -1,0 +1,219 @@
+{
+  "deckId": "linux-processos",
+  "titulo": "Práticas · Linux e processos",
+  "exercicios": [
+    {
+      "id": "vazamento-de-fd",
+      "titulo": "Provocar EMFILE e achar o vazamento em /proc",
+      "termos": ["file-descriptor", "ulimit", "proc"],
+      "nivel": 4,
+      "tempoMin": 30,
+      "ambiente": "node",
+      "enunciado": "Você vai criar um vazamento de file descriptor de propósito, vê-lo crescer em `/proc` e provar que aumentar o `ulimit` só adia o problema.\n\nCrie `vaza.js`:\n\n```js\nimport fs from 'node:fs'\nimport http from 'node:http'\n\nconst abertos = []\nhttp.createServer((req, res) => {\n  // o bug: abre e nunca fecha\n  abertos.push(fs.openSync('/etc/hostname', 'r'))\n  res.end(String(abertos.length))\n}).listen(3010)\nconsole.log('pid', process.pid)\n```\n\nSuba (`node vaza.js`), anote o PID e, em outro terminal, meça a linha de base:\n\n```bash\nls /proc/<pid>/fd | wc -l\ngrep 'open files' /proc/<pid>/limits\n```\n\nAgora gere carga: `for i in $(seq 1 500); do curl -s localhost:3010 > /dev/null; done` e meça de novo. Repita e veja o número subir de forma monotônica. Continue até o processo morrer com `EMFILE: too many open files`.\n\nEntregue a saída EXATA de `grep 'open files' /proc/<pid>/limits` (a linha inteira) da máquina onde você rodou.",
+      "passos": [
+        "Crie vaza.js e suba; anote o PID que ele imprime",
+        "Meça `ls /proc/<pid>/fd | wc -l` antes de qualquer request (linha de base)",
+        "Gere 500 requests e meça de novo; repita mais duas vezes",
+        "Confirme que o número cresce monotonicamente mesmo com o servidor ocioso",
+        "Continue até EMFILE e confira o limite real em /proc/<pid>/limits"
+      ],
+      "entrega": {
+        "tipo": "saida",
+        "rotulo": "A linha de 'Max open files' de /proc/<pid>/limits",
+        "esperadoQualquer": [
+          "Max open files 1024 1048576 files",
+          "Max open files 1024 524288 files",
+          "Max open files 1024 4096 files"
+        ],
+        "normalizar": true
+      },
+      "dicas": [
+        "A saída tem colunas separadas por muitos espaços: o validador colapsa espaços, então pode colar como veio.",
+        "Se o seu limite soft não for 1024, cole assim mesmo e depois compare com a solução — o número importa menos que o método.",
+        "No Termux/PRoot o limite costuma ser bem maior; use `ulimit -n 256` antes de subir o node para reproduzir rápido."
+      ],
+      "solucao": "Cada `fs.openSync` sem `close` consome uma entrada permanente da tabela de descritores do processo. O sinal de VAZAMENTO (e não de uso normal) é o crescimento monotônico com o servidor ocioso: um pool saudável oscila com a carga e volta. `ls /proc/<pid>/fd | wc -l` conta e `ls -l /proc/<pid>/fd` mostra o destino de cada um — é assim que se descobre se são sockets, arquivos ou pipes, e isso aponta direto para o trecho de código culpado. `/proc/<pid>/limits` mostra o limite REAL do processo em execução, que é o que importa: ajustar `/etc/security/limits.conf` não muda nada se o serviço sobe pelo systemd (que usa `LimitNOFILE=` na unit) ou pelo PM2. Aumentar o limite é analgésico: com o vazamento, o EMFILE só chega mais tarde. A correção é sempre fechar o descritor — `try/finally`, `using` com `Symbol.dispose`, ou streams que terminam. Os primos deste bug em servidor Node: conexão HTTP que não é consumida, socket em CLOSE_WAIT e stream sem `end`.",
+      "criterios": [],
+      "postmortem": false
+    },
+    {
+      "id": "sigterm-graceful",
+      "titulo": "Desligamento gracioso que não derruba requisição em voo",
+      "termos": ["sinais", "graceful-shutdown", "pid1"],
+      "nivel": 5,
+      "tempoMin": 40,
+      "ambiente": "node",
+      "enunciado": "Você vai provar a diferença entre `process.exit()` e um desligamento gracioso de verdade, medindo requisições perdidas.\n\nServidor `lento.js`:\n```js\nimport http from 'node:http'\nconst server = http.createServer(async (req, res) => {\n  await new Promise((r) => setTimeout(r, 2000))   // trabalho de 2 s\n  res.end('ok')\n})\nserver.listen(3011, () => console.log('pid', process.pid))\n\n// VERSÃO A (errada): comente/descomente para comparar\n// process.on('SIGTERM', () => process.exit(0))\n\n// VERSÃO B (certa)\nprocess.on('SIGTERM', () => {\n  console.log('SIGTERM: parando de aceitar conexões novas')\n  server.close(() => { console.log('todas terminaram'); process.exit(0) })\n  setTimeout(() => { console.error('prazo estourado'); process.exit(1) }, 10000).unref()\n})\n```\n\nPara cada versão: suba o servidor, dispare 5 requisições em paralelo (`for i in 1 2 3 4 5; do curl -s -w '%{http_code}\\n' localhost:3011 & done`), espere 1 segundo e mande `kill -TERM <pid>`. Conte quantas das 5 receberam resposta.\n\nDepois responda: na VERSÃO B, o que acontece se um cliente estiver com conexão keep-alive OCIOSA aberta? (Teste com `curl --keepalive-time 60` ou um cliente que mantenha a conexão.)\n\nEntregue um relato com os dois números (respostas completadas em A e em B) e a explicação do caso keep-alive.",
+      "passos": [
+        "Suba a versão A (process.exit no SIGTERM), dispare 5 requisições e mate com kill -TERM depois de 1 s",
+        "Conte quantas responderam",
+        "Troque para a versão B e repita exatamente o mesmo teste",
+        "Teste o caso do keep-alive ocioso e observe se o server.close() retorna",
+        "Escreva o relato com os dois números e a explicação"
+      ],
+      "entrega": {
+        "tipo": "texto",
+        "rotulo": "Relato com os dois números e o caso keep-alive",
+        "minimoChars": 300
+      },
+      "dicas": [
+        "`kill -TERM` é o padrão do `kill`; `kill -9` é SIGKILL e não pode ser tratado — teste os dois para sentir a diferença.",
+        "`server.close()` para de ACEITAR conexões novas, mas espera as abertas; conexão keep-alive ociosa conta como aberta.",
+        "Node 18+ tem `server.closeIdleConnections()` e `server.closeAllConnections()` exatamente para esse caso."
+      ],
+      "solucao": "Na versão A, `process.exit(0)` mata o processo imediatamente: as 5 requisições em voo são cortadas no meio e o cliente recebe erro de conexão (curl devolve 000 ou 52). Na versão B, `server.close()` para de aceitar conexões NOVAS mas mantém as abertas até terminarem, então as 5 completam com 200 e o processo sai depois. O timeout com `.unref()` é a rede de segurança: sem ele, uma requisição travada segura o processo para sempre e o orquestrador acaba mandando SIGKILL. O caso do keep-alive é a pegadinha: uma conexão ociosa mantida pelo cliente conta como conexão aberta, então o callback do `close()` NUNCA é chamado e o processo só sai no timeout — por isso Node 18+ tem `closeIdleConnections()` (fecha as ociosas, preserva as que estão em uso) e `closeAllConnections()` (corta tudo, para o fim do prazo). Em produção a sequência completa tem um passo antes: marcar o readiness como falso e ESPERAR o balanceador tirar a instância do rodízio; senão você para de aceitar enquanto ainda chega tráfego, e o usuário leva erro de conexão. E, em container, nada disso roda se o processo for PID 1 sem init ou se o CMD estiver na forma shell — o SIGTERM é ignorado e vem SIGKILL no fim do prazo.",
+      "criterios": [
+        "Traz os dois números medidos (versão A e versão B)",
+        "Explica que server.close() para de aceitar conexões novas mas espera as abertas",
+        "Identifica o keep-alive ocioso como caso em que o close() não retorna",
+        "Cita o timeout duro como rede de segurança",
+        "Menciona o passo do readiness/balanceador ou o caso do PID 1 em container"
+      ],
+      "postmortem": false
+    },
+    {
+      "id": "oom-killer-prova",
+      "titulo": "Fazer o OOM killer matar seu processo e achar a prova",
+      "termos": ["oom-killer", "memoria-virtual", "cgroups", "pipes-redirecionamento"],
+      "nivel": 4,
+      "tempoMin": 30,
+      "ambiente": "docker",
+      "enunciado": "Um processo Node 'some' sem stack trace e o supervisor reinicia. Você vai reproduzir isso e aprender onde está a prova.\n\nCom Docker (limite de memória por cgroup, que é o cenário real de produção):\n\n```bash\ndocker run --rm -m 128m --name oomlab node:20 node -e \"\n  const a = [];\n  setInterval(() => { a.push(Buffer.alloc(10 * 1024 * 1024)); console.log('MB', a.length * 10); }, 100);\n\"\n```\n\nObserve até o container morrer. Depois:\n\n```bash\ndocker inspect oomlab --format '{{.State.ExitCode}} {{.State.OOMKilled}}'   # se ainda existir\n# sem --rm, ou:\ndmesg -T | grep -i -E 'killed process|out of memory' | tail -5\n```\n\nRepita **com** `--max-old-space-size` para que o Node falhe com erro tratável ANTES de o kernel intervir:\n\n```bash\ndocker run --rm -m 128m node:20 node --max-old-space-size=96 -e \"...mesmo script...\"\n```\n\nEntregue o EXIT CODE do container na primeira execução (sem --max-old-space-size).",
+      "passos": [
+        "Rode o container com -m 128m e o script que aloca 10 MB a cada 100 ms",
+        "Observe a última linha de MB impressa antes da morte",
+        "Colete o exit code do container",
+        "Procure a prova no kernel (dmesg) ou em docker inspect (.State.OOMKilled)",
+        "Repita com --max-old-space-size=96 e compare a forma como o processo morre"
+      ],
+      "entrega": {
+        "tipo": "numero",
+        "rotulo": "Exit code do container na primeira execução",
+        "esperado": 137,
+        "tolerancia": 0
+      },
+      "dicas": [
+        "Exit code de processo morto por sinal é 128 + número do sinal.",
+        "SIGKILL é o sinal 9.",
+        "Se o seu Docker não expõe dmesg, use `docker inspect` sem `--rm` e leia `.State.OOMKilled`."
+      ],
+      "solucao": "O exit code é 137 = 128 + 9 (SIGKILL). Essa é a assinatura do OOM killer, e saber lê-la economiza horas: 137 é morte por SIGKILL (quase sempre OOM ou `kill -9`), 143 = 128 + 15 é SIGTERM, ou seja, desligamento normal. Com limite por cgroup, quem mata é o OOM killer LOCAL do grupo: o container morre e o resto da máquina nem percebe — por isso 'o container morre sozinho numa máquina com RAM sobrando'. A prova fica no kernel (`dmesg -T | grep -i 'killed process'`) e, no Docker, em `.State.OOMKilled`. Do lado da aplicação o sintoma é brutal: o processo some sem stack trace, sem log de erro e sem chance de gravar nada — não há handler possível para SIGKILL. Com `--max-old-space-size` abaixo do limite do cgroup, o V8 estoura primeiro e você recebe um `JavaScript heap out of memory` com stack trace, que é tratável, logável e diagnosticável. Regra prática: em container, sempre configure o heap do Node ABAIXO do limite de memória do container (deixando folga para buffers, código nativo e pilha), e monitore RSS crescendo monotonicamente sob carga constante — que é o sinal de vazamento de verdade.",
+      "criterios": [],
+      "postmortem": false
+    },
+    {
+      "id": "cpu-throttling-container",
+      "titulo": "Latência de 100 ms com CPU 'baixa': achar o throttling",
+      "termos": ["cgroups", "load-average", "top-htop"],
+      "nivel": 5,
+      "tempoMin": 35,
+      "ambiente": "docker",
+      "enunciado": "Um serviço em container tem picos de latência de ~100 ms e o dashboard mostra CPU longe do limite. Você vai reproduzir e provar que é CPU throttling do cgroup.\n\n```bash\ndocker run --rm --cpus=0.5 --name cpulab node:20 node -e \"\n  function queima(ms){ const t = Date.now(); while (Date.now() - t < ms); }\n  setInterval(() => { const i = Date.now(); queima(80); console.log('levou', Date.now() - i, 'ms'); }, 1000);\n\"\n```\n\nO trabalho é de 80 ms de CPU pura. Observe quanto ele DEMORA de verdade. Em outro terminal:\n\n```bash\ndocker exec cpulab cat /sys/fs/cgroup/cpu.stat\n```\n\nRode de novo com `--cpus=2` e compare o tempo medido e o `nr_throttled`.\n\nEntregue um relato explicando: (a) por que o trabalho de 80 ms levou muito mais com `--cpus=0.5`; (b) o que exatamente `nr_throttled` e `throttled_usec` contam; (c) por que o gráfico de 'uso de CPU' não denuncia isso; (d) as duas formas de corrigir.",
+      "passos": [
+        "Rode o container com --cpus=0.5 e observe o tempo real do trabalho de 80 ms",
+        "Leia /sys/fs/cgroup/cpu.stat dentro do container e anote nr_throttled",
+        "Rode com --cpus=2 e compare os dois números",
+        "Relacione o período de 100 ms da quota com a latência observada",
+        "Escreva o relato com os quatro pontos pedidos"
+      ],
+      "entrega": {
+        "tipo": "texto",
+        "rotulo": "Relato com os quatro pontos e os números medidos",
+        "minimoChars": 350
+      },
+      "dicas": [
+        "A quota de CPU do cgroup funciona por PERÍODO (100 ms por padrão): 0,5 CPU = 50 ms de processamento por período.",
+        "Em cgroup v1 o arquivo é cpu.cfs_quota_us / cpu.cfs_period_us e as estatísticas ficam em cpu.stat mesmo.",
+        "Compare `nr_throttled` antes e depois de alguns ciclos: ele é um contador acumulado."
+      ],
+      "solucao": "Com `--cpus=0.5`, o cgroup dá 50 ms de CPU a cada período de 100 ms. Um trabalho que precisa de 80 ms consome os 50 ms disponíveis, é PARADO (throttled) e só retoma no período seguinte — então 80 ms de trabalho levam ~130 ms de relógio. `nr_throttled` conta quantos períodos terminaram com o grupo estrangulado e `throttled_usec` soma o tempo total parado: esses dois números são a prova direta. O gráfico de uso de CPU não denuncia porque, na média, o container está usando exatamente os 50 % que lhe cabem — a média está 'certa' e a latência está ruim, que é a assinatura de todo problema de fila. As correções são duas e opostas: (1) aumentar a quota (mais CPU por período) quando o trabalho é legítimo; (2) reduzir a RAJADA — quebrar o processamento, sair do laço bloqueante, mover trabalho pesado para fora do caminho da requisição — quando o pico é evitável. E há uma armadilha extra em runtimes com pool de threads: o pool costuma ser dimensionado pelo número de núcleos VISÍVEIS (a máquina inteira), não pela quota, então o processo cria threads demais para a fatia que tem e piora o throttling; em Node isso aparece em `UV_THREADPOOL_SIZE` e no paralelismo do GC.",
+      "criterios": [
+        "Explica a quota por período (50 ms a cada 100 ms) como causa do tempo extra",
+        "Cita nr_throttled e throttled_usec com os números medidos",
+        "Explica por que a média de CPU esconde o problema",
+        "Apresenta as duas correções (aumentar quota / reduzir rajada)",
+        "Traz a comparação com --cpus=2"
+      ],
+      "postmortem": false
+    },
+    {
+      "id": "disco-cheio-fantasma",
+      "titulo": "Disco cheio que o du não acha",
+      "termos": ["logs-rotacao", "hardlink-symlink", "file-descriptor"],
+      "nivel": 3,
+      "tempoMin": 20,
+      "ambiente": "bash",
+      "enunciado": "Reproduza um dos incidentes mais confusos de operação: `df` diz que o disco está cheio, `du` não acha os arquivos.\n\n```bash\n# num diretório de teste\nnode -e \"\n  const fs = require('fs');\n  const s = fs.createWriteStream('./lixo.log');\n  setInterval(() => s.write('x'.repeat(1024 * 1024) + '\\n'), 50);\n\" &\nsleep 5\nls -lh lixo.log          # o arquivo está crescendo\nrm lixo.log              # apagamos\nls -lh lixo.log          # sumiu\ndu -sh .                 # não acha nada\ndf -h .                  # o espaço NÃO voltou\n```\n\nAgora ache o arquivo fantasma:\n\n```bash\nlsof +L1 2>/dev/null | head\n# ou, sem lsof:\nls -l /proc/*/fd 2>/dev/null | grep -i deleted | head\n```\n\nMate o processo e veja o espaço voltar na hora.\n\nEntregue o comando (um só) que lista arquivos DELETADOS que ainda estão abertos por algum processo.",
+      "passos": [
+        "Suba o script que escreve continuamente no arquivo",
+        "Apague o arquivo com rm enquanto ele ainda está sendo escrito",
+        "Confirme a divergência entre du e df",
+        "Liste os arquivos deletados ainda abertos",
+        "Mate o processo e confirme que o espaço voltou"
+      ],
+      "entrega": {
+        "tipo": "escolha",
+        "rotulo": "Qual comando lista arquivos deletados que ainda estão abertos?",
+        "opcoes": [
+          "lsof +L1",
+          "du -ah --apparent-size",
+          "find / -type f -size +100M",
+          "df -i",
+          "ls -la /tmp"
+        ],
+        "correta": 0
+      },
+      "dicas": [
+        "O arquivo em si (o inode) só é liberado quando o último link some E nenhum processo o tem aberto.",
+        "`+L1` filtra por contagem de links menor que 1 — exatamente o caso do arquivo deletado e aberto.",
+        "`df -i` é para outro problema: esgotamento de INODES, que também dá 'disco cheio' com bytes livres."
+      ],
+      "solucao": "`lsof +L1` lista arquivos cuja contagem de links é menor que 1, ou seja, deletados mas ainda abertos por algum processo. No Linux, `rm` remove o NOME (o link de diretório), não o arquivo: o inode e seus blocos só são liberados quando o último link some E nenhum processo mantém um descritor aberto. Por isso `du` (que percorre nomes de diretório) não vê nada e `df` (que lê os blocos livres do sistema de arquivos) continua mostrando o disco cheio. A correção imediata é reiniciar o processo que segura o descritor — ou, sem derrubar, truncar pelo próprio fd: `: > /proc/<pid>/fd/<n>`. A causa raiz costuma ser rotação de log mal-feita: quem apaga em vez de mover-e-sinalizar produz exatamente isso. O padrão correto é renomear e mandar SIGHUP/SIGUSR1 para o processo reabrir o arquivo (é o que nginx e o pm2-logrotate fazem), ou `copytruncate` quando o processo não sabe reabrir. Vale registrar o primo desse problema, que confunde tanto quanto: `df -h` com espaço livre e 'no space left on device' por esgotamento de INODES — a prova está em `df -i`.",
+      "criterios": [],
+      "postmortem": false
+    },
+    {
+      "id": "pesquisa-close-wait",
+      "titulo": "Pesquisa: TIME_WAIT é normal, CLOSE_WAIT é bug seu",
+      "termos": ["socket-estados", "file-descriptor"],
+      "nivel": 4,
+      "tempoMin": 25,
+      "ambiente": "papel",
+      "enunciado": "Exercício de PESQUISA. Leia sobre a máquina de estados do TCP — a RFC 9293 (que substituiu a RFC 793) tem o diagrama oficial, e o `ss(8)` / `netstat` documentam os estados observáveis.\n\nResponda em um parágrafo, cobrindo obrigatoriamente:\n\n1. Qual dos dois lados (quem fecha primeiro ou quem recebe o fecho) entra em **TIME_WAIT**, e por que esse estado precisa existir;\n2. Quanto tempo ele dura, e de onde vem esse valor;\n3. O que significa um socket em **CLOSE_WAIT** e por que ele indica bug na SUA aplicação;\n4. Por que a receita antiga `tcp_tw_recycle` não deve ser usada.\n\n**Cole o link da fonte** (RFC, documentação do kernel ou man page) ou uma citação entre aspas.",
+      "passos": [
+        "Procure a RFC 9293 (TCP) e o diagrama de estados",
+        "Descubra a relação entre TIME_WAIT e MSL (maximum segment lifetime)",
+        "Entenda o que precisa acontecer na aplicação para sair de CLOSE_WAIT",
+        "Procure por que tcp_tw_recycle foi REMOVIDO do kernel Linux",
+        "Escreva a resposta com o link da fonte"
+      ],
+      "entrega": {
+        "tipo": "pesquisa",
+        "rotulo": "Sua resposta + a fonte",
+        "deveConter": ["fecha primeiro|fechou primeiro|active close|quem fecha", "msl|2 minutos|60 segundos|2msl", "close()|fechar o socket|nao chama close|não chama close", "nat"],
+        "exigeFonte": true,
+        "minimoChars": 300,
+        "ondeProcurar": [
+          "RFC 9293 — Transmission Control Protocol (diagrama de estados)",
+          "man 8 ss e man 7 tcp",
+          "Documentação do kernel: Documentation/networking/ip-sysctl.txt (tcp_tw_reuse)"
+        ]
+      },
+      "dicas": [
+        "TIME_WAIT é do lado que faz o 'active close'.",
+        "A duração é 2×MSL; no Linux o valor é fixo em 60 segundos.",
+        "O motivo da remoção do tcp_tw_recycle envolve clientes atrás de um mesmo endereço público."
+      ],
+      "solucao": "TIME_WAIT é do lado que FECHA PRIMEIRO (active close) e existe por dois motivos: garantir que o último ACK chegue (se ele se perder, o outro lado retransmite o FIN e precisa encontrar alguém para responder) e impedir que segmentos atrasados da conexão antiga sejam entregues a uma conexão nova com a mesma quádrupla (mesmos IPs e portas). Dura 2×MSL — no Linux, 60 segundos fixos. Milhares de TIME_WAIT num cliente que abre muitas conexões curtas é ESPERADO; a correção certa é reusar conexão (keep-alive, pool), não mexer em sysctl. CLOSE_WAIT é o oposto: o par mandou FIN, seu lado recebeu e a APLICAÇÃO nunca chamou `close()` no socket. Ele não expira sozinho, acumula file descriptor e memória, e é sempre bug do seu código — stream não consumido, caminho de erro que pula o fechamento, pool que não devolve a conexão. `tcp_tw_recycle` foi REMOVIDO do kernel (4.12) porque descartava pacotes de clientes atrás de NAT: ele usava timestamps por IP de origem, e vários clientes compartilhando um endereço público apareciam como um só com timestamps fora de ordem — resultado, conexões recusadas aparentemente aleatórias. A alternativa segura é `tcp_tw_reuse`, que só vale para conexões de SAÍDA.",
+      "criterios": [
+        "Identifica corretamente que TIME_WAIT é de quem fecha primeiro",
+        "Explica os dois motivos do TIME_WAIT (último ACK e segmentos atrasados)",
+        "Cita 2×MSL / 60 s no Linux",
+        "Explica que CLOSE_WAIT é falta de close() na aplicação",
+        "Explica que tcp_tw_recycle quebra clientes atrás de NAT e foi removido",
+        "Traz link ou citação da fonte"
+      ],
+      "postmortem": false
+    }
+  ]
+}

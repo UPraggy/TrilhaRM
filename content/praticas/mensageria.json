@@ -1,0 +1,207 @@
+{
+  "deckId": "mensageria",
+  "titulo": "Práticas · Mensageria e filas",
+  "exercicios": [
+    {
+      "id": "at-least-once-duplicata",
+      "titulo": "Provocar a duplicata e matá-la com idempotência",
+      "termos": ["at-least-once", "idempotencia", "ack-nack"],
+      "nivel": 5,
+      "tempoMin": 45,
+      "ambiente": "postgres",
+      "enunciado": "Você vai reproduzir a duplicata que TODO broker at-least-once produz, e depois eliminá-la do jeito certo — gravando a chave de idempotência na MESMA transação do efeito.\n\nMonte a fila mínima em Postgres:\n```sql\nCREATE TABLE msg (id serial primary key, chave text, valor numeric, entregue_em timestamptz);\nCREATE TABLE saldo (conta int primary key, total numeric default 0);\nINSERT INTO saldo VALUES (1, 0);\nINSERT INTO msg (chave, valor) SELECT 'm'||g, 10 FROM generate_series(1, 100) g;\n```\n\n**Fase 1 — sem proteção.** Escreva um consumidor que leia cada mensagem e faça `UPDATE saldo SET total = total + $1 WHERE conta = 1`. Simule a reentrega processando a lista DUAS vezes (é exatamente o que acontece quando o ack se perde). Confira o saldo: deveria ser 1000 e vai dar 2000.\n\n**Fase 2 — com chave de idempotência.** Crie:\n```sql\nCREATE TABLE processadas (chave text primary key, em timestamptz default now());\n```\nAgora, dentro de UMA transação: `INSERT INTO processadas (chave) VALUES ($1)` e, se não violar a unique, aplique o efeito; se violar (código 23505), faça ROLLBACK e trate como já processada. Rode duas vezes de novo.\n\n**Fase 3 — o erro sutil.** Faça a gravação da chave em uma transação SEPARADA do efeito, mate o processo entre as duas (um `process.exit(1)` condicional no meio) e mostre o que acontece.\n\nEntregue o saldo final da FASE 2 depois de processar a lista duas vezes.",
+      "passos": [
+        "Monte as tabelas e o consumidor simples (fase 1); processe a lista duas vezes e anote o saldo",
+        "Crie a tabela processadas e mova o efeito para dentro da mesma transação (fase 2)",
+        "Processe duas vezes e confira o saldo",
+        "Na fase 3, separe as duas escritas em transações distintas e mate o processo no meio",
+        "Descreva o que a fase 3 produz: efeito sem registro (duplica) ou registro sem efeito (perde)"
+      ],
+      "entrega": {
+        "tipo": "numero",
+        "rotulo": "Saldo final na fase 2, após dois passes",
+        "esperado": 1000,
+        "tolerancia": 0
+      },
+      "dicas": [
+        "No `pg`, a violação de unique chega como erro com `code === '23505'`.",
+        "Use `pool.connect()` e o MESMO client para BEGIN, INSERT, UPDATE e COMMIT.",
+        "Se o saldo der 2000 na fase 2, o INSERT e o UPDATE não estão na mesma transação."
+      ],
+      "solucao": "Na fase 1 o saldo dá 2000: at-least-once entrega de novo e o efeito `total = total + 10` NÃO é idempotente, então soma duas vezes. Na fase 2 o saldo é 1000, porque a chave e o efeito compartilham a transação: o segundo passe viola a unique, a transação inteira é revertida e nada é aplicado. A fase 3 é a lição mais importante: com duas transações separadas, existe uma janela entre elas e o processo pode morrer ali. Se a chave é gravada ANTES do efeito, a mensagem é considerada processada e o efeito NUNCA acontece (perda silenciosa — o pior caso, porque não há erro). Se é gravada DEPOIS, o efeito acontece e a reentrega o aplica de novo (duplicata). Não há ordem correta com duas transações: a atomicidade é o requisito, não um detalhe. É por isso que a chave de idempotência precisa morar no MESMO sistema transacional do efeito — e, quando o efeito é externo (cobrar cartão, enviar e-mail), a única saída é uma chave de idempotência no PRÓPRIO serviço externo, mais o registro local na mesma transação do seu dado. A alternativa mais simples de todas continua sendo tornar o efeito naturalmente idempotente: `SET status = 'pago'` em vez de `total = total + x`.",
+      "criterios": [],
+      "postmortem": false
+    },
+    {
+      "id": "poison-message-bloqueia",
+      "titulo": "Uma mensagem envenenada travando a partição inteira",
+      "termos": ["poison-message", "dlq", "consumer-lag", "ordem-mensagens"],
+      "nivel": 5,
+      "tempoMin": 40,
+      "ambiente": "node",
+      "enunciado": "Você vai mostrar por que escalar consumidores não resolve lag quando a causa é uma mensagem envenenada.\n\nSimule uma fila ORDENADA (uma partição) em memória:\n\n```js\nconst fila = Array.from({ length: 50 }, (_, i) => ({ id: i, payload: i === 7 ? null : { v: i } }))\nlet cursor = 0\nlet tentativas = 0\n\nfunction processar(m) {\n  return m.payload.v * 2       // explode quando payload é null\n}\n\nsetInterval(() => {\n  const m = fila[cursor]\n  if (!m) return\n  try {\n    processar(m)\n    cursor++\n  } catch (e) {\n    tentativas++\n    console.log('falhou na', m.id, 'tentativa', tentativas, '| lag:', fila.length - cursor)\n    // sem avançar o cursor: a ordem precisa ser preservada\n  }\n}, 100)\n```\n\nObserve o lag parar de cair e as tentativas subirem para sempre. Agora implemente as três defesas, em ordem:\n\n1. **Validar na entrada**: rejeitar payload inválido ANTES de processar;\n2. **Contar tentativas por mensagem** e, passando de N, mandar para uma DLQ (outro array) com o MOTIVO junto (erro, tentativa, momento);\n3. **Avançar o cursor** depois de mandar para a DLQ, registrando o que foi pulado.\n\nEntregue um relato com: o lag antes da correção, o comportamento depois, e por que subir mais consumidores não teria ajudado.",
+      "passos": [
+        "Rode o laço e observe tentativas crescendo com o lag congelado",
+        "Acrescente validação de payload na entrada do consumidor",
+        "Acrescente contagem de tentativas por mensagem e envio para DLQ após N falhas",
+        "Garanta que a mensagem enviada à DLQ leve erro, tentativa e momento",
+        "Escreva o relato com os números e a explicação sobre escalar consumidores"
+      ],
+      "entrega": {
+        "tipo": "texto",
+        "rotulo": "Relato: lag antes/depois e por que escalar não resolveria",
+        "minimoChars": 350
+      },
+      "dicas": [
+        "Mensagem envenenada é a que falha SEMPRE — retry infinito não muda nada, só queima CPU.",
+        "Em fila ordenada por partição, a mensagem travada bloqueia tudo atrás dela (head-of-line blocking).",
+        "DLQ sem o motivo junto vira lixeira: ninguém consegue investigar depois."
+      ],
+      "solucao": "O lag congela em 43 e as tentativas crescem indefinidamente: a mensagem 7 falha sempre e, como a ordem precisa ser preservada, nada atrás dela avança. Subir mais consumidores não ajudaria em nada — numa fila ordenada por partição, só um consumidor processa aquela partição por vez, e ele está preso na mesma mensagem. É exatamente o diagnóstico que se faz em produção pelo lag POR PARTIÇÃO: uma partição com lag crescendo e as outras zeradas é envenenamento, não falta de capacidade; o lag agregado esconde isso completamente. As três defesas atacam momentos diferentes: validar na entrada rejeita cedo e barato (e distingue erro PERMANENTE de TRANSITÓRIO — payload inválido não merece 5 tentativas, banco fora merece); contar tentativas por mensagem dá o limite; e a DLQ tira o veneno do caminho preservando a evidência. Três coisas fazem a DLQ ser útil de verdade: a mensagem vai com o motivo (exceção, tentativa, momento, id de correlação), existe ALARME para profundidade maior que zero, e existe caminho de volta (replay) para depois da correção. DLQ sem alerta é lixeira; alerta sem runbook é ruído.",
+      "criterios": [
+        "Traz o número do lag congelado e o comportamento após a correção",
+        "Explica head-of-line blocking em fila ordenada",
+        "Explica por que mais consumidores não ajudariam",
+        "Distingue erro permanente de transitório na decisão de retry",
+        "Cita o que acompanha a mensagem na DLQ e o alarme de profundidade"
+      ],
+      "postmortem": false
+    },
+    {
+      "id": "backoff-com-jitter",
+      "titulo": "Medir a estampida: backoff sem jitter vs com jitter",
+      "termos": ["retry-backoff", "estampida", "rate-limit"],
+      "nivel": 4,
+      "tempoMin": 30,
+      "ambiente": "node",
+      "enunciado": "Você vai medir, com número, por que jitter importa tanto quanto o backoff.\n\nSimule 1000 clientes que falharam TODOS no mesmo instante e fazem retry:\n\n```js\nconst N = 1000, TENTATIVAS = 5, BASE = 100\n\nfunction semJitter(n) { return BASE * 2 ** n }\nfunction fullJitter(n) { return Math.random() * BASE * 2 ** n }\n\nfunction simular(calc) {\n  const balde = new Map()             // instante (arredondado a 100 ms) -> quantos\n  for (let c = 0; c < N; c++) {\n    let t = 0\n    for (let n = 0; n < TENTATIVAS; n++) {\n      t += calc(n)\n      const k = Math.round(t / 100) * 100\n      balde.set(k, (balde.get(k) || 0) + 1)\n    }\n  }\n  return Math.max(...balde.values())   // o PICO de requisições em uma janela de 100 ms\n}\n\nconsole.log('sem jitter, pico:', simular(semJitter))\nconsole.log('full jitter, pico:', simular(fullJitter))\n```\n\nRode e compare os dois picos. Depois responda: por que o pico sem jitter é exatamente N?\n\nEntregue o PICO da versão sem jitter.",
+      "passos": [
+        "Rode a simulação e anote os dois picos",
+        "Explique por que o backoff determinístico concentra todos no mesmo instante",
+        "Experimente 'equal jitter' (metade fixo + metade aleatório) e compare",
+        "Pense no caso real: 1000 clientes reconectando depois de um blip de rede"
+      ],
+      "entrega": {
+        "tipo": "numero",
+        "rotulo": "Pico de requisições em 100 ms, versão SEM jitter",
+        "esperado": 1000,
+        "tolerancia": 0
+      },
+      "dicas": [
+        "Sem aleatoriedade, todos os clientes calculam exatamente o mesmo tempo de espera.",
+        "O pico com full jitter fica na casa das dezenas — ordem de grandeza menor.",
+        "É o mesmo fenômeno de TTL de cache expirando em bloco depois de um deploy."
+      ],
+      "solucao": "Sem jitter, o pico é exatamente 1000: o backoff é determinístico, então TODOS os clientes esperam 100 ms, depois 200, depois 400 — e batem juntos em cada rodada. O backoff exponencial espaçou as ondas, mas cada onda continua sendo a estampida inteira, exatamente quando o serviço está mais frágil. Com full jitter (`random(0, base × 2^n)`), o pico cai para algumas dezenas: as tentativas se espalham por todo o intervalo. Essa é a fórmula recomendada pela AWS, e ela vence o backoff puro e o 'equal jitter' na maioria das simulações. Regras que completam o padrão em produção: só repetir erro TRANSITÓRIO (5xx, timeout, conexão recusada — nunca 4xx de validação); exigir idempotência antes de repetir qualquer coisa que muda estado; limitar o número de tentativas; e ter retry em UM nível da pilha, porque 3 camadas × 3 tentativas são 27 chamadas por falha. Complemento moderno: retry budget — permitir retries só até X % do tráfego normal e, passado isso, desistir. O mesmo fenômeno reaparece em cache (TTL igual para todas as chaves criadas no deploy), em cron (todo mundo às 00:00) e em reconexão de WebSocket — e a solução é sempre a mesma: espalhar.",
+      "criterios": [],
+      "postmortem": false
+    },
+    {
+      "id": "outbox-transacional",
+      "titulo": "Implementar o outbox e provar que o evento não se perde",
+      "termos": ["outbox", "idempotencia", "evento-vs-comando"],
+      "nivel": 5,
+      "tempoMin": 50,
+      "ambiente": "postgres",
+      "enunciado": "Você vai reproduzir os dois modos de falha do 'gravar no banco e publicar no broker' e resolvê-los com o outbox.\n\n```sql\nCREATE TABLE pedido (id serial primary key, cliente text, valor numeric);\nCREATE TABLE outbox (id bigserial primary key, agregado text, tipo text, payload jsonb, criado_em timestamptz default now(), publicado_em timestamptz);\nCREATE TABLE broker (id bigserial primary key, tipo text, payload jsonb);  -- o \"broker\" de mentira\n```\n\n**Fase 1 — os dois modos de falha.** Escreva a versão ingênua: `BEGIN; INSERT INTO pedido ...; COMMIT;` e depois `INSERT INTO broker ...`. Force a falha entre os dois (um `throw` condicional) e mostre o pedido sem evento. Depois inverta a ordem (publicar primeiro) e force a falha no commit: agora há evento de um pedido que não existe.\n\n**Fase 2 — outbox.** `BEGIN; INSERT INTO pedido ...; INSERT INTO outbox ...; COMMIT;` — atômico, porque é o mesmo banco. Escreva o publicador:\n```sql\nBEGIN;\nSELECT * FROM outbox WHERE publicado_em IS NULL ORDER BY id FOR UPDATE SKIP LOCKED LIMIT 100;\n-- publica cada um no broker\nUPDATE outbox SET publicado_em = now() WHERE id = ANY($1);\nCOMMIT;\n```\nMate o publicador ENTRE publicar e marcar, e observe: o evento é publicado duas vezes.\n\nEntregue um postmortem em 5 partes cobrindo: os dois modos de falha da versão ingênua, por que o outbox resolve, qual garantia ele entrega (e qual NÃO entrega), e o que isso exige do consumidor.",
+      "passos": [
+        "Implemente a versão ingênua nas duas ordens e force a falha em cada uma",
+        "Registre o que fica inconsistente em cada caso",
+        "Implemente o outbox com o INSERT duplo na mesma transação",
+        "Implemente o publicador com SKIP LOCKED e mate-o entre publicar e marcar",
+        "Escreva o postmortem com os cinco pontos"
+      ],
+      "entrega": {
+        "tipo": "texto",
+        "rotulo": "Postmortem em 5 partes",
+        "minimoChars": 400
+      },
+      "dicas": [
+        "Os dois modos de falha são simétricos: evento perdido e evento mentiroso.",
+        "O outbox move o problema para a PUBLICAÇÃO, que passa a ser at-least-once.",
+        "A alternativa ao polling é CDC lendo o WAL (Debezium) — e aí cuidado com slot de replicação abandonado."
+      ],
+      "solucao": "A versão ingênua tem dois modos de falha simétricos e nenhum deles é evitável com try/catch: commit primeiro e publicação depois perde o evento quando o processo morre entre os dois (o pedido existe e ninguém sabe); publicar primeiro e commitar depois cria um evento sobre um pedido que não existe (pior, porque os consumidores agem sobre uma mentira). Não há ordem correta: são dois sistemas sem transação comum. O 2PC resolveria e traz bloqueio e complexidade que quase ninguém quer. O outbox troca isso por ATOMICIDADE LOCAL: o evento é gravado na mesma transação do dado, no mesmo banco, então ou os dois existem ou nenhum. O que o outbox entrega é 'o evento nunca se perde'; o que ele NÃO entrega é 'o evento é publicado exatamente uma vez' — matar o publicador entre publicar e marcar republica na próxima rodada. Ou seja, a publicação é at-least-once, e a responsabilidade volta para o CONSUMIDOR, que precisa ser idempotente (chave de idempotência gravada junto do efeito, ou efeito naturalmente idempotente). O padrão espelhado do outro lado é o inbox. Em produção, acrescente: índice parcial em `WHERE publicado_em IS NULL` (a fila é minúscula perto da tabela), limpeza do que já foi publicado, e alarme sobre a idade do item mais antigo não publicado — essa métrica detecta publicador parado antes de qualquer consumidor reclamar.",
+      "criterios": [
+        "Descreve os DOIS modos de falha da versão ingênua, com o efeito de cada um",
+        "Explica que o outbox resolve por atomicidade local (mesmo banco, mesma transação)",
+        "Afirma explicitamente que a publicação continua at-least-once",
+        "Conclui que o consumidor precisa ser idempotente",
+        "Traz pelo menos um item operacional (índice parcial, limpeza ou alarme de idade)"
+      ],
+      "postmortem": true
+    },
+    {
+      "id": "visibility-timeout-duplicado",
+      "titulo": "Visibility timeout curto: a mesma mensagem processada 3 vezes ao mesmo tempo",
+      "termos": ["visibility-timeout", "at-least-once", "idempotencia"],
+      "nivel": 4,
+      "tempoMin": 30,
+      "ambiente": "node",
+      "enunciado": "Simule o erro de dimensionamento mais comum de fila gerenciada: lease menor que o tempo de processamento.\n\n```js\nconst VISIBILITY = 1000        // 1 s de lease\nconst PROCESSAMENTO = 3000     // 3 s de trabalho\nconst mensagens = [{ id: 'm1', invisivelAte: 0 }]\nconst emProcessamento = new Map()\n\nfunction receber(agora) {\n  const m = mensagens.find((x) => x.invisivelAte <= agora)\n  if (!m) return null\n  m.invisivelAte = agora + VISIBILITY     // esconde por VISIBILITY\n  return m\n}\n\nlet t = 0\nsetInterval(() => {\n  t += 200\n  const m = receber(t)\n  if (m) {\n    const n = (emProcessamento.get(m.id) || 0) + 1\n    emProcessamento.set(m.id, n)\n    console.log(t, 'ms - recebi', m.id, '| cópias rodando:', n)\n    setTimeout(() => { emProcessamento.set(m.id, emProcessamento.get(m.id) - 1) }, PROCESSAMENTO)\n  }\n  if (t >= 6000) process.exit(0)\n}, 200)\n```\n\nRode e conte quantas cópias do MESMO trabalho ficam rodando em paralelo. Depois ajuste `VISIBILITY` para `PROCESSAMENTO * 2` e rode de novo.\n\nEntregue o número MÁXIMO de cópias simultâneas da mensagem m1 na primeira execução.",
+      "passos": [
+        "Rode a simulação com VISIBILITY=1000 e PROCESSAMENTO=3000",
+        "Anote o máximo de cópias simultâneas",
+        "Ajuste VISIBILITY para 6000 e confirme que fica sempre 1",
+        "Pense no caso em que o processamento é genuinamente longo: renovar o lease ou quebrar o trabalho?"
+      ],
+      "entrega": {
+        "tipo": "numero",
+        "rotulo": "Máximo de cópias simultâneas de m1",
+        "esperado": 3,
+        "tolerancia": 0
+      },
+      "dicas": [
+        "Com lease de 1 s e trabalho de 3 s, a mensagem reaparece a cada 1 s enquanto a cópia anterior ainda roda.",
+        "O número de cópias tende a PROCESSAMENTO / VISIBILITY.",
+        "A regra de dimensionamento usual é visibility ≈ p99 do processamento × 2."
+      ],
+      "solucao": "O máximo é 3 cópias (3000 ms de processamento ÷ 1000 ms de lease): a cada segundo o broker considera que o consumidor morreu e entrega a mensagem de novo, enquanto a cópia anterior ainda está trabalhando. Isso não é bug do broker — é o contrato do lease: o visibility timeout é uma APOSTA sobre quanto o processamento demora, e apostar baixo produz processamento concorrente do mesmo item. Idempotência salva o RESULTADO, mas não evita o desperdício de capacidade nem a disputa por recursos (três cópias competindo pelo mesmo lock, chamando a mesma API externa, consumindo três vezes o mesmo limite de taxa). Em produção o sintoma parece aleatório: 'duplicatas que só acontecem quando a fila está cheia', porque é quando o processamento fica mais lento. Dimensionamento: visibility ≈ p99 do processamento × 2, medido e revisado. Para trabalho genuinamente longo, a solução madura é RENOVAR o lease periodicamente enquanto processa (`ChangeMessageVisibility` no SQS, heartbeat no Kafka) com um teto — e, melhor ainda, quebrar o trabalho em passos menores, porque um lease gigante atrasa muito a recuperação quando o consumidor morre de verdade.",
+      "criterios": [],
+      "postmortem": false
+    },
+    {
+      "id": "pesquisa-exactly-once-kafka",
+      "titulo": "Pesquisa: o que o 'exactly-once' do Kafka realmente garante",
+      "termos": ["exactly-once", "at-least-once", "idempotencia"],
+      "nivel": 5,
+      "tempoMin": 30,
+      "ambiente": "papel",
+      "enunciado": "Exercício de PESQUISA — e de ceticismo. O Kafka anuncia 'exactly-once semantics' (EOS). Vá à documentação oficial (kafka.apache.org, seção de transações / KIP-98) ou a um artigo técnico da Confluent e descubra o que exatamente está sendo prometido.\n\nResponda em um parágrafo, cobrindo obrigatoriamente:\n\n1. A que ESCOPO a garantia se aplica (o que precisa estar dentro dela para valer);\n2. Por que ela NÃO se estende a um efeito num sistema externo (seu Postgres, uma API de pagamento);\n3. Que mecanismos a implementam (cite pelo menos dois: produtor idempotente, transações, e o que o consumidor precisa configurar);\n4. O que você faria para ter 'exactly-once' de EFEITO num caso com sistema externo.\n\n**Cole o link da fonte** ou uma citação entre aspas do texto original.",
+      "passos": [
+        "Leia a documentação de transações do Kafka (ou o KIP-98)",
+        "Identifique a fronteira da garantia: 'read-process-write' dentro do Kafka",
+        "Descubra o que o consumidor precisa configurar (isolation.level)",
+        "Relacione com a impossibilidade do exactly-once delivery em rede",
+        "Escreva a resposta com o link da fonte"
+      ],
+      "entrega": {
+        "tipo": "pesquisa",
+        "rotulo": "Sua resposta + a fonte",
+        "deveConter": ["read_committed|isolation.level|isolation level", "idempotente|idempotent", "transa", "externo|external|fora do kafka"],
+        "exigeFonte": true,
+        "minimoChars": 350,
+        "ondeProcurar": [
+          "kafka.apache.org — Documentation → Design → Message Delivery Semantics",
+          "KIP-98: Exactly Once Delivery and Transactional Messaging",
+          "Confluent: 'Exactly-once Semantics are Possible: Here's How Kafka Does it'"
+        ]
+      },
+      "dicas": [
+        "A garantia é sobre 'read-process-write' — repare no que está dentro dessa fronteira.",
+        "O consumidor precisa de `isolation.level=read_committed` para não ler mensagens de transações abortadas.",
+        "Produtor idempotente (PID + número de sequência) resolve a duplicata de RETRANSMISSÃO, que é diferente de reprocessamento."
+      ],
+      "solucao": "A garantia do Kafka é de 'exactly-once PROCESSING' dentro de um ciclo read-process-write cujo início e fim estão NO KAFKA: consumir de um tópico, processar e produzir em outro tópico (mais o commit do offset), tudo numa transação do próprio Kafka. Dois mecanismos a sustentam: o produtor idempotente (cada produtor tem um PID e numera as mensagens por partição, então uma retransmissão por timeout de rede é descartada pelo broker) e as transações (um coordenador marca as mensagens e o commit de offset como parte de uma transação atômica). O consumidor precisa de `isolation.level=read_committed` para não enxergar mensagens de transações abortadas — sem isso, a garantia não existe do lado da leitura. A garantia NÃO se estende a efeitos externos porque a transação é do Kafka: se o seu processamento grava no Postgres ou chama uma API de pagamento, esse efeito está fora do escopo transacional e pode acontecer sem que a transação do Kafka commite (ou o contrário). Isso é consequência do problema dos dois generais, não limitação de implementação: exactly-once DELIVERY em rede não confiável é impossível. Para efeito em sistema externo, a resposta continua sendo at-least-once com efeito idempotente: chave de idempotência gravada na MESMA transação do efeito (inbox), ou operação naturalmente idempotente, ou chave de idempotência do próprio serviço externo.",
+      "criterios": [
+        "Delimita o escopo read-process-write dentro do Kafka",
+        "Cita produtor idempotente e transações como mecanismos",
+        "Cita isolation.level=read_committed do lado do consumidor",
+        "Explica por que efeito externo fica de fora da garantia",
+        "Propõe idempotência com chave junto do efeito para o caso externo",
+        "Traz link ou citação da fonte"
+      ],
+      "postmortem": false
+    }
+  ]
+}

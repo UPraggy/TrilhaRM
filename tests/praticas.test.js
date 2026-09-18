@@ -326,7 +326,7 @@ describe('normalizarEntrega / normalizarExercicio — validação', () => {
   })
 
   test('TIPOS e TIPOS_AUTO são o contrato do conteúdo', () => {
-    assert.deepEqual(TIPOS, ['saida', 'numero', 'escolha', 'texto', 'checklist'])
+    assert.deepEqual(TIPOS, ['saida', 'numero', 'escolha', 'texto', 'checklist', 'pesquisa'])
     assert.deepEqual([...TIPOS_AUTO].sort(), ['escolha', 'numero', 'saida'])
   })
 })

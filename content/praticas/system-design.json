@@ -1,0 +1,217 @@
+{
+  "deckId": "system-design",
+  "titulo": "Práticas · System design",
+  "exercicios": [
+    {
+      "id": "estimativa-em-5-min",
+      "titulo": "Estimativa de guardanapo em 5 minutos",
+      "termos": ["estimativa-ordem", "sistemas-distribuidos/latencia-numeros", "requisitos-funcionais"],
+      "nivel": 4,
+      "tempoMin": 20,
+      "ambiente": "papel",
+      "enunciado": "Cronômetro em 5 minutos. Sem consultar nada, estime para um encurtador de URL com **100 milhões de links criados por mês** e **leitura 100× maior que escrita**:\n\n1. QPS médio de escrita e de leitura;\n2. QPS de PICO (assuma 3× a média);\n3. Armazenamento por ano (assuma 500 bytes por link);\n4. Memória para cachear os 20 % mais quentes de um ano;\n5. Banda de saída no pico (assuma 500 bytes por resposta de redirecionamento).\n\nDepois responda a pergunta que importa: **com esses números, você precisa shardar o banco?** Justifique em uma frase.\n\nEntregue o QPS MÉDIO DE LEITURA (só o número inteiro, arredondado).",
+      "passos": [
+        "Converta 100 M/mês em requisições por segundo (use 2,6 milhões de segundos por mês, ou 30 × 86.400)",
+        "Multiplique por 100 para a leitura",
+        "Aplique o fator de pico de 3×",
+        "Calcule armazenamento anual e memória de cache",
+        "Conclua sobre sharding e escreva a justificativa em uma frase"
+      ],
+      "entrega": {
+        "tipo": "numero",
+        "rotulo": "QPS médio de LEITURA",
+        "min": 3400,
+        "max": 4200,
+        "unidade": "req/s"
+      },
+      "dicas": [
+        "1 mês ≈ 2,6 × 10^6 segundos (30 × 86.400).",
+        "100 M / 2,6 M ≈ 38 escritas por segundo.",
+        "Leitura = 38 × 100 ≈ 3.800 req/s."
+      ],
+      "solucao": "Escrita: 100 M ÷ 2,6 M s ≈ 38 req/s. Leitura: 38 × 100 ≈ 3.800 req/s. Pico (3×): ~115 escritas/s e ~11.400 leituras/s. Armazenamento: 1,2 bilhão de links/ano × 500 B ≈ 600 GB/ano. Cache dos 20 % mais quentes: 240 M × 500 B ≈ 120 GB — mais do que cabe numa instância comum de Redis, então o cache precisa de particionamento OU de um recorte mais agressivo (na prática a distribuição é muito mais desigual que 80/20 num encurtador: alguns poucos links concentram quase todo o tráfego, e cachear os 1 % mais quentes já resolve com poucos GB). Banda no pico: 11.400 × 500 B ≈ 5,7 MB/s ≈ 46 Mbps — nada. Conclusão sobre sharding: 600 GB/ano e 115 escritas/s cabem com folga numa instância de Postgres, então NÃO precisa shardar de início; o problema é a LEITURA, e leitura resolve com cache e réplicas, que são muito mais baratos que particionar. Esta é a conclusão que a estimativa serve para produzir — e dizer isso em voz alta muda a entrevista inteira, porque desloca a conversa de 'qual banco distribuído' para 'como eu sirvo 11 mil leituras por segundo com o menor sistema possível'. E a segunda conclusão, igualmente importante: o dado é IMUTÁVEL (código → URL não muda), então o cache tem TTL longo e invalidação quase nunca — o que torna o cache praticamente perfeito para este caso.",
+      "criterios": [],
+      "postmortem": false
+    },
+    {
+      "id": "cursor-vs-offset",
+      "titulo": "Paginação: medir offset profundo contra cursor",
+      "termos": ["api-design", "modelo-dados", "gargalo"],
+      "nivel": 4,
+      "tempoMin": 30,
+      "ambiente": "postgres",
+      "enunciado": "Você vai medir por que `OFFSET` degrada em página profunda, e por que ele também PULA itens quando há inserção concorrente.\n\n```sql\nCREATE TABLE post (id bigserial primary key, criado_em timestamptz default now(), texto text);\nINSERT INTO post (texto) SELECT 'p'||g FROM generate_series(1, 2000000) g;\nCREATE INDEX ON post (criado_em DESC, id DESC);\nANALYZE post;\n```\n\nCompare com `\\timing on` e EXPLAIN ANALYZE:\n\n```sql\n-- OFFSET profundo\nSELECT id FROM post ORDER BY criado_em DESC, id DESC LIMIT 20 OFFSET 1000000;\n\n-- CURSOR (keyset) - pegue criado_em e id da última linha da página anterior\nSELECT id FROM post WHERE (criado_em, id) < ($1, $2) ORDER BY criado_em DESC, id DESC LIMIT 20;\n```\n\nCompare os tempos e o número de linhas que cada plano PROCESSA (`actual rows` do nó de baixo).\n\nSegunda parte, o bug que quase ninguém testa: com OFFSET, insira uma linha nova entre a leitura da página 1 e da página 2 e mostre que um item é PULADO. Com cursor, mostre que isso não acontece.\n\nEntregue um relato com os dois tempos e a demonstração do item pulado.",
+      "passos": [
+        "Crie a tabela, o índice composto e rode ANALYZE",
+        "Meça o SELECT com OFFSET 1000000 e leia o actual rows do plano",
+        "Meça o equivalente com keyset e compare",
+        "Simule a inserção concorrente entre duas páginas com OFFSET e mostre o item pulado",
+        "Repita com cursor e mostre que a página é estável"
+      ],
+      "entrega": {
+        "tipo": "texto",
+        "rotulo": "Relato com os dois tempos e o item pulado",
+        "minimoChars": 350
+      },
+      "dicas": [
+        "OFFSET não pula linhas no armazenamento: o banco PRODUZ e DESCARTA todas elas.",
+        "O índice precisa cobrir exatamente a tupla de ordenação `(criado_em DESC, id DESC)` para o keyset voar.",
+        "A comparação de tupla `(a, b) < ($1, $2)` é comparação lexicográfica e usa o índice composto."
+      ],
+      "solucao": "`OFFSET 1000000` obriga o banco a produzir 1.000.020 linhas e descartar 1.000.000 — o custo cresce LINEARMENTE com a profundidade, e o `actual rows` do nó inferior mostra isso sem margem para dúvida. O keyset (cursor) usa o índice para ir DIRETO ao ponto: lê 20 linhas, ponto final, com tempo constante em qualquer profundidade. Em números típicos: dezenas a centenas de milissegundos contra menos de 1 ms. A segunda parte é o bug que quase nunca é testado e que gera relato de usuário do tipo 'sumiu um item da lista': com OFFSET, inserir uma linha nova no topo desloca TODOS os itens uma posição, então a página 2 (OFFSET 20) começa no item que era o 20 e o antigo item 20 nunca é mostrado — ele foi pulado silenciosamente. Se em vez de inserir houver remoção, um item aparece DUAS vezes. O cursor não tem esse problema porque a posição é ancorada num VALOR (o último `(criado_em, id)` visto), não numa contagem. Requisitos para o keyset funcionar: a chave de ordenação precisa ser estável e ÚNICA (daí o desempate por `id` — ordenar só por `criado_em` com valores repetidos produz páginas inconsistentes), e o índice precisa casar exatamente com a tupla e a direção. Limitação honesta do cursor: não dá para 'pular para a página 47'. Na prática isso raramente é necessário — feed e rolagem infinita são justamente os casos de cursor; relatório paginado com números de página pode manter OFFSET, porque a profundidade é pequena.",
+      "criterios": [
+        "Traz os dois tempos e o actual rows dos dois planos",
+        "Explica que OFFSET produz e descarta as linhas",
+        "Demonstra o item pulado com inserção concorrente",
+        "Explica por que o desempate por id é necessário no keyset",
+        "Reconhece a limitação do cursor (sem salto para página arbitrária)"
+      ],
+      "postmortem": false
+    },
+    {
+      "id": "cache-tres-falhas",
+      "titulo": "Reproduzir stampede, penetração e avalanche — e corrigir os três",
+      "termos": ["cache-stampede", "cache", "cdn"],
+      "nivel": 5,
+      "tempoMin": 50,
+      "ambiente": "node",
+      "enunciado": "Três falhas de cache, três correções diferentes. Você vai reproduzir e corrigir cada uma, medindo quantas vezes a ORIGEM foi chamada.\n\nBase:\n```js\nlet chamadasNaOrigem = 0\nconst cache = new Map()\n\nasync function origem(chave) {\n  chamadasNaOrigem++\n  await new Promise((r) => setTimeout(r, 200))   // banco lento\n  return chave.startsWith('existe') ? { v: chave } : null\n}\n\nasync function buscar(chave) {\n  if (cache.has(chave)) return cache.get(chave)\n  const v = await origem(chave)\n  if (v) cache.set(chave, v)                      // repare: só guarda se EXISTE\n  return v\n}\n```\n\n**A — Stampede.** Dispare 100 chamadas simultâneas para a mesma chave nova. Conte `chamadasNaOrigem`. Corrija com request coalescing (um `Map` de promessas em voo) e meça de novo.\n\n**B — Penetração.** Dispare 100 chamadas para chaves que NÃO existem. Conte. Corrija cacheando o resultado negativo com TTL curto.\n\n**C — Avalanche.** Crie 1000 chaves com TTL idêntico, avance o tempo e conte quantas expiram no mesmo instante. Corrija com TTL + jitter.\n\nEntregue o número de `chamadasNaOrigem` no caso A **antes** da correção.",
+      "passos": [
+        "Implemente a base e rode o caso A com 100 chamadas simultâneas",
+        "Implemente coalescing (Map de promessas por chave, limpo no finally) e meça de novo",
+        "Rode o caso B com chaves inexistentes e corrija com cache negativo",
+        "Simule o caso C com TTLs iguais e corrija com jitter",
+        "Compare os números antes e depois de cada correção"
+      ],
+      "entrega": {
+        "tipo": "numero",
+        "rotulo": "chamadasNaOrigem no caso A, ANTES da correção",
+        "esperado": 100,
+        "tolerancia": 0
+      },
+      "dicas": [
+        "As 100 chamadas partem antes de qualquer uma preencher o cache: todas veem miss.",
+        "Coalescing: guarde a PROMESSA no mapa, não o valor; limpe no finally.",
+        "Cache negativo precisa de TTL curto, senão um item criado depois fica invisível."
+      ],
+      "solucao": "No caso A a origem é chamada 100 vezes: as 100 chamadas partem antes de qualquer uma preencher o cache, todas veem miss e todas vão ao banco. É o cache stampede, e ele acontece exatamente no pior momento — quando a chave é popular. A correção é request coalescing: um `Map` de promessas EM VOO por chave; a primeira chamada dispara a origem e guarda a promessa, as demais aguardam a MESMA promessa, e o mapa é limpo no `finally`. Resultado: 1 chamada em vez de 100. Complemento que resolve o caso mais geral: renovar em background ANTES de expirar (stale-while-revalidate, com TTL lógico dentro do valor e TTL físico maior), que elimina o miss simultâneo por completo e ainda dá resiliência se a origem cair. No caso B a origem também é chamada 100 vezes, mas por outro motivo: o resultado nulo nunca é guardado, então o cache nunca ajuda — é a penetração, e ela é explorável: quem pedir ids inexistentes derruba o banco passando direto pelo cache. Correção: cachear o resultado NEGATIVO com TTL curto (segundos), e, quando o espaço de chaves é grande e hostil, um filtro de Bloom na frente. No caso C, 1000 chaves criadas juntas com TTL igual expiram juntas e derrubam a origem em bloco — é a avalanche, e a correção é uma linha: `ttl = base + random(0, base × 0,1)`. Esses três somados explicam a maioria dos incidentes 'o cache não ajudou'. E, em produção, meça taxa de acerto POR CHAVE: uma taxa global de 95 % pode esconder que a chave mais cara tem 10 %.",
+      "criterios": [],
+      "postmortem": false
+    },
+    {
+      "id": "design-ticketmaster",
+      "titulo": "Desenhar a venda de ingressos: 50 mil pessoas, 100 lugares",
+      "termos": ["problemas-classicos", "trade-off-explicito", "caminho-do-dado", "sincrono-vs-assincrono"],
+      "nivel": 5,
+      "tempoMin": 60,
+      "ambiente": "papel",
+      "enunciado": "System design completo, com cronômetro de 45 minutos. Enunciado: **venda de ingressos para um show com 100 lugares, com 50 mil pessoas tentando comprar no mesmo segundo de abertura.**\n\nSiga o roteiro e escreva cada parte:\n\n1. **Requisitos (5')** — funcionais e NÃO funcionais. Pergunte-se o que é inegociável aqui (e escreva a pergunta que você faria ao entrevistador).\n2. **Estimativa (5')** — pico de QPS, tamanho do dado, o que cabe onde.\n3. **API e modelo (5')** — os endpoints e as tabelas. Como é a reserva?\n4. **Desenho macro (10')** — caminho do dado da escrita (reservar) e da leitura (ver disponibilidade).\n5. **Aprofundar (15')** — a parte difícil: como você garante que o mesmo lugar NÃO é vendido duas vezes, com 50 mil tentativas simultâneas? Escreva o SQL ou o pseudocódigo da reserva.\n6. **Gargalos e evolução (5')** — o que satura primeiro, o que você mediria, e o que muda se forem 500 mil pessoas.\n\nDeclare explicitamente, em cada decisão: o trade-off e o NOVO problema que ela cria.",
+      "passos": [
+        "Levante requisitos e diga em voz alta o que é inegociável",
+        "Estime o pico e conclua o que ele exige",
+        "Desenhe a API e a tabela de lugares/reservas",
+        "Descreva o caminho do dado da reserva",
+        "Escreva o mecanismo de exclusão mútua e o tratamento da fila de espera",
+        "Feche com gargalos, métricas e evolução"
+      ],
+      "entrega": {
+        "tipo": "texto",
+        "rotulo": "Seu design completo, nas 6 partes",
+        "minimoChars": 700
+      },
+      "dicas": [
+        "Este é o caso raro em que consistência eventual é INACEITÁVEL: vender o mesmo lugar duas vezes é pior que recusar venda.",
+        "Reserva tem PRAZO: o usuário segura o lugar por N minutos para pagar — isso é um lease.",
+        "50 mil pessoas para 100 lugares significa que 99,8 % vão receber 'não'. Receber 'não' rápido é parte do produto."
+      ],
+      "solucao": "O tema central é CONCORRÊNCIA, não escala de leitura — reconhecer isso em voz alta já organiza a entrevista. Requisitos inegociáveis: nunca vender o mesmo lugar duas vezes (consistência forte na reserva) e responder rápido a quem não conseguiu. Estimativa: 50 mil tentativas num segundo, mas apenas 100 podem ter sucesso — ou seja, 99,8 % do tráfego é REJEIÇÃO, e rejeitar barato é o requisito de desempenho principal. Desenho: fila de espera na BORDA (sala de espera com posição e token assinado) admitindo N pessoas por segundo no funil de compra — isso transforma um pico de 50 mil em um fluxo controlado e é a decisão mais importante do design. Reserva: transação curta com exclusão mútua real, `UPDATE lugar SET reservado_por = $1, reserva_expira = now() + interval '10 minutes' WHERE id = $2 AND (reservado_por IS NULL OR reserva_expira < now()) RETURNING id` — sem linha retornada, sem reserva; é atômico, idempotente por usuário e dispensa lock explícito. Para 'qualquer lugar disponível', `SELECT ... FOR UPDATE SKIP LOCKED LIMIT 1` dentro da transação. A reserva é um LEASE: expira sozinha, e um job de reconciliação libera o que venceu (nunca dependa só do cliente avisar). Pagamento é assíncrono com chave de idempotência, e o lugar só vira venda no callback confirmado. Trade-offs a declarar: consistência forte no assento custa throughput de escrita — e está tudo bem, porque o teto real é 100; cache serve à tela de DISPONIBILIDADE (que pode estar alguns segundos velha, com aviso explícito), nunca à reserva; a fila de espera piora a experiência de quem chegou primeiro e é o que impede o colapso. Gargalos: o banco na linha da reserva (mitigado porque só 100 linhas disputadas — mas atenção à partição quente daquele evento), e a fila de espera em si. Evolução para 500 mil: particionar por EVENTO (cada show em sua célula, o que limita o raio de impacto), pré-alocar lotes de assentos por região, e mover a sala de espera para a borda/CDN. Métricas: taxa de reserva dupla (deve ser ZERO, e precisa ser alertada), p99 do endpoint de reserva, profundidade e tempo de espera na fila, e reservas expiradas por minuto.",
+      "criterios": [
+        "Identifica concorrência (não escala de leitura) como tema central",
+        "Descreve mecanismo de exclusão mútua concreto (UPDATE condicional ou SKIP LOCKED) com SQL ou pseudocódigo",
+        "Trata a reserva como lease, com expiração e reconciliação",
+        "Propõe fila de espera/admissão controlada na borda e explica o porquê",
+        "Declara trade-offs com o novo problema criado em pelo menos duas decisões",
+        "Fecha com gargalos, métricas (incluindo reserva dupla = 0) e evolução"
+      ],
+      "postmortem": false
+    },
+    {
+      "id": "rls-multitenant",
+      "titulo": "Vazamento entre tenants — e a defesa que não depende de ninguém lembrar",
+      "termos": ["multi-tenant", "seguranca-design", "modelo-dados"],
+      "nivel": 5,
+      "tempoMin": 40,
+      "ambiente": "postgres",
+      "enunciado": "Você vai provocar um vazamento entre clientes e depois fechá-lo no nível do BANCO, onde esquecer não é opção.\n\n```sql\nCREATE TABLE pedido (id serial primary key, tenant_id int not null, valor numeric);\nINSERT INTO pedido (tenant_id, valor) SELECT (g % 3) + 1, g FROM generate_series(1, 30) g;\n```\n\n**Fase 1 — o bug.** Escreva duas funções de repositório: uma com `WHERE tenant_id = $1` e outra (a que alguém escreveu com pressa) sem o filtro. Mostre a segunda devolvendo dados de todos os tenants.\n\n**Fase 2 — Row Level Security.**\n```sql\nALTER TABLE pedido ENABLE ROW LEVEL SECURITY;\nCREATE POLICY p_tenant ON pedido USING (tenant_id = current_setting('app.tenant', true)::int);\nCREATE ROLE app_user LOGIN PASSWORD 'x';\nGRANT SELECT, INSERT, UPDATE, DELETE ON pedido TO app_user;\nGRANT USAGE ON SEQUENCE pedido_id_seq TO app_user;\n```\nConecte como `app_user`, faça `SET app.tenant = '2'` e rode a query SEM filtro. Ela deve devolver só o tenant 2.\n\n**Fase 3 — o teste que garante.** Escreva um teste automatizado que tenta ler dado de outro tenant e FALHA se conseguir.\n\nResponda: por que a RLS não protege quando a aplicação conecta como superusuário?",
+      "passos": [
+        "Crie a tabela e provoque o vazamento com a query sem filtro",
+        "Ative RLS e crie a política por current_setting",
+        "Conecte como app_user (não superusuário) e confirme o isolamento",
+        "Garanta que a aplicação faz SET app.tenant a cada conexão/transação",
+        "Escreva o teste que tenta vazar e deve falhar"
+      ],
+      "entrega": {
+        "tipo": "escolha",
+        "rotulo": "Por que a RLS não protege quando a aplicação conecta como superusuário?",
+        "opcoes": [
+          "Superusuário e donos da tabela ignoram RLS por padrão (BYPASSRLS)",
+          "RLS só funciona em tabelas particionadas",
+          "RLS só se aplica a SELECT, nunca a UPDATE ou DELETE",
+          "RLS exige a extensão pgcrypto instalada"
+        ],
+        "correta": 0
+      },
+      "dicas": [
+        "Teste com `SET ROLE app_user;` dentro da mesma sessão para ver a diferença.",
+        "`FORCE ROW LEVEL SECURITY` aplica a política também ao DONO da tabela.",
+        "Com pool de conexões, o `SET app.tenant` precisa ser por TRANSAÇÃO (`SET LOCAL`), senão vaza entre requisições."
+      ],
+      "solucao": "Superusuários e o DONO da tabela ignoram RLS por padrão — por isso a aplicação precisa conectar com um papel dedicado e sem privilégio excessivo; `FORCE ROW LEVEL SECURITY` estende a política ao próprio dono quando isso é desejável. Esse é o cerne da lição: a defesa confiável não é o code review nem a disciplina de sempre escrever o `WHERE`, porque as duas falham exatamente uma vez — e uma vez basta para vazar dados de um cliente para outro, que é incidente de segurança, não bug de listagem. A RLS move a garantia para o banco, onde esquecer não é possível. Três detalhes operacionais que decidem se funciona de verdade: (1) com POOL de conexões, o `SET app.tenant` precisa ser `SET LOCAL` dentro da transação, senão a configuração sobrevive na conexão e a próxima requisição, de outro tenant, herda o valor errado — o que transforma a proteção em vazamento; (2) a política precisa cobrir também INSERT/UPDATE com `WITH CHECK`, senão alguém grava com `tenant_id` alheio; (3) o teste automatizado que TENTA vazar (conectar como tenant 1 e buscar dado do tenant 2, exigindo resultado vazio) é o que impede a regressão silenciosa quando alguém criar uma tabela nova e esquecer de habilitar RLS — e por isso vale um teste que varre as tabelas e falha se alguma estiver sem política. Camadas complementares: repositório que injeta o filtro obrigatoriamente (defesa em profundidade) e, para clientes grandes ou exigência regulatória, banco ou schema separado.",
+      "criterios": [],
+      "postmortem": false
+    },
+    {
+      "id": "pesquisa-golden-signals",
+      "titulo": "Pesquisa: golden signals, RED e USE",
+      "termos": ["observabilidade-no-desenho", "percentil", "resiliencia/alerta-acionavel"],
+      "nivel": 4,
+      "tempoMin": 30,
+      "ambiente": "papel",
+      "enunciado": "Exercício de PESQUISA. Três frameworks concorrentes para escolher o que medir: os **Four Golden Signals** (Google SRE Book, capítulo Monitoring Distributed Systems), o método **RED** (Tom Wilkie) e o método **USE** (Brendan Gregg).\n\nResponda em um parágrafo, cobrindo obrigatoriamente:\n\n1. Os quatro golden signals, um a um;\n2. O que significam as três letras de RED e a que tipo de coisa ele se aplica;\n3. O que significam as três letras de USE e a que tipo de coisa ele se aplica;\n4. Por que o livro do SRE recomenda alertar em SINTOMA e não em causa, e o que isso implica para um alerta de 'CPU alta'.\n\n**Cole o link da fonte** ou uma citação entre aspas.",
+      "passos": [
+        "Leia o capítulo Monitoring Distributed Systems do Google SRE Book",
+        "Procure o método RED (Tom Wilkie / Weaveworks) e o método USE (Brendan Gregg)",
+        "Anote a que tipo de entidade cada método se aplica",
+        "Relacione com a regra de alertar em sintoma",
+        "Escreva a resposta com o link"
+      ],
+      "entrega": {
+        "tipo": "pesquisa",
+        "rotulo": "Sua resposta + a fonte",
+        "deveConter": ["satura|saturation", "rate|taxa", "utiliza|utilization", "sintoma|symptom"],
+        "exigeFonte": true,
+        "minimoChars": 350,
+        "ondeProcurar": [
+          "Google SRE Book — capítulo 6, Monitoring Distributed Systems",
+          "Tom Wilkie — The RED Method",
+          "Brendan Gregg — The USE Method"
+        ]
+      },
+      "dicas": [
+        "Os golden signals são quatro e um deles é o mais esquecido: saturação.",
+        "RED é para SERVIÇOS (o que atende requisição); USE é para RECURSOS (CPU, disco, fila).",
+        "Alertar em sintoma pega também a falha que você não previu."
+      ],
+      "solucao": "Os quatro golden signals são LATÊNCIA (quanto demora — medida separadamente para sucesso e para erro, porque erro rápido pode mascarar latência ruim), TRÁFEGO (quanta demanda: requisições por segundo, transações, conexões), ERROS (taxa de falha, incluindo as 'falhas silenciosas' — resposta 200 com conteúdo errado) e SATURAÇÃO (quão perto do limite o recurso mais restrito está — o mais esquecido dos quatro, e o que permite PREVER o problema em vez de reagir a ele). RED é a versão para SERVIÇOS: Rate (requisições por segundo), Errors (taxa de erro) e Duration (distribuição de latência) — aplica-se a tudo que atende requisição. USE é a versão para RECURSOS: Utilization (fração do tempo ocupado), Saturation (quanto trabalho está esperando na fila) e Errors — aplica-se a CPU, memória, disco, rede, pool de conexões. Os dois são complementares, não concorrentes: RED responde 'como está o serviço', USE responde 'qual recurso vai saturar primeiro'. A recomendação de alertar em SINTOMA (o usuário está sendo prejudicado) e não em causa (CPU a 90 %) tem duas razões: alerta em causa gera falso positivo (CPU alta com latência boa não é problema — e fadiga de alerta faz o time ignorar o alarme verdadeiro) e, mais importante, PERDE a falha que você não previu, porque só dispara para as causas que você imaginou de antemão. Logo, 'CPU alta' pertence ao dashboard de investigação, não ao pager; o que acorda alguém é 'taxa de erro acima de 1 % por 5 minutos' ou 'consumo do error budget acima do esperado'.",
+      "criterios": [
+        "Lista os quatro golden signals corretamente, incluindo saturação",
+        "Explica RED e diz que se aplica a serviços",
+        "Explica USE e diz que se aplica a recursos",
+        "Explica as duas razões para alertar em sintoma",
+        "Conclui corretamente sobre o alerta de CPU",
+        "Traz link ou citação da fonte"
+      ],
+      "postmortem": false
+    }
+  ]
+}

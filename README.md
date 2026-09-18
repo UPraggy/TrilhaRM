@@ -1,12 +1,22 @@
 # Trilha RM
 
-App pessoal para **aprender e decorar termos de engenharia de software** de todas as formas — flashcards,
-quiz, digitar, associar, verdadeiro/falso, "explique" (pergunta de entrevista), glossário, revisão espaçada
-(SM-2), matriz de nível e ofensiva diária. Estilo Exercism / Anki / Duolingo, na identidade visual "Rafael MR".
+App pessoal de estudo de engenharia de software, organizado como o Duolingo: um caminho de
+**Trilha → Módulo → Lição**, com revisão espaçada (SM-2), XP e coroas, exercícios feitos fora do app,
+cursos em Markdown, mentor IA e bot do Telegram. Identidade visual "Rafael MR", mobile-first.
 
-- Frontend: Vite + React 18 em **JSX** (sem TypeScript), CSS puro com variáveis.
+> **Três palavras e só três.** **Trilha** = uma fase do plano de carreira (T1…T5). **Módulo** = um tema
+> (Cache, HTTP, Testes…), que junta *tudo* daquele tema: vocabulário, lições, exercícios e o chefão.
+> **Lição** = uma sessão curta de 8–12 itens, 5–10 min, um item por tela. O aluno nunca escolhe entre
+> "praticar", "curso" e "treino": a lição mistura os quatro.
+
+**Comece por [`docs/AI-GUIA.md`](docs/AI-GUIA.md)** — uma página com o mapa "preciso de X → arquivo Y".
+O que mudou na V2 está em [`docs/MUDANCAS-V2.md`](docs/MUDANCAS-V2.md); o plano, em
+[`docs/PLANO-V2.md`](docs/PLANO-V2.md).
+
+- Frontend: Vite + React 18 em **JSX** (sem TypeScript), CSS puro com variáveis. Interface em PT e EN.
 - Backend: Express, sem banco — o progresso vive em `data/progresso.json` (escrita atômica).
-- Conteúdo: arquivos JSON em `content/decks/`. Soltar um JSON novo na pasta basta.
+- Conteúdo: arquivos em `content/` (`decks/`, `praticas/`, `cursos/`, `treinos/`) amarrados por
+  `content/estrutura.json`. Soltar um arquivo novo na pasta basta: sem build, sem restart.
 - Roda no PC e no celular Android (Termux/PRoot, Node 22, PM2). Mobile-first.
 
 ## Como rodar

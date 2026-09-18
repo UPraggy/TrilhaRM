@@ -1,0 +1,209 @@
+{
+  "deckId": "postgres-internals",
+  "titulo": "Práticas · PostgreSQL por dentro",
+  "exercicios": [
+    {
+      "id": "mvcc-bloat-medido",
+      "titulo": "Fazer uma tabela inchar 4× sem inserir nada",
+      "termos": ["mvcc", "bloat", "vacuum"],
+      "nivel": 4,
+      "tempoMin": 30,
+      "ambiente": "postgres",
+      "enunciado": "Você vai provar, com número, que UPDATE no Postgres cria versão nova em vez de sobrescrever.\n\nSuba um Postgres (`docker run -d --name trilha-pg -e POSTGRES_PASSWORD=x -p 5433:5432 postgres:16`) e conecte com `psql postgresql://postgres:x@localhost:5433/postgres`.\n\n```sql\nCREATE TABLE lab (id int primary key, v text);\nINSERT INTO lab SELECT g, repeat('x', 200) FROM generate_series(1, 200000) g;\nVACUUM ANALYZE lab;\nSELECT pg_size_pretty(pg_total_relation_size('lab')) AS tamanho_inicial;\n```\n\nAnote o tamanho inicial. Agora rode **quatro vezes** `UPDATE lab SET v = v;` (sim, atribuindo o mesmo valor — o Postgres não faz diferença) e meça de novo, SEM vacuum:\n\n```sql\nSELECT pg_size_pretty(pg_total_relation_size('lab')),\n       n_live_tup, n_dead_tup\n  FROM pg_stat_user_tables WHERE relname = 'lab';\n```\n\nDepois rode `VACUUM lab;` e meça pela terceira vez. Responda com o número de linhas MORTAS (`n_dead_tup`) logo depois dos quatro UPDATEs, antes do vacuum.",
+      "passos": [
+        "Crie a tabela e carregue 200 mil linhas; rode VACUUM ANALYZE e anote o tamanho",
+        "Rode `UPDATE lab SET v = v;` quatro vezes seguidas, sem vacuum entre elas",
+        "Meça tamanho, n_live_tup e n_dead_tup",
+        "Rode VACUUM lab e meça de novo: o tamanho NÃO diminui (só o espaço vira reutilizável)",
+        "Opcional: VACUUM FULL lab e veja o tamanho voltar - e repare no lock que ele pega"
+      ],
+      "entrega": {
+        "tipo": "numero",
+        "rotulo": "n_dead_tup depois dos 4 UPDATEs",
+        "min": 600000,
+        "max": 810000,
+        "unidade": "linhas mortas"
+      },
+      "dicas": [
+        "Se n_dead_tup vier zerado, o autovacuum passou na frente: rode `ALTER TABLE lab SET (autovacuum_enabled = false);` e repita.",
+        "As estatísticas de pg_stat_user_tables têm um pequeno atraso; espere um segundo e consulte de novo.",
+        "Quatro UPDATEs em 200 mil linhas deixam ~800 mil versões mortas (uma por UPDATE por linha)."
+      ],
+      "solucao": "Cada UPDATE cria uma versão nova de TODAS as 200 mil linhas e marca a anterior com xmax. Quatro UPDATEs = ~800 mil tuplas mortas (o valor exato varia um pouco com HOT update: se a tabela tiver espaço livre na página e nenhuma coluna indexada mudar, parte das versões fica encadeada na própria página). O tamanho vai de ~50 MB para ~200-250 MB. Depois do VACUUM comum, `n_dead_tup` zera mas `pg_total_relation_size` NÃO diminui: o vacuum marca as páginas como reutilizáveis para as próximas escritas da mesma tabela, não devolve disco ao sistema operacional. Só VACUUM FULL (que reescreve a tabela sob ACCESS EXCLUSIVE LOCK, derrubando a aplicação) ou pg_repack devolvem o espaço. Esta é a razão de tabela com UPDATE frequente precisar de autovacuum agressivo (`autovacuum_vacuum_scale_factor` menor) e de fillfactor abaixo de 100 para favorecer HOT.",
+      "criterios": [],
+      "postmortem": false
+    },
+    {
+      "id": "planner-estatistica-mentindo",
+      "titulo": "Fazer o planner escolher o plano errado (e consertar com ANALYZE)",
+      "termos": ["planner-estatisticas", "explain-analyze", "seq-scan-vs-index-scan"],
+      "nivel": 4,
+      "tempoMin": 35,
+      "ambiente": "postgres",
+      "enunciado": "Reproduza o clássico 'voava no dev, travou na produção': estatística desatualizada faz o planner escolher Nested Loop onde cabia Hash Join.\n\n```sql\nCREATE TABLE cliente (id int primary key, nome text);\nCREATE TABLE pedido (id serial primary key, cliente_id int, valor numeric);\nINSERT INTO cliente SELECT g, 'c'||g FROM generate_series(1, 50000) g;\nANALYZE cliente;\n\n-- pedidos entram DEPOIS do analyze: o planner ainda acha que a tabela está vazia\nINSERT INTO pedido (cliente_id, valor)\n  SELECT (random()*49999)::int + 1, random()*100 FROM generate_series(1, 2000000);\nCREATE INDEX ON pedido (cliente_id);\n```\n\nAgora, **sem rodar ANALYZE em pedido**:\n\n```sql\nEXPLAIN (ANALYZE, BUFFERS)\nSELECT c.nome, count(*) FROM cliente c JOIN pedido p ON p.cliente_id = c.id GROUP BY c.nome;\n```\n\nAnote o tempo e o plano. Depois rode `ANALYZE pedido;` e repita o EXPLAIN. Compare `rows=` (estimado) com `actual rows=` nas duas vezes.\n\nEntregue um postmortem em 5 partes: sintoma, evidência (os dois planos, com os números de estimado × real), causa, correção e o que muda no processo.",
+      "passos": [
+        "Crie as duas tabelas e carregue os dados na ordem indicada (ANALYZE só em cliente)",
+        "Rode o EXPLAIN (ANALYZE, BUFFERS) e salve a saída inteira",
+        "Compare rows= com actual rows= no nó mais interno: é aí que a estimativa quebra",
+        "Rode ANALYZE pedido e repita o EXPLAIN",
+        "Escreva o postmortem com os dois tempos e os dois planos"
+      ],
+      "entrega": {
+        "tipo": "texto",
+        "rotulo": "Postmortem em 5 partes, com os dois planos",
+        "minimoChars": 400
+      },
+      "dicas": [
+        "Antes do ANALYZE, procure no plano um nó com `rows=1` ou `rows=30` onde `actual rows` é milhões.",
+        "`SELECT relname, last_analyze, last_autoanalyze, n_live_tup FROM pg_stat_user_tables;` mostra o que o planner sabe.",
+        "Se o autovacuum rodar ANALYZE antes de você medir, desligue com `ALTER TABLE pedido SET (autovacuum_enabled = false);` e recrie."
+      ],
+      "solucao": "Sem estatística, o planner assume um padrão pessimista para `pedido` e subestima drasticamente as linhas. Com estimativa baixa ele escolhe Nested Loop (ótimo para poucas linhas, catastrófico para milhões: o `loops=` explode) em vez de Hash Join. O sinal no EXPLAIN é sempre o mesmo: divergência de ordem de grandeza entre `rows=` e `actual rows=`, e o custo real de um nó é `actual time × loops` — por isso um nó que mostra 0,2 ms pode esconder 10 s. Depois do ANALYZE, a estimativa aproxima o real e o plano vira Hash Join com Seq Scan nas duas tabelas, que é o plano CERTO para um join de tudo com tudo. Processo: (1) ANALYZE explícito depois de carga em massa — nunca confie no autovacuum logo após um INSERT gigante; (2) monitore `last_analyze` das tabelas grandes; (3) para colunas correlacionadas, `CREATE STATISTICS`; (4) para coluna enviesada, `ALTER TABLE ... ALTER COLUMN ... SET STATISTICS 1000`. E a lição transferível: quando 'a mesma query é lenta só na produção', o primeiro suspeito é estatística, não índice.",
+      "criterios": [
+        "Mostra os dois planos, com o nome do nó que mudou (Nested Loop → Hash Join)",
+        "Aponta a divergência entre rows= estimado e actual rows= como a EVIDÊNCIA",
+        "Explica por que loops= multiplica o custo real do nó",
+        "A correção inclui ANALYZE após carga em massa, não só 'criar índice'",
+        "O item de processo é verificável (monitorar last_analyze, ANALYZE no fim do job de carga)"
+      ],
+      "postmortem": true
+    },
+    {
+      "id": "indice-parcial-fila",
+      "titulo": "400 MB de índice inútil viram 16 kB",
+      "termos": ["indice-parcial", "index-selectividade", "btree"],
+      "nivel": 4,
+      "tempoMin": 25,
+      "ambiente": "postgres",
+      "enunciado": "Uma fila de jobs com 2 milhões de linhas, das quais só algumas dezenas estão pendentes. Você vai medir por que indexar `status` não ajuda e por que o índice parcial resolve.\n\n```sql\nCREATE TABLE jobs (id serial primary key, status text, criado_em timestamptz default now(), payload text);\nINSERT INTO jobs (status, payload)\n  SELECT CASE WHEN random() < 0.99997 THEN 'processado' ELSE 'pendente' END, repeat('p', 100)\n  FROM generate_series(1, 2000000);\nANALYZE jobs;\n\nCREATE INDEX idx_status ON jobs (status);\nANALYZE jobs;\nEXPLAIN (ANALYZE, BUFFERS) SELECT id FROM jobs WHERE status = 'pendente' ORDER BY criado_em LIMIT 1;\n```\n\nAnote o plano e o tamanho do índice (`SELECT pg_size_pretty(pg_relation_size('idx_status'));`).\n\nAgora crie o índice parcial e compare:\n\n```sql\nCREATE INDEX idx_pend ON jobs (criado_em) WHERE status = 'pendente';\nANALYZE jobs;\nEXPLAIN (ANALYZE, BUFFERS) SELECT id FROM jobs WHERE status = 'pendente' ORDER BY criado_em LIMIT 1;\nSELECT pg_size_pretty(pg_relation_size('idx_pend'));\n```\n\nEntregue o TAMANHO do índice parcial, em kB (só o número).",
+      "passos": [
+        "Crie a tabela e carregue 2 milhões de linhas com ~0,003% pendentes",
+        "Crie o índice comum em status, rode ANALYZE e meça plano + tamanho",
+        "Crie o índice parcial em criado_em WHERE status = 'pendente'",
+        "Rode o EXPLAIN de novo: o plano deve virar Index Scan usando idx_pend, sem Sort",
+        "Meça o tamanho dos dois índices e compare"
+      ],
+      "entrega": {
+        "tipo": "numero",
+        "rotulo": "Tamanho de idx_pend em kB",
+        "min": 8,
+        "max": 64,
+        "unidade": "kB"
+      },
+      "dicas": [
+        "`\\di+` no psql lista os índices com tamanho, sem precisar de query.",
+        "Se o planner ignorar o parcial, confira se a condição da query é LITERALMENTE igual à do índice.",
+        "O índice parcial também serve ao ORDER BY: repare que o Sort desaparece do plano."
+      ],
+      "solucao": "O índice comum em `status` tem ~2 milhões de entradas (~45 MB) e o planner o ignora na maior parte dos casos, porque a coluna tem 2 valores distintos — buscar por 'processado' seria varrer quase tudo pelo índice, o que é pior que Seq Scan. Para 'pendente' ele pode até usar, mas ainda precisa ordenar por criado_em depois. O índice parcial `ON jobs (criado_em) WHERE status = 'pendente'` indexa apenas ~60 linhas: ocupa 16 kB, vive permanentemente em cache e já entrega as linhas ORDENADAS por criado_em — o plano vira Index Scan com LIMIT 1 e some o nó de Sort. Ganhos somados: menos espaço, menos I/O, menos custo de escrita (só as linhas que casam com a condição entram no índice, então UPDATE de 'pendente' para 'processado' REMOVE a entrada) e plano estável. Requisito importante: o planner só usa o índice parcial quando consegue PROVAR que a condição da query implica a do índice — `WHERE status = 'pendente'` casa; `WHERE status = $1` num plano genérico não casa. É a base da fila com `FOR UPDATE SKIP LOCKED`.",
+      "criterios": [],
+      "postmortem": false
+    },
+    {
+      "id": "lock-fila-alter-table",
+      "titulo": "Derrubar o site com um ALTER TABLE de 2 ms",
+      "termos": ["lock-fila", "idle-in-transaction", "migracao-sem-downtime", "statement-timeout"],
+      "nivel": 5,
+      "tempoMin": 40,
+      "ambiente": "postgres",
+      "enunciado": "Você vai reproduzir o incidente que mais derruba deploy: um ALTER TABLE rápido, preso atrás de uma transação longa, bloqueando TODAS as leituras que chegam depois dele.\n\nAbra **três** sessões psql no mesmo banco.\n\n**Sessão 1** (a transação esquecida):\n```sql\nBEGIN;\nSELECT count(*) FROM lab;   -- toca a tabela e NÃO commita\n```\n\n**Sessão 2** (a migração):\n```sql\nALTER TABLE lab ADD COLUMN novo int;   -- vai ficar esperando\n```\n\n**Sessão 3** (um usuário comum, que chega DEPOIS):\n```sql\nSELECT count(*) FROM lab;   -- deveria ser instantâneo. Não é.\n```\n\nObserve que a sessão 3 trava, mesmo sendo só um SELECT e mesmo que SELECTs normalmente não se bloqueiem entre si.\n\nNuma quarta sessão, tire a foto da fila:\n```sql\nSELECT a.pid, a.state, l.granted, l.mode, left(a.query, 50) AS query\n  FROM pg_locks l JOIN pg_stat_activity a USING (pid)\n WHERE l.relation = 'lab'::regclass ORDER BY l.granted DESC, a.query_start;\n```\n\nDepois faça a sessão 1 commitar e veja as outras duas destravarem em cascata. Por fim, repita o experimento com `SET LOCAL lock_timeout = '2s'` antes do ALTER e observe a diferença.\n\nEntregue um postmortem em 5 partes, com a saída de pg_locks como evidência.",
+      "passos": [
+        "Abra 3 sessões e execute na ordem exata: BEGIN+SELECT, ALTER, SELECT",
+        "Confirme que a sessão 3 está bloqueada mesmo sendo um SELECT",
+        "Rode a consulta de pg_locks e salve a saída (é a evidência do postmortem)",
+        "Dê COMMIT na sessão 1 e veja as duas destravarem",
+        "Repita com `BEGIN; SET LOCAL lock_timeout = '2s'; ALTER TABLE ...; COMMIT;` e compare"
+      ],
+      "entrega": {
+        "tipo": "texto",
+        "rotulo": "Postmortem em 5 partes + saída de pg_locks",
+        "minimoChars": 400
+      },
+      "dicas": [
+        "Se a sessão 3 não travar, confirme que a sessão 2 está mesmo esperando: ela precisa aparecer com granted = false.",
+        "`log_lock_waits = on` no servidor registra quem esperou por quem, com a query das duas pontas.",
+        "O ALTER pede ACCESS EXCLUSIVE, que conflita com TODOS os outros modos — inclusive ACCESS SHARE, o do SELECT."
+      ],
+      "solucao": "Locks no Postgres são ENFILEIRADOS e a fila é ordenada. O ALTER pede ACCESS EXCLUSIVE, que conflita com o ACCESS SHARE que a sessão 1 segura desde o SELECT dentro da transação aberta; então o ALTER espera. Qualquer sessão que chegue depois pede ACCESS SHARE, que conflita com o ACCESS EXCLUSIVE JÁ NA FILA — e por isso fica atrás dele, embora não tivesse conflito com a sessão 1. Resultado: uma migração de 2 ms transforma uma transação esquecida num apagão de leitura. O culpado aparente é o ALTER; o culpado real é a transação longa. Correções, em camadas: (1) `SET LOCAL lock_timeout = '2-3s'` em toda migração — o ALTER desiste em vez de formar fila, e você tenta de novo depois; (2) `idle_in_transaction_session_timeout` para que transações esquecidas morram sozinhas; (3) usar as operações que não travam: `ADD COLUMN` com default é barato desde o PG 11, `CREATE INDEX CONCURRENTLY`, `ADD CONSTRAINT ... NOT VALID` seguido de `VALIDATE CONSTRAINT`; (4) nunca fazer I/O externo com transação aberta. Processo: migração roda com lock_timeout curto, em janela combinada, e o pipeline reprova migração que não declare timeout.",
+      "criterios": [
+        "Explica que a fila de locks é ordenada e que por isso o SELECT posterior fica ATRÁS do ALTER",
+        "Usa a saída de pg_locks com granted=false como evidência, não só a descrição",
+        "Identifica a transação aberta como causa raiz, e não o ALTER",
+        "A correção inclui lock_timeout e pelo menos uma operação não-bloqueante",
+        "O item de processo é verificável no pipeline ou na configuração do papel"
+      ],
+      "postmortem": true
+    },
+    {
+      "id": "skip-locked-fila",
+      "titulo": "Fila de trabalho com 5 consumidores sem pegar o mesmo job",
+      "termos": ["select-for-update", "niveis-isolamento", "advisory-lock"],
+      "nivel": 5,
+      "tempoMin": 45,
+      "ambiente": "node",
+      "enunciado": "Construa uma fila de trabalho usando só Postgres e prove que nenhum job é processado duas vezes.\n\nTabela:\n```sql\nCREATE TABLE fila (id serial primary key, status text default 'pendente', dono text, criado_em timestamptz default now());\nINSERT INTO fila (status) SELECT 'pendente' FROM generate_series(1, 500);\n```\n\nEscreva um worker em Node (com `pg`) que, num laço, faça:\n```sql\nBEGIN;\nSELECT id FROM fila WHERE status = 'pendente' ORDER BY criado_em FOR UPDATE SKIP LOCKED LIMIT 1;\n-- se não veio nada, COMMIT e encerra\nUPDATE fila SET status = 'feito', dono = $1 WHERE id = $2;\nCOMMIT;\n```\n\nSuba **5 processos** ao mesmo tempo, cada um com um nome de dono diferente (`node worker.js w1 & node worker.js w2 & ...`). Ao final, confira:\n\n```sql\nSELECT count(*) FROM fila WHERE status = 'feito';           -- deve ser 500\nSELECT dono, count(*) FROM fila GROUP BY dono ORDER BY 1;    -- distribuição entre os 5\n```\n\nDepois REPITA o experimento tirando o `SKIP LOCKED` e descreva o que muda no comportamento (não no resultado).\n\nEntregue o número de jobs com status 'feito' ao final da execução com SKIP LOCKED.",
+      "passos": [
+        "Crie a tabela e insira 500 jobs pendentes",
+        "Escreva o worker em Node com pg, usando FOR UPDATE SKIP LOCKED dentro de uma transação",
+        "Suba 5 processos em paralelo e espere terminarem",
+        "Confira o total de 'feito' e a distribuição por dono",
+        "Repita sem SKIP LOCKED e observe os workers esperando em fila em vez de trabalharem em paralelo"
+      ],
+      "entrega": {
+        "tipo": "numero",
+        "rotulo": "Jobs com status 'feito' ao final",
+        "esperado": 500,
+        "tolerancia": 0
+      },
+      "dicas": [
+        "Sem transação explícita, o FOR UPDATE não segura nada: o lock some no fim da instrução.",
+        "Use `pool.connect()` e trabalhe no MESMO client durante toda a transação — com pool, cada query pode cair numa conexão diferente.",
+        "Se algum job ficar pendente, provavelmente um worker encerrou ao ver um SELECT vazio enquanto outro ainda segurava linhas."
+      ],
+      "solucao": "`FOR UPDATE` trava as linhas selecionadas até o fim da transação; `SKIP LOCKED` faz o worker PULAR as linhas já travadas por outro em vez de esperar. Com os dois juntos, cinco workers pegam cinco jobs diferentes sem coordenação externa, sem broker e sem polling burro — e o total sai exatamente 500, com distribuição desigual (quem termina antes pega mais, que é justamente o comportamento desejado: balanceamento por demanda). Sem `SKIP LOCKED`, o resultado final também é 500, mas o COMPORTAMENTO muda por completo: os workers 2 a 5 ficam bloqueados esperando a linha que o worker 1 travou, e a fila vira serial — você tem 5 processos e a vazão de 1. Pontos que fazem isso funcionar em produção: a transação precisa ser CURTA (pegar, marcar, commitar) e o processamento pesado deve acontecer FORA dela, senão você segura lock por minutos; é preciso um campo de tentativa e um limite para não reprocessar eternamente (DLQ); e reconciliação por idade para jobs que ficaram 'processando' quando um worker morreu. Para dezenas de milhares de jobs por dia isso substitui um broker inteiro — com transação junto do seu dado, o que nenhum broker oferece.",
+      "criterios": [],
+      "postmortem": false
+    },
+    {
+      "id": "pesquisa-hot-update",
+      "titulo": "Pesquisa: por que baixar o fillfactor pode acelerar UPDATE",
+      "termos": ["hot-update", "mvcc", "bloat"],
+      "nivel": 4,
+      "tempoMin": 25,
+      "ambiente": "papel",
+      "enunciado": "Este exercício é de PESQUISA: a resposta está na documentação oficial e no código-fonte comentado do Postgres, não na sua memória.\n\nLeia sobre HOT (Heap-Only Tuple) — comece pela documentação de `CREATE TABLE` (parâmetro `fillfactor`) e pelo arquivo `src/backend/access/heap/README.HOT` do código-fonte do Postgres, que é um texto explicativo excelente e público.\n\nResponda, em um parágrafo, cobrindo obrigatoriamente:\n\n1. Quais são as **duas condições** para que um UPDATE seja HOT;\n2. O que o HOT **evita** escrever;\n3. Por que `fillfactor` menor que 100 aumenta a chance de HOT;\n4. Qual coluna de `pg_stat_user_tables` mede a taxa de HOT.\n\n**Cole o link da fonte** que você usou (ou uma citação entre aspas do texto original).",
+      "passos": [
+        "Procure por 'PostgreSQL README.HOT' e pela documentação de CREATE TABLE / Storage Parameters",
+        "Identifique as duas condições do HOT update",
+        "Descubra qual coluna de pg_stat_user_tables conta HOT updates",
+        "Escreva a resposta em um parágrafo, com o link da fonte"
+      ],
+      "entrega": {
+        "tipo": "pesquisa",
+        "rotulo": "Sua resposta + o link da fonte",
+        "deveConter": ["indexada|indexado|índice|indice", "fillfactor", "página|pagina", "n_tup_hot_upd"],
+        "exigeFonte": true,
+        "minimoChars": 250,
+        "ondeProcurar": [
+          "Documentação do PostgreSQL: CREATE TABLE → Storage Parameters (fillfactor)",
+          "src/backend/access/heap/README.HOT no repositório do PostgreSQL",
+          "Documentação: Monitoring Statistics → pg_stat_all_tables"
+        ]
+      },
+      "dicas": [
+        "As duas condições envolvem (a) quais colunas mudaram e (b) onde a nova versão cabe.",
+        "A coluna de estatística tem 'hot' no nome e fica ao lado de n_tup_upd.",
+        "fillfactor é um parâmetro de armazenamento por tabela, ajustado com ALTER TABLE ... SET (...)."
+      ],
+      "solucao": "Um UPDATE é HOT quando (1) NENHUMA coluna indexada foi alterada e (2) a versão nova CABE na mesma página da versão antiga. Nesse caso o Postgres encadeia a nova versão dentro da própria página e NÃO escreve nos índices — os ponteiros de índice continuam válidos, apontando para a linha antiga, que redireciona para a nova. Isso evita escrita nos índices (que pode ser vários por tabela), gera menos WAL e dá menos trabalho ao vacuum. `fillfactor` define quanto de cada página é preenchido na carga: o padrão 100 deixa a página cheia, então a versão nova quase nunca cabe e o HOT quase nunca acontece; baixar para 80-90 reserva espaço e eleva muito a taxa. A medida é `n_tup_hot_upd` contra `n_tup_upd` em `pg_stat_user_tables` — abaixo de ~50 % há ganho a buscar. Consequência prática de projeto: cada índice a mais numa coluna que você atualiza MATA o HOT daquela tabela, então índice que não é usado (`idx_scan = 0`) não é neutro, é caro.",
+      "criterios": [
+        "Cita as duas condições (nenhuma coluna indexada alterada + cabe na mesma página)",
+        "Explica que o HOT evita escrever nos índices",
+        "Liga fillfactor < 100 a espaço livre na página",
+        "Cita n_tup_hot_upd como a medida",
+        "Traz link ou citação da fonte oficial"
+      ],
+      "postmortem": false
+    }
+  ]
+}

@@ -1,0 +1,290 @@
+{
+  "versao": 1,
+  "_comentario": "Fonte da verdade da hierarquia Trilha -> Modulo. Nenhum arquivo de conteudo se move: o modulo so APONTA para o deck, os cursos, o arquivo de praticas e os treinos daquele tema. Quem resolve isso (contagens, progresso, nos da licao) e server/estrutura.js -> GET /api/estrutura. Se um deck ainda nao existe, o modulo aparece como 'em producao' em vez de sumir.",
+  "trilhas": [
+    {
+      "id": "t1",
+      "numero": 1,
+      "titulo": "Fundamentos do que já uso",
+      "subtitulo": "Descer uma camada no que você toca todo dia",
+      "periodo": "15/09 → 25/10 · 6 semanas",
+      "descricao": "São as quatro coisas que já usa todo dia na Babita e no AutoTrade — zero custo de contexto, só o custo de descer uma camada — e caem em qualquer entrevista de backend.",
+      "cor": "#9db1ea",
+      "modulos": [
+        {
+          "id": "node-internals",
+          "titulo": "Node.js por dentro",
+          "resumo": "Event loop, fases, libuv, streams e o que trava o processo.",
+          "icone": "node",
+          "ordem": 1,
+          "deck": "node-internals",
+          "cursos": [],
+          "praticas": "node-internals",
+          "treinos": ["semana-event-loop"],
+          "preRequisito": null
+        },
+        {
+          "id": "http-networking",
+          "titulo": "HTTP e redes",
+          "resumo": "Do DNS ao primeiro byte: TCP, TLS, keep-alive, proxy e cache de borda.",
+          "icone": "rede",
+          "ordem": 2,
+          "deck": "http-networking",
+          "cursos": ["http-do-zero"],
+          "praticas": "http-networking",
+          "treinos": [],
+          "preRequisito": "node-internals"
+        },
+        {
+          "id": "postgres-internals",
+          "titulo": "PostgreSQL por dentro",
+          "resumo": "MVCC, planner, índices, WAL, vacuum e o pool que acaba.",
+          "icone": "banco",
+          "ordem": 3,
+          "deck": "postgres-internals",
+          "cursos": ["postgres-que-nao-trava"],
+          "praticas": "postgres-internals",
+          "treinos": [],
+          "preRequisito": "http-networking"
+        },
+        {
+          "id": "linux-processos",
+          "titulo": "Linux e processos",
+          "resumo": "Processo, file descriptor, sinal, cgroup, OOM killer e as ferramentas de diagnóstico.",
+          "icone": "terminal",
+          "ordem": 4,
+          "deck": "linux-processos",
+          "cursos": [],
+          "praticas": "linux-processos",
+          "treinos": [],
+          "preRequisito": "postgres-internals"
+        }
+      ]
+    },
+    {
+      "id": "t2",
+      "numero": 2,
+      "titulo": "Medir e prever o comportamento",
+      "subtitulo": "Parar de opinar e começar a medir",
+      "periodo": "26/10 → 06/12 · 6 semanas",
+      "descricao": "Depois de saber como a máquina funciona, aprender a medir (percentis, Little's Law, golden signals) e a prever o que cache e fila fazem com o sistema antes de opinar.",
+      "cor": "#eaa94e",
+      "modulos": [
+        {
+          "id": "concorrencia-performance",
+          "titulo": "Concorrência e performance",
+          "resumo": "Percentis, Little's Law, contenção, pool e o gargalo que não é onde você acha.",
+          "icone": "relogio",
+          "ordem": 1,
+          "deck": "concorrencia-performance",
+          "cursos": [],
+          "praticas": "concorrencia-performance",
+          "treinos": ["caca-ao-vazamento"],
+          "preRequisito": null
+        },
+        {
+          "id": "observabilidade",
+          "titulo": "Observabilidade",
+          "resumo": "Log com correlation id, métrica que responde pergunta, trace ponta a ponta e alerta que não acorda ninguém à toa.",
+          "icone": "olho",
+          "ordem": 2,
+          "deck": "observabilidade",
+          "cursos": ["observabilidade-de-verdade"],
+          "praticas": "observabilidade",
+          "treinos": [],
+          "preRequisito": "concorrencia-performance"
+        },
+        {
+          "id": "cache",
+          "titulo": "Cache",
+          "resumo": "Redis por dentro, padrões de escrita e leitura, stampede, hot key e invalidação.",
+          "icone": "raio",
+          "ordem": 3,
+          "deck": "cache",
+          "cursos": [],
+          "praticas": "cache",
+          "treinos": [],
+          "preRequisito": "observabilidade"
+        },
+        {
+          "id": "mensageria",
+          "titulo": "Mensageria e filas",
+          "resumo": "Fila, tópico, entrega pelo menos uma vez, idempotência, DLQ e backpressure.",
+          "icone": "fila",
+          "ordem": 4,
+          "deck": "mensageria",
+          "cursos": [],
+          "praticas": "mensageria",
+          "treinos": [],
+          "preRequisito": "cache"
+        }
+      ]
+    },
+    {
+      "id": "t3",
+      "numero": 3,
+      "titulo": "Resiliência, distribuídos e arquitetura",
+      "subtitulo": "Problema → solução → trade-off → novo problema",
+      "periodo": "07/12 → 24/01 · 7 semanas",
+      "descricao": "Para cada padrão: problema, solução, trade-off e o novo problema que a solução cria. Fecha com um system design por semana em 45 min.",
+      "cor": "#7bbf5e",
+      "modulos": [
+        {
+          "id": "resiliencia",
+          "titulo": "Resiliência",
+          "resumo": "Timeout, retry com jitter, circuit breaker, bulkhead, degradação graciosa e o retry que derruba o sistema.",
+          "icone": "escudo",
+          "ordem": 1,
+          "deck": "resiliencia",
+          "cursos": [],
+          "praticas": "resiliencia",
+          "treinos": [],
+          "preRequisito": null
+        },
+        {
+          "id": "sistemas-distribuidos",
+          "titulo": "Sistemas distribuídos",
+          "resumo": "CAP na prática, relógio, consenso, exactly-once que não existe e partição de rede.",
+          "icone": "nos",
+          "ordem": 2,
+          "deck": "sistemas-distribuidos",
+          "cursos": [],
+          "praticas": "sistemas-distribuidos",
+          "treinos": [],
+          "preRequisito": "resiliencia"
+        },
+        {
+          "id": "arquitetura-software",
+          "titulo": "Arquitetura de software",
+          "resumo": "Acoplamento, fronteira, camadas, evento vs chamada, monólito modular e ADR.",
+          "icone": "blocos",
+          "ordem": 3,
+          "deck": "arquitetura-software",
+          "cursos": ["sistemas-que-nao-caem"],
+          "praticas": "arquitetura-software",
+          "treinos": ["simulado-entrevista-senior"],
+          "preRequisito": "sistemas-distribuidos"
+        },
+        {
+          "id": "system-design",
+          "titulo": "System design",
+          "resumo": "O roteiro de 45 min: requisitos, estimativa, desenho, gargalo, evolução e o que você sacrificou.",
+          "icone": "planta",
+          "ordem": 4,
+          "deck": "system-design",
+          "cursos": [],
+          "praticas": "system-design",
+          "treinos": [],
+          "preRequisito": "arquitetura-software"
+        }
+      ]
+    },
+    {
+      "id": "t4",
+      "numero": 4,
+      "titulo": "Produção, segurança e equipe",
+      "subtitulo": "O que separa quem opera de quem só programa",
+      "periodo": "25/01 → 28/02 · 5 semanas",
+      "descricao": "Testes que valem, deploy sem downtime com PM2 e Nginx, segurança de verdade e o vocabulário de time: ADR, postmortem, RFC, code review.",
+      "cor": "#c98ce0",
+      "modulos": [
+        {
+          "id": "testes",
+          "titulo": "Testes",
+          "resumo": "Pirâmide, teste que pega bug de verdade, dublê, flaky e cobertura que mente.",
+          "icone": "checar",
+          "ordem": 1,
+          "deck": "testes",
+          "cursos": ["deploy-sem-downtime"],
+          "praticas": "testes",
+          "treinos": [],
+          "preRequisito": null
+        },
+        {
+          "id": "containers-deploy",
+          "titulo": "Containers e deploy",
+          "resumo": "Imagem, camada, PM2, Nginx, blue-green, canário, rollback e migração sem downtime.",
+          "icone": "caixa",
+          "ordem": 2,
+          "deck": "containers-deploy",
+          "cursos": [],
+          "praticas": "containers-deploy",
+          "treinos": [],
+          "preRequisito": "testes"
+        },
+        {
+          "id": "seguranca",
+          "titulo": "Segurança",
+          "resumo": "OWASP na prática, injeção, autenticação, segredo, dependência e o header que salva.",
+          "icone": "cadeado",
+          "ordem": 3,
+          "deck": "seguranca",
+          "cursos": [],
+          "praticas": "seguranca",
+          "treinos": ["blindagem-de-producao"],
+          "preRequisito": "containers-deploy"
+        },
+        {
+          "id": "producao-equipe",
+          "titulo": "Produção e equipe",
+          "resumo": "On-call, postmortem sem culpado, ADR, RFC, code review e estimativa honesta.",
+          "icone": "pessoas",
+          "ordem": 4,
+          "deck": "producao-equipe",
+          "cursos": [],
+          "praticas": "producao-equipe",
+          "treinos": [],
+          "preRequisito": "seguranca"
+        }
+      ]
+    },
+    {
+      "id": "t5",
+      "numero": 5,
+      "titulo": "Fundamentos e entrevista internacional",
+      "subtitulo": "Ligar cada estrutura a um sistema que você já usou",
+      "periodo": "01/03 → 28/03 · 4 semanas + contínuo desde a semana 1",
+      "descricao": "Ligar cada estrutura de dados a um sistema real, explicar pela raiz os bugs que você já teve e responder em inglês, sem travar.",
+      "cor": "#5ec8bf",
+      "modulos": [
+        {
+          "id": "algoritmos-estruturas",
+          "titulo": "Algoritmos e estruturas",
+          "resumo": "Complexidade que importa, hash, árvore, heap, grafo — cada um ligado a um sistema que você usa.",
+          "icone": "arvore",
+          "ordem": 1,
+          "deck": "algoritmos-estruturas",
+          "cursos": [],
+          "praticas": "algoritmos-estruturas",
+          "treinos": [],
+          "preRequisito": null
+        },
+        {
+          "id": "cs-fundamentals",
+          "titulo": "CS fundamentals",
+          "resumo": "Memória, cache de CPU, ponto flutuante, encoding, tempo e os bugs que nascem daí.",
+          "icone": "chip",
+          "ordem": 2,
+          "deck": "cs-fundamentals",
+          "cursos": [],
+          "praticas": "cs-fundamentals",
+          "treinos": [],
+          "preRequisito": "algoritmos-estruturas"
+        },
+        {
+          "id": "vocabulario-entrevista-en",
+          "titulo": "Inglês de entrevista",
+          "resumo": "Pitch, STAR, explicar sistema em inglês e o vocabulário que trava na hora.",
+          "icone": "idioma",
+          "ordem": 3,
+          "deck": "vocabulario-entrevista-en",
+          "cursos": ["interview-english"],
+          "praticas": "vocabulario-entrevista-en",
+          "treinos": ["ingles-de-entrevista-30-dias"],
+          "preRequisito": null,
+          "idioma": "en"
+        }
+      ]
+    }
+  ]
+}

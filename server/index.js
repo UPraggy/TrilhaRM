@@ -6,6 +6,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { criarCursos } from './cursos.js'
 import { criarRepositorio } from './decks.js'
+import { criarEstrutura } from './estrutura.js'
 import { criarProgresso } from './progresso.js'
 import { carregarEnv, criarMentor } from './mentor.js'
 import { corrigir, criarPraticas, notaAutomatica, notaChecklist } from './praticas.js'
@@ -31,6 +32,8 @@ const cursos = criarCursos(CONTEUDO, repo)
 const progresso = criarProgresso(ARQ_PROGRESSO)
 const treinos = criarTreinos(CONTEUDO, repo)
 const progTreinos = criarProgressoTreinos(progresso, { arquivo: path.join(RAIZ, 'data', 'progresso-treinos.json') })
+// Trilha -> Módulo -> Lição: amarra deck + curso + práticas + treino por tema (content/estrutura.json)
+const estrutura = criarEstrutura(CONTEUDO, { repo, cursos, praticas, treinos, progresso })
 const telegram = criarTelegram({
   arquivoConfig: ARQ_CONFIG, // o token mora ao lado da key do OpenRouter, fora do git
   arquivoEstado: path.join(RAIZ, 'data', 'telegram.json'),
@@ -63,7 +66,7 @@ api.get('/saude', (_req, res) => {
     decks: repo.listar().length,
     praticas: praticas.listar().length, treinos: treinos.listar().length, telegram: telegram.estado(),
     cursos: cursos.listar().length,
-    erros: [...repo.erros(), ...praticas.erros(), ...treinos.erros(), ...cursos.erros()],
+    erros: [...repo.erros(), ...praticas.erros(), ...treinos.erros(), ...cursos.erros(), ...estrutura.erros()],
   })
 })
 
@@ -96,8 +99,20 @@ api.get('/termos', (_req, res) => {
   res.json({ termos })
 })
 
+// trilhas.json continua servido por retrocompatibilidade, mas agora é DERIVADO de estrutura.json
 api.get('/trilhas', (_req, res) => {
-  res.json(repo.trilhas())
+  res.json(estrutura.trilhasCompativel())
+})
+
+// ---- estrutura: trilhas -> módulos -> nós (o caminho estilo Duolingo) ------
+api.get('/estrutura', (_req, res) => {
+  res.json(estrutura.resolver())
+})
+
+api.get('/modulos/:id', (req, res) => {
+  const m = estrutura.modulo(String(req.params.id))
+  if (!m) return res.status(404).json({ erro: 'módulo não encontrado' })
+  res.json(m)
 })
 
 api.get('/progresso', (_req, res) => {

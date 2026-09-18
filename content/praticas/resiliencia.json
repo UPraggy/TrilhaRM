@@ -1,0 +1,223 @@
+{
+  "deckId": "resiliencia",
+  "titulo": "Práticas · Resiliência",
+  "exercicios": [
+    {
+      "id": "dependencia-lenta-derruba",
+      "titulo": "Uma dependência LENTA derrubando rota que nem a usa",
+      "termos": ["timeout", "bulkhead", "falha-em-cascata", "postgres-internals/pool-conexoes"],
+      "nivel": 5,
+      "tempoMin": 50,
+      "ambiente": "node",
+      "enunciado": "Você vai provar que dependência lenta é pior que dependência caída, e que um pool único é o mecanismo do estrago.\n\n**O falso fornecedor** (`lento.js`): um servidor que demora 30 s para responder.\n```js\nimport http from 'node:http'\nhttp.createServer((req, res) => setTimeout(() => res.end('ok'), 30000)).listen(3020)\n```\n\n**Seu serviço** (`api.js`): duas rotas, UM agente HTTP compartilhado com poucos sockets.\n```js\nimport http from 'node:http'\nconst agente = new http.Agent({ keepAlive: true, maxSockets: 5 })   // o pool único\n\nconst chamar = (porta) => new Promise((ok, err) => {\n  const r = http.get({ port: porta, path: '/', agent: agente }, (res) => { res.resume(); res.on('end', ok) })\n  r.on('error', err)\n})\n\nhttp.createServer(async (req, res) => {\n  try {\n    if (req.url === '/cep') { await chamar(3020); return res.end('cep ok') }   // usa o fornecedor lento\n    if (req.url === '/checkout') { await chamar(3021); return res.end('checkout ok') }  // NÃO usa\n    res.end('?')\n  } catch (e) { res.statusCode = 502; res.end('erro') }\n}).listen(3000)\n\nhttp.createServer((req, res) => res.end('rapido')).listen(3021)   // dependência saudável\n```\n\n1. Confirme que `/checkout` responde em milissegundos.\n2. Dispare 10 requisições em `/cep` (que vão travar 30 s cada).\n3. **Sem esperar**, chame `/checkout` de novo e cronometre.\n\nDepois aplique as duas correções: (a) timeout de 2 s na chamada; (b) BULKHEAD — um agente separado por dependência. Meça de novo.\n\nEntregue um postmortem em 5 partes com os tempos medidos antes e depois.",
+      "passos": [
+        "Suba os três servidores e meça /checkout na linha de base",
+        "Dispare 10 requisições em /cep e, em paralelo, cronometre /checkout",
+        "Registre o tempo de /checkout com o pool ocupado",
+        "Aplique timeout de 2 s e meça de novo",
+        "Aplique agentes separados por dependência (bulkhead) e meça a terceira vez"
+      ],
+      "entrega": {
+        "tipo": "texto",
+        "rotulo": "Postmortem em 5 partes com os três tempos",
+        "minimoChars": 400
+      },
+      "dicas": [
+        "Em Node, timeout de verdade fecha o socket: `req.setTimeout(2000, () => req.destroy())` ou AbortSignal.",
+        "`maxSockets` do Agent é por HOST — o pool único só vira problema quando o agente é compartilhado entre destinos.",
+        "Meça com `curl -w '%{time_total}\\n' -o /dev/null -s localhost:3000/checkout`."
+      ],
+      "solucao": "Com `maxSockets: 5` e um agente compartilhado, as requisições lentas ocupam todos os sockets disponíveis e `/checkout` fica na fila do AGENTE, esperando um socket livre — mesmo sendo uma rota que não toca no fornecedor lento. Sem timeout, isso dura 30 s; com fila, mais. É o mecanismo exato da falha em cascata: (1) dependência fica lenta, (2) sem timeout as requisições se acumulam, (3) o recurso compartilhado (pool, threads, conexões do banco) esgota, (4) o serviço passa a falhar em TUDO, (5) clientes fazem retry e dobram a carga. Dependência CAÍDA seria melhor: falha em milissegundos e libera o recurso na hora. As correções são complementares e nenhuma substitui a outra. Timeout (2 s) limita quanto tempo cada requisição segura o socket — mas com carga suficiente o pool ainda esgota, só que por menos tempo. Bulkhead (um agente por dependência, com `maxSockets` próprio) CONTÉM o estrago: o fornecedor lento consome só as conexões dele, e `/checkout` volta a responder em milissegundos mesmo com `/cep` saturado. Em produção, complete com circuit breaker (para de chamar quem está falhando, dando espaço para se recuperar) e um fallback declarado para a rota degradada. E lembre: timeout não é cancelamento — sem fechar o socket de verdade (`destroy`/AbortSignal), o trabalho continua do outro lado.",
+      "criterios": [
+        "Traz os três tempos medidos de /checkout (base, com pool ocupado, depois das correções)",
+        "Explica que o pool compartilhado é o mecanismo do contágio",
+        "Enuncia por que dependência lenta é pior que caída",
+        "Aplica timeout E bulkhead, explicando que um não substitui o outro",
+        "O item de processo é verificável (ex.: revisar toda chamada externa quanto a timeout e agente próprio)"
+      ],
+      "postmortem": true
+    },
+    {
+      "id": "circuit-breaker-do-zero",
+      "titulo": "Escrever um circuit breaker e provar os três estados",
+      "termos": ["circuit-breaker", "timeout", "fallback", "graceful-degradation-observavel"],
+      "nivel": 5,
+      "tempoMin": 45,
+      "ambiente": "node",
+      "enunciado": "Implemente um circuit breaker em ~40 linhas e demonstre a transição pelos três estados com log.\n\nRequisitos:\n\n- `fechado`: passa tudo, contando resultados numa JANELA deslizante (últimas N chamadas);\n- abre quando a TAXA de erro passa de um limiar E há volume mínimo (não abra por causa de 2 chamadas);\n- `aberto`: falha imediatamente, sem chamar, por `tempoAberto` ms;\n- `meio-aberto`: deixa passar UMA chamada de teste; sucesso fecha, falha reabre;\n- expõe o ESTADO como métrica (um contador ou um objeto que você possa imprimir).\n\nTeste com uma dependência que você controla: uma função que falha nas chamadas 1-10, funciona nas 11-20, e falha de novo nas 21-25. Imprima uma linha por chamada com estado, resultado e contadores, e mostre no log as transições fechado→aberto→meio-aberto→fechado→aberto.\n\nDepois acrescente um FALLBACK (retornar o último valor bom) e mostre que o usuário deixa de ver erro quando o circuito está aberto.\n\nEntregue o código do breaker + o trecho do log com as transições.",
+      "passos": [
+        "Implemente a janela deslizante de resultados (array circular ou lista com corte)",
+        "Implemente a abertura por TAXA com volume mínimo",
+        "Implemente o temporizador de meio-aberto e a chamada de teste",
+        "Rode contra a dependência sintética e capture o log das transições",
+        "Acrescente fallback com último valor bom e mostre o efeito para o usuário"
+      ],
+      "entrega": {
+        "tipo": "texto",
+        "rotulo": "Código do breaker + log das transições",
+        "minimoChars": 400
+      },
+      "dicas": [
+        "Abrir por contagem absoluta ('5 falhas') é pior que por taxa: 5 falhas em 10 s é muito diferente de 5 em 10 min.",
+        "Volume mínimo evita abrir o circuito por causa de duas chamadas no começo do dia.",
+        "No meio-aberto deve passar UMA chamada; se passarem várias, você acabou de mandar carga na dependência que estava se recuperando."
+      ],
+      "solucao": "O breaker precisa de quatro parâmetros e cada um resolve um problema diferente: JANELA (quantas chamadas recentes contam — sem ela, uma falha de ontem pesa hoje), LIMIAR DE TAXA (melhor que contagem absoluta, porque é independente do volume), VOLUME MÍNIMO (impede abrir com 2 chamadas) e TEMPO ABERTO (quanto esperar antes de testar). O meio-aberto é o estado mais delicado: deve passar exatamente UMA chamada de teste; se deixar passar várias, você despeja carga justamente na dependência que estava se recuperando e a derruba de novo. O breaker protege DOIS lados: a dependência (que para de receber carga) e o chamador (que para de ter conexões e threads presas esperando). Por isso ele nunca substitui o timeout — o breaker só sabe que houve falha porque o timeout produziu uma. Sem fallback, abrir o circuito apenas troca lentidão por erro: o par completo é breaker + fallback (último valor bom, cache velho, valor padrão, resposta parcial) + a decisão consciente de quando falhar é melhor que responder errado. E o ponto que fecha: o estado do breaker precisa ser MÉTRICA com alerta. Proteção silenciosa esconde o problema que está segurando — se o breaker abre todo dia às 14h e ninguém sabe, você tem um incidente crônico invisível. Um breaker que nunca abriu em seis meses também merece suspeita: o limiar pode estar inatingível.",
+      "criterios": [
+        "Implementa os três estados com transição correta (incluindo UMA chamada no meio-aberto)",
+        "Usa taxa de erro com volume mínimo, não contagem absoluta",
+        "Mostra no log as transições reais, não só o código",
+        "Acrescenta fallback e mostra o efeito para o usuário",
+        "Menciona expor o estado como métrica/alerta"
+      ],
+      "postmortem": false
+    },
+    {
+      "id": "liveness-derruba-tudo",
+      "titulo": "O liveness probe que derruba o sistema inteiro",
+      "termos": ["health-check", "falha-em-cascata", "degradacao-graciosa"],
+      "nivel": 5,
+      "tempoMin": 30,
+      "ambiente": "papel",
+      "enunciado": "Cenário real: um serviço com 6 instâncias, todas saudáveis. O banco de dados fica indisponível por 3 minutos. O `/health` do serviço checa o banco, e o orquestrador usa esse mesmo endpoint como LIVENESS probe (3 falhas = reiniciar o container).\n\nAnalise e responda, em texto:\n\n1. O que acontece com as 6 instâncias nos 3 minutos?\n2. O que acontece quando o banco VOLTA?\n3. Por que a situação pós-retorno pode ser PIOR que durante a falha?\n4. Qual é o desenho correto de liveness, readiness e startup probe para este serviço — e o que cada um checa?\n5. Como o readiness participa do desligamento gracioso?\n\nSe puder, reproduza: suba um serviço simples com `/health` que checa uma dependência, coloque num Docker Compose com healthcheck e derrube a dependência.",
+      "passos": [
+        "Descreva o comportamento durante a falha do banco",
+        "Descreva o comportamento no retorno (cache frio, conexões, estampida)",
+        "Explique por que reiniciar não conserta dependência externa",
+        "Desenhe os três probes, dizendo o que cada um checa e o que NÃO checa",
+        "Explique o papel do readiness no desligamento gracioso"
+      ],
+      "entrega": {
+        "tipo": "texto",
+        "rotulo": "Sua análise dos 5 pontos",
+        "minimoChars": 400
+      },
+      "dicas": [
+        "Pergunte-se: reiniciar o processo conserta um banco fora do ar?",
+        "Pense no que cada instância perde ao reiniciar — e no que ela faz ao subir.",
+        "Um dos três probes existe só para app de inicialização lenta."
+      ],
+      "solucao": "(1) Com liveness checando o banco, as 6 instâncias falham o probe e o orquestrador REINICIA todas — transformando uma falha de dependência numa indisponibilidade total do serviço. E reiniciar não conserta banco nenhum: as instâncias voltam, falham o probe de novo e entram em laço de reinício (CrashLoopBackOff). (2) Quando o banco volta, todas sobem ao mesmo tempo, com cache vazio, abrindo conexões simultaneamente: estampida contra um banco que acabou de voltar e ainda está frio. (3) Por isso o pós-retorno pode ser pior: durante a falha o banco estava só indisponível; na volta ele leva uma carga de pico com cache vazio e pode cair de novo — a recuperação derruba o que tinha acabado de subir. (4) O desenho correto: LIVENESS raso, checando apenas que o processo responde HTTP (`return 200`) — sua única pergunta é 'preciso ser reiniciado?', e a resposta é sim só quando o processo está travado. READINESS profundo, checando dependências críticas: sem banco, a instância se declara não-pronta, SAI do balanceamento, mantém o processo vivo (com cache quente e conexões) e volta sozinha quando a dependência voltar. STARTUP probe para app de inicialização lenta, impedindo que o liveness mate o processo antes de ele terminar de subir. (5) No desligamento gracioso, o readiness é o PRIMEIRO passo: marcar como não-pronto, esperar o intervalo de checagem do balanceador (senão ainda chega tráfego), e só então `server.close()` e drenar as requisições em voo. Complemento: na volta, suba devagar (limite de conexões novas por segundo, aquecimento de cache) para não repetir a estampida.",
+      "criterios": [
+        "Explica que o liveness profundo reinicia instâncias saudáveis",
+        "Descreve a estampida/cache frio no retorno",
+        "Explica por que reiniciar não conserta dependência externa",
+        "Define liveness raso, readiness profundo e startup probe corretamente",
+        "Cita o readiness como primeiro passo do desligamento gracioso"
+      ],
+      "postmortem": false
+    },
+    {
+      "id": "load-shedding-fila",
+      "titulo": "Load shedding: rejeitar 30 % para atender 70 % bem",
+      "termos": ["load-shedding", "deadline-propagation", "mensageria/backpressure", "system-design/little-law"],
+      "nivel": 5,
+      "tempoMin": 40,
+      "ambiente": "node",
+      "enunciado": "Você vai medir por que aceitar tudo sob sobrecarga entrega PIOR do que rejeitar parte.\n\nSimule um servidor com capacidade fixa:\n\n```js\nconst CAPACIDADE = 50        // trabalhos concorrentes\nconst SERVICO = 100          // ms por trabalho\nlet emVoo = 0\nconst fila = []\nconst metricas = { atendidas: 0, expiradas: 0, rejeitadas: 0, latencias: [] }\n\nfunction chega(agora, deadline) {\n  // VERSÃO A: aceita tudo\n  fila.push({ chegou: agora, deadline })\n  // VERSÃO B (shedding): if (fila.length > CAPACIDADE * 2) { metricas.rejeitadas++; return }\n}\n\n// a cada tick, tira da fila quem cabe na capacidade; descarta quem JÁ passou do deadline\n```\n\nComplete a simulação com chegada de 120 req/s (mais que a capacidade de ~500/s? ajuste para saturar), deadline de 1 s por requisição, e rode 30 segundos simulados. Compare as duas versões em: atendidas dentro do deadline, expiradas (trabalho feito que ninguém esperava mais) e p99 de latência.\n\nDepois acrescente a terceira versão: descartar da fila quem já passou do deadline ANTES de processar.\n\nEntregue um relato comparando as três versões, com os números.",
+      "passos": [
+        "Implemente a simulação com fila e capacidade fixa",
+        "Rode a versão A (aceita tudo) e colete atendidas, expiradas e p99",
+        "Rode a versão B (rejeita na entrada quando a fila passa do limite)",
+        "Rode a versão C (descarta da fila o que já passou do deadline)",
+        "Escreva o relato com a tabela dos três resultados"
+      ],
+      "entrega": {
+        "tipo": "texto",
+        "rotulo": "Relato com os números das três versões",
+        "minimoChars": 350
+      },
+      "dicas": [
+        "Pela lei de Little, fila = taxa × tempo: se a taxa de chegada supera a de saída, a fila cresce sem limite.",
+        "Trabalho que já passou do deadline é trabalho ÓRFÃO: você paga o custo e não entrega valor.",
+        "Rejeitar precisa ser barato — se a rejeição custa quase o mesmo que atender, ela não ajuda."
+      ],
+      "solucao": "A versão A (aceitar tudo) é a pior nas TRÊS métricas ao mesmo tempo, o que costuma surpreender: a fila cresce sem limite, a latência cresce junto (lei de Little: fila = taxa × tempo) e, quando o trabalho finalmente é processado, o cliente já desistiu — então você gastou capacidade produzindo resposta que ninguém lê. Esse é o trabalho órfão, a forma mais cara de gastar capacidade. A versão B rejeita na entrada quando a fila passa do limite: quem é aceito é atendido dentro do deadline, a latência fica estável e o cliente rejeitado recebe 503 RÁPIDO — o que permite a ele reagir (tentar depois, degradar, avisar o usuário) em vez de esperar por um timeout. A versão C é a melhor de todas e é a mais fácil de esquecer: descartar da FILA o que já passou do deadline antes de processar. Esse é o melhor critério de descarte que existe, porque essa requisição não tem mais valor nenhum — é descarte sem perda. Em produção, combine: (1) limite de fila com 503 + `Retry-After` (não 500: a semântica importa); (2) descarte por deadline expirado; (3) prioridade — descartar relatório antes de checkout; (4) sinal de sobrecarga baseado em profundidade de fila ou latência atual, e nunca em CPU, que reage tarde demais. E deixe todas as rejeições como MÉTRICA com alerta, senão o sistema passa a descartar silenciosamente e ninguém percebe que a capacidade ficou pequena.",
+      "criterios": [
+        "Traz os números das três versões (atendidas, expiradas, p99)",
+        "Explica por que aceitar tudo piora as três métricas",
+        "Identifica trabalho órfão e o descarte por deadline como o melhor critério",
+        "Cita 503 com Retry-After em vez de 500",
+        "Menciona métrica/alerta sobre o que foi descartado"
+      ],
+      "postmortem": false
+    },
+    {
+      "id": "rollback-janela",
+      "titulo": "Medir a janela de rollback do seu próprio deploy",
+      "termos": ["rollback", "feature-flag", "postgres-internals/migracao-sem-downtime", "blue-green"],
+      "nivel": 4,
+      "tempoMin": 30,
+      "ambiente": "papel",
+      "enunciado": "Pegue uma mudança REAL que você fez recentemente (no Trilha RM, no AutoTrade, na Babita ou em qualquer projeto seu) e responda, por escrito, a pergunta que decide o risco de um deploy: **'se não funcionar, quanto tempo até desfazer?'**\n\nPara essa mudança específica, preencha:\n\n1. **Rollback de código**: o comando exato e o tempo estimado.\n2. **Migração de banco**: houve? É reversível? O que acontece se a versão anterior voltar a rodar contra o schema novo?\n3. **Dado escrito no formato novo**: a versão anterior consegue LER o que a nova gravou? A partir de que momento o rollback deixa de ser possível sem perda?\n4. **Cache / arquivo / estado**: há formato novo em cache ou em disco? A chave foi versionada?\n5. **A janela**: em uma frase — 'dá para voltar sem perda até ___'.\n6. **O que você mudaria** no processo para alargar essa janela (feature flag, expand/migrate/contract, versionar chave de cache).\n\nSe a janela fechar antes de 24 h, proponha uma mudança concreta que a alargue.",
+      "passos": [
+        "Escolha uma mudança real e recente, de preferência uma que mexeu em dados",
+        "Responda os 6 pontos por escrito, sem generalizar",
+        "Identifique o momento exato em que o rollback deixa de ser seguro",
+        "Proponha uma mudança de processo que alargue a janela",
+        "Se possível, TESTE o rollback num ambiente de teste e cronometre"
+      ],
+      "entrega": {
+        "tipo": "texto",
+        "rotulo": "Sua análise dos 6 pontos, para uma mudança real",
+        "minimoChars": 400
+      },
+      "dicas": [
+        "O que fecha a janela quase nunca é o código: é a primeira ESCRITA no formato novo.",
+        "Feature flag é rollback parcial e instantâneo, sem redeploy — separa 'deploy' de 'release'.",
+        "Expand/migrate/contract mantém compatibilidade nos dois sentidos durante a transição."
+      ],
+      "solucao": "A resposta forte para este exercício não é um texto bonito: é a identificação honesta do momento em que a janela FECHA. Rollback de código é quase sempre fácil (`git revert` + deploy, ou apontar o símbolo/imagem anterior). O que fecha a janela é o estado: (a) migração destrutiva — coluna ou tabela removida não volta, e é por isso que remoção só acontece no passo CONTRACT, depois que a versão antiga saiu do ar; (b) dado gravado no formato novo que a versão antiga não sabe ler — a partir do primeiro registro assim, voltar significa perder ou corromper; (c) cache ou arquivo com estrutura nova, que a versão antiga interpreta errado — resolve-se versionando a chave (`v2:usuario:123`), porque aí a versão antiga simplesmente não acha e recalcula; (d) mensagem publicada em esquema novo que o consumidor antigo não entende. As três alavancas para alargar a janela: expand/migrate/contract (três deploys, compatibilidade nos dois sentidos durante a transição), feature flag (o código novo vai para produção desligado; ligar e desligar é instantâneo e não precisa de deploy — isso separa 'deploy' de 'release' e é a maior redução de risco disponível) e dual read (a versão nova sabe ler o formato antigo E o novo, e só depois de tudo migrado você remove o caminho antigo). Regra que vale como hábito: antes de cada deploy, escreva em UMA frase como desfazer. Se a frase demora mais que a explicação da funcionalidade, o plano de rollback é o trabalho que ainda falta fazer.",
+      "criterios": [
+        "Analisa uma mudança REAL e específica, não um exemplo genérico",
+        "Identifica o momento exato em que a janela de rollback fecha",
+        "Cobre banco, dado, cache/estado — não só o código",
+        "Propõe uma mudança concreta de processo para alargar a janela",
+        "Cita pelo menos uma das alavancas (feature flag, expand/migrate/contract, dual read)"
+      ],
+      "postmortem": false
+    },
+    {
+      "id": "pesquisa-full-jitter",
+      "titulo": "Pesquisa: por que a AWS recomenda 'full jitter'",
+      "termos": ["retry-jitter", "mensageria/estampida"],
+      "nivel": 4,
+      "tempoMin": 25,
+      "ambiente": "papel",
+      "enunciado": "Exercício de PESQUISA. O artigo 'Exponential Backoff and Jitter' do AWS Architecture Blog (Marc Brooker) compara três estratégias de retry por simulação. Leia o artigo (ou o capítulo equivalente da Amazon Builders' Library sobre timeouts, retries e backoff).\n\nResponda em um parágrafo, cobrindo obrigatoriamente:\n\n1. As três estratégias comparadas e a FÓRMULA de cada uma;\n2. Qual métrica o artigo usa para dizer que uma é melhor (não é só 'latência');\n3. Por que backoff SEM jitter não resolve a estampida;\n4. O que é retry budget / token bucket de retry e que problema ele resolve que o jitter NÃO resolve.\n\n**Cole o link da fonte** ou uma citação entre aspas.",
+      "passos": [
+        "Procure 'AWS Exponential Backoff and Jitter' (Architecture Blog)",
+        "Anote as três fórmulas comparadas",
+        "Identifique as métricas que o artigo mede",
+        "Procure 'retry budget' ou 'retry token bucket' na Builders' Library",
+        "Escreva a resposta com o link"
+      ],
+      "entrega": {
+        "tipo": "pesquisa",
+        "rotulo": "Sua resposta + a fonte",
+        "deveConter": ["full jitter", "random|aleat", "conten|competi|colis|carga no servidor|chamadas totais", "budget|orcamento|orçamento"],
+        "exigeFonte": true,
+        "minimoChars": 300,
+        "ondeProcurar": [
+          "AWS Architecture Blog — Exponential Backoff and Jitter (Marc Brooker)",
+          "Amazon Builders' Library — Timeouts, retries, and backoff with jitter",
+          "Google SRE Book, capítulo sobre Handling Overload (retry budget)"
+        ]
+      },
+      "dicas": [
+        "As três costumam ser chamadas de 'exponential backoff', 'full jitter' e 'decorrelated jitter'.",
+        "O artigo mede também o TRABALHO TOTAL (chamadas feitas), não só o tempo até completar.",
+        "Retry budget limita retries a uma fração do tráfego normal — resolve o caso em que TODOS estão falhando."
+      ],
+      "solucao": "O artigo compara: (1) backoff exponencial puro — `espera = min(teto, base × 2^n)`; (2) FULL JITTER — `espera = random(0, min(teto, base × 2^n))`; (3) decorrelated jitter — `espera = min(teto, random(base, anterior × 3))`. Ele mede duas coisas, e a segunda é a que muda a conclusão: o tempo total até completar o trabalho E o NÚMERO TOTAL DE CHAMADAS feitas (o trabalho jogado no servidor, ou seja, a contenção). Full jitter vence porque reduz drasticamente as chamadas totais mantendo um tempo de conclusão equivalente — menos contenção significa que o servidor sobrecarregado consegue se recuperar. Backoff sem jitter não resolve a estampida porque é DETERMINÍSTICO: todos os clientes que falharam juntos calculam exatamente a mesma espera e voltam juntos; o backoff só espaça as ondas, mas cada onda continua sendo a estampida inteira, justamente quando o serviço está mais frágil. O retry budget (ou token bucket de retry) resolve um problema que o jitter não toca: quando a taxa de ERRO é alta e generalizada, espalhar no tempo não diminui o volume total de retries — o sistema afundado continua recebendo N× o tráfego normal. O budget limita os retries a uma fração do tráfego (tipicamente ~10 %); passando disso, o cliente desiste e devolve erro, o que preserva a capacidade de quem ainda pode ser atendido. Jitter espalha; budget limita — e um deploy sério precisa dos dois.",
+      "criterios": [
+        "Cita as três estratégias com as fórmulas",
+        "Menciona a métrica de trabalho total / chamadas, além do tempo",
+        "Explica o determinismo do backoff puro como causa da estampida",
+        "Explica o retry budget e o problema distinto que ele resolve",
+        "Traz link ou citação da fonte"
+      ],
+      "postmortem": false
+    }
+  ]
+}

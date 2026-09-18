@@ -7,12 +7,29 @@ const MIN_AVALIACOES_DIA = 10 // dia conta para a ofensiva com >= 10 avaliaçõe
 
 export function progressoVazio() {
   return {
-    versao: 2,
+    versao: 3,
     termos: {},
     praticas: {},
     cursos: {},
+    // V2: um nó = uma lição do caminho (moduloId/N ou moduloId/chefao). Não confundir com
+    // cursos[id].licoes, que são as lições em Markdown de um curso.
+    nos: {},
+    xp: { total: 0, porDia: {} },
+    diario: [], // erros anotados pelo aluno (o que achei / o que era / como detectar)
+    entrevistas: {}, // entrevistas simuladas por módulo
     streak: { atual: 0, melhor: 0, ultimoDia: null },
     historico: [],
+  }
+}
+
+/** estado inicial de um nó do caminho */
+export function noInicial() {
+  return {
+    concluidaEm: null,
+    melhorXp: 0,
+    ultimoXp: 0,
+    ultimoAcerto: null, // 0..1
+    historico: [], // { dia, xp, acertos, total, itens: [{ tipo, ref, ok, nota }] }
   }
 }
 
@@ -57,7 +74,12 @@ export function criarProgresso(arquivo) {
       estado.praticas = estado.praticas && typeof estado.praticas === 'object' ? estado.praticas : {}
       // cursos entraram depois: um progresso.json antigo simplesmente ganha o objeto vazio
       estado.cursos = estado.cursos && typeof estado.cursos === 'object' ? estado.cursos : {}
-      estado.versao = 2
+      // V2: progresso.json antigo simplesmente ganha os campos vazios (nada é migrado nem perdido)
+      estado.nos = estado.nos && typeof estado.nos === 'object' ? estado.nos : {}
+      estado.xp = estado.xp && typeof estado.xp === 'object' ? { total: Number(estado.xp.total) || 0, porDia: estado.xp.porDia || {} } : { total: 0, porDia: {} }
+      estado.diario = Array.isArray(estado.diario) ? estado.diario : []
+      estado.entrevistas = estado.entrevistas && typeof estado.entrevistas === 'object' ? estado.entrevistas : {}
+      estado.versao = 3
       estado.streak = { ...progressoVazio().streak, ...(estado.streak || {}) }
       estado.historico = Array.isArray(estado.historico) ? estado.historico : []
     } catch (e) {
@@ -116,12 +138,13 @@ export function criarProgresso(arquivo) {
     const p = carregar()
     let h = p.historico.find((x) => x.dia === dia)
     if (!h) {
-      h = { dia, avaliacoes: 0 }
+      h = { dia, avaliacoes: 0, xp: 0 }
       p.historico.push(h)
       p.historico.sort((a, b) => (a.dia < b.dia ? -1 : 1))
       if (p.historico.length > 400) p.historico = p.historico.slice(-400)
     }
     h.avaliacoes += 1
+    if (!Number.isFinite(h.xp)) h.xp = 0
     return h
   }
 
@@ -149,6 +172,8 @@ export function criarProgresso(arquivo) {
       ultimoDia: s.ultimoDia,
       hojeContou: s.ultimoDia === dia,
       avaliacoesHoje: hoje ? hoje.avaliacoes : 0,
+      xpHoje: (p.xp && p.xp.porDia && p.xp.porDia[dia]) || 0,
+      xpTotal: (p.xp && p.xp.total) || 0,
       minimoDia: MIN_AVALIACOES_DIA,
     }
   }
@@ -340,6 +365,123 @@ export function criarProgresso(arquivo) {
       c.atualizadoEm = agora
       salvar()
       return c
+    },
+    // ---- nós do caminho (lições da V2) -------------------------------------
+    no(noId) {
+      const p = carregar()
+      return p.nos[noId] || null
+    },
+    /** todos os nós (a tela do módulo e o resolvedor da estrutura leem isto) */
+    nos() {
+      return carregar().nos
+    },
+    /**
+     * Fecha um nó com o resultado da sessão. NÃO mexe na ofensiva: quem conta avaliação é avaliar()/
+     * concluirPratica(), chamados item a item durante a lição. Aqui só entram XP, histórico e a marca
+     * de concluído — senão uma lição de 10 itens contaria 11 avaliações e inflaria a ofensiva.
+     */
+    concluirNo({ noId, xp, acertos, total, itens }) {
+      const p = carregar()
+      const s = p.nos[noId] || (p.nos[noId] = noInicial())
+      const agora = new Date()
+      const dia = hojeISO(agora)
+      const ganho = Math.max(0, Math.round(Number(xp) || 0))
+      const primeiraVez = !s.concluidaEm
+      s.concluidaEm = agora.toISOString()
+      s.ultimoXp = ganho
+      s.melhorXp = Math.max(s.melhorXp || 0, ganho)
+      s.ultimoAcerto = total ? acertos / total : null
+      s.historico = [...(s.historico || []).slice(-9), { dia, xp: ganho, acertos: Number(acertos) || 0, total: Number(total) || 0, itens: Array.isArray(itens) ? itens.slice(0, 40) : [] }]
+      p.xp.total = (Number(p.xp.total) || 0) + ganho
+      p.xp.porDia[dia] = (Number(p.xp.porDia[dia]) || 0) + ganho
+      const h = p.historico.find((x) => x.dia === dia)
+      if (h) h.xp = (Number(h.xp) || 0) + ganho
+      salvar()
+      return { noId, no: s, primeiraVez, xpDia: p.xp.porDia[dia], xpTotal: p.xp.total, streak: streakVisivel(dia) }
+    },
+    /** XP avulso (fora de um nó fechado): usado pelo chefão e pela entrevista simulada */
+    somarXp(ganhoBruto) {
+      const p = carregar()
+      const dia = hojeISO()
+      const ganho = Math.max(0, Math.round(Number(ganhoBruto) || 0))
+      p.xp.total = (Number(p.xp.total) || 0) + ganho
+      p.xp.porDia[dia] = (Number(p.xp.porDia[dia]) || 0) + ganho
+      const h = p.historico.find((x) => x.dia === dia)
+      if (h) h.xp = (Number(h.xp) || 0) + ganho
+      salvar()
+      return { xpDia: p.xp.porDia[dia], xpTotal: p.xp.total }
+    },
+    xpDoDia(dia = hojeISO()) {
+      const p = carregar()
+      return Number(p.xp.porDia[dia]) || 0
+    },
+    // ---- diário de erros ---------------------------------------------------
+    diario({ moduloId } = {}) {
+      const p = carregar()
+      const lista = p.diario || []
+      return moduloId ? lista.filter((e) => e.moduloId === moduloId) : lista
+    },
+    /** body: { moduloId, deckId, termoId, titulo, achei, era, detectar, origem } */
+    anotarErro(entrada) {
+      const p = carregar()
+      const agora = new Date()
+      const id = `e${agora.getTime().toString(36)}${Math.floor(Math.random() * 1296).toString(36)}`
+      const e = {
+        id,
+        dia: hojeISO(agora),
+        criadoEm: agora.toISOString(),
+        moduloId: String(entrada.moduloId || ''),
+        deckId: String(entrada.deckId || ''),
+        termoId: String(entrada.termoId || ''),
+        titulo: String(entrada.titulo || '').slice(0, 200),
+        achei: String(entrada.achei || '').slice(0, 2000),
+        era: String(entrada.era || '').slice(0, 2000),
+        detectar: String(entrada.detectar || '').slice(0, 2000),
+        origem: String(entrada.origem || 'licao').slice(0, 32),
+      }
+      p.diario = [e, ...(p.diario || [])].slice(0, 500)
+      salvar()
+      return e
+    },
+    atualizarErro(id, campos) {
+      const p = carregar()
+      const e = (p.diario || []).find((x) => x.id === id)
+      if (!e) return null
+      for (const k of ['titulo', 'achei', 'era', 'detectar']) {
+        if (typeof campos[k] === 'string') e[k] = campos[k].slice(0, 2000)
+      }
+      e.atualizadoEm = new Date().toISOString()
+      salvar()
+      return e
+    },
+    removerErro(id) {
+      const p = carregar()
+      const antes = (p.diario || []).length
+      p.diario = (p.diario || []).filter((x) => x.id !== id)
+      salvar()
+      return { removido: p.diario.length < antes }
+    },
+    // ---- entrevistas simuladas ---------------------------------------------
+    entrevista(moduloId) {
+      const p = carregar()
+      return p.entrevistas[moduloId] || null
+    },
+    salvarEntrevista(moduloId, sessao) {
+      const p = carregar()
+      const e = p.entrevistas[moduloId] || (p.entrevistas[moduloId] = { historico: [] })
+      e.atual = sessao
+      e.atualizadoEm = new Date().toISOString()
+      salvar()
+      return e
+    },
+    arquivarEntrevista(moduloId, sessao) {
+      const p = carregar()
+      const e = p.entrevistas[moduloId] || (p.entrevistas[moduloId] = { historico: [] })
+      e.historico = [...(e.historico || []).slice(-9), { ...sessao, encerradaEm: new Date().toISOString() }]
+      e.atual = null
+      e.atualizadoEm = new Date().toISOString()
+      salvar()
+      return e
     },
     reset() {
       estado = progressoVazio()

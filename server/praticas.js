@@ -3,9 +3,28 @@
 import fs from 'node:fs'
 import path from 'node:path'
 
-export const TIPOS = ['saida', 'numero', 'escolha', 'texto', 'checklist']
+export const TIPOS = ['saida', 'numero', 'escolha', 'texto', 'checklist', 'pesquisa']
 export const AMBIENTES = ['node', 'bash', 'postgres', 'redis', 'docker', 'nginx', 'browser', 'papel', 'celular', 'git', 'http']
 export const TIPOS_AUTO = new Set(['saida', 'numero', 'escolha'])
+
+/** texto sem acento, minúsculo e com espaços colapsados - para casar palavra-chave de pesquisa */
+export function normalizarTexto(s) {
+  return String(s || '')
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+/** acha uma fonte na resposta: URL, DOI, ou citação entre aspas com mais de 15 caracteres */
+export function temFonte(resposta) {
+  const t = String(resposta || '')
+  if (/https?:\/\/\S{6,}/i.test(t)) return true
+  if (/(^|[^A-Za-z])(RFC|CVE|PEP|ADR)[ -]?[0-9]{3,}/i.test(t)) return true
+  if (/["“][^"”]{15,}["”]/.test(t)) return true
+  return false
+}
 
 const cache = { lista: [], assinatura: '', erros: [] }
 
@@ -76,6 +95,17 @@ export function normalizarEntrega(e, ex, arquivo, problemas) {
     out.corretas = corretas
     out.multipla = corretas.length > 1 || Array.isArray(e.corretas)
     out.rotulo ||= out.multipla ? 'Marque todas as corretas' : 'Escolha uma'
+  } else if (tipo === 'pesquisa') {
+    // "aprender pesquisando": ler doc/postmortem e voltar com resposta curta + fonte.
+    // Sem `aberta`, a correção é automática por palavras-chave obrigatórias; com `aberta: true`,
+    // quem avalia é o mentor IA (a pergunta não tem resposta fechada).
+    out.deveConter = listaStr(e.deveConter, 8)
+    out.aberta = Boolean(e.aberta)
+    out.exigeFonte = e.exigeFonte !== false
+    out.minimoChars = Number.isFinite(Number(e.minimoChars)) ? Number(e.minimoChars) : 120
+    out.ondeProcurar = listaStr(e.ondeProcurar, 5)
+    if (!out.aberta && !out.deveConter.length) problemas.push(`${arquivo}: exercicio ${ex.id}: entrega pesquisa sem "deveConter" e sem "aberta: true"`)
+    out.rotulo ||= out.exigeFonte ? 'Sua resposta + a fonte (link ou citação)' : 'Sua resposta'
   } else if (tipo === 'checklist') {
     out.itens = listaStr(e.itens, 10)
     if (out.itens.length < 2) problemas.push(`${arquivo}: exercicio ${ex.id}: checklist precisa de >= 2 itens`)
@@ -112,7 +142,8 @@ export function normalizarExercicio(ex, arquivo, deck, repo, problemas) {
   if (!ex.enunciado) problemas.push(`${arquivo}: exercicio ${id}: sem enunciado`)
   if (!ex.solucao) problemas.push(`${arquivo}: exercicio ${id}: sem solucao`)
   const entrega = normalizarEntrega(ex.entrega, { id }, arquivo, problemas)
-  if (entrega.tipo === 'texto' && !listaStr(ex.criterios, 8).length) problemas.push(`${arquivo}: exercicio ${id}: entrega texto sem "criterios"`)
+  if ((entrega.tipo === 'texto' || (entrega.tipo === 'pesquisa' && entrega.aberta)) && !listaStr(ex.criterios, 8).length)
+    problemas.push(`${arquivo}: exercicio ${id}: entrega ${entrega.tipo} sem "criterios"`)
   return {
     id,
     titulo: str(ex.titulo, 200) || id,
@@ -127,7 +158,8 @@ export function normalizarExercicio(ex, arquivo, deck, repo, problemas) {
     solucao: str(ex.solucao),
     criterios: listaStr(ex.criterios, 8),
     postmortem: Boolean(ex.postmortem),
-    auto: TIPOS_AUTO.has(entrega.tipo),
+    // pesquisa fechada (com palavras-chave) corrige sozinha; pesquisa aberta vai para o mentor
+    auto: TIPOS_AUTO.has(entrega.tipo) || (entrega.tipo === 'pesquisa' && !entrega.aberta && entrega.deveConter.length > 0),
   }
 }
 
@@ -278,6 +310,15 @@ export function corrigir(ex, resposta) {
     if (e.esperado == null) return { correto: false }
     const tol = Math.abs(e.esperado) * e.tolerancia
     return { correto: Math.abs(n - e.esperado) <= tol + 1e-9 }
+  }
+  if (e.tipo === 'pesquisa') {
+    const bruto = String(resposta ?? '')
+    if (bruto.trim().length < e.minimoChars) return { correto: false, detalhe: `escreva pelo menos ${e.minimoChars} caracteres` }
+    if (e.exigeFonte && !temFonte(bruto)) return { correto: false, detalhe: 'falta a fonte: cole o link (ou uma citação entre aspas) de onde você tirou isso' }
+    const t = normalizarTexto(bruto)
+    const faltando = e.deveConter.filter((k) => !normalizarTexto(k).split('|').some((alt) => t.includes(alt.trim())))
+    if (faltando.length) return { correto: false, detalhe: `a resposta ainda não cobre ${faltando.length} ponto(s) que a fonte traz` }
+    return { correto: true }
   }
   if (e.tipo === 'escolha') {
     const marc = Array.isArray(resposta) ? resposta : [resposta]

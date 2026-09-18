@@ -170,7 +170,7 @@ describe('saúde e catálogo', () => {
     assert.ok(termos.corpo.termos.every((t) => t.deckId && t.deckTitulo))
     const trilhas = await api('/trilhas')
     assert.ok(trilhas.corpo.fases.length >= 1)
-    assert.ok(['trilhas.json', 'auto'].includes(trilhas.corpo.origem))
+    assert.ok(['estrutura.json', 'trilhas.json', 'auto'].includes(trilhas.corpo.origem))
   })
 })
 

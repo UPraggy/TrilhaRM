@@ -1,0 +1,219 @@
+{
+  "deckId": "sistemas-distribuidos",
+  "titulo": "Práticas · Sistemas distribuídos",
+  "exercicios": [
+    {
+      "id": "lock-sem-fencing",
+      "titulo": "Quebrar um lock distribuído com uma pausa de GC",
+      "termos": ["split-brain", "lease", "deteccao-falha"],
+      "nivel": 5,
+      "tempoMin": 45,
+      "ambiente": "node",
+      "enunciado": "Você vai mostrar por que lock com TTL não basta — e por que fencing token é a peça que faltava.\n\nSimule um lock com TTL e dois workers:\n\n```js\nconst lock = { dono: null, expiraEm: 0 }\nconst recurso = { valor: 'inicial', ultimoToken: 0 }\nconst agora = () => Date.now()\n\nfunction adquirir(quem, ttl = 1000) {\n  if (lock.dono && lock.expiraEm > agora()) return false\n  lock.dono = quem; lock.expiraEm = agora() + ttl\n  return true\n}\n\nfunction escrever(quem, valor) {        // SEM fencing\n  recurso.valor = `${valor} (por ${quem})`\n  console.log(agora() % 100000, 'escreveu:', recurso.valor)\n}\n```\n\nRoteiro do experimento:\n1. `A` adquire o lock (TTL 1 s);\n2. `A` sofre uma PAUSA de 2 s (simule com um laço bloqueante `while (Date.now() - t < 2000);` — é exatamente o que um GC longo, uma suspensão de VM ou um throttling de cgroup fazem);\n3. Durante a pausa, o lock expira e `B` adquire;\n4. `B` escreve;\n5. `A` acorda **achando que ainda tem o lock** e escreve por cima.\n\nAgora implemente o FENCING TOKEN: cada aquisição incrementa um contador e devolve o número; `escrever` passa a receber o token e **rejeita** qualquer token menor ou igual ao último aceito pelo recurso. Repita o roteiro.\n\nEntregue um relato com o log das duas execuções e a explicação de por que só o fencing resolve.",
+      "passos": [
+        "Implemente lock com TTL e dois workers",
+        "Reproduza a pausa de A e a escrita de B durante a expiração",
+        "Registre a escrita indevida de A depois de acordar",
+        "Acrescente o token crescente e a verificação NO RECURSO",
+        "Repita e mostre a rejeição do token velho"
+      ],
+      "entrega": {
+        "tipo": "texto",
+        "rotulo": "Relato com os dois logs e a explicação",
+        "minimoChars": 350
+      },
+      "dicas": [
+        "A verificação do token precisa estar no RECURSO, não no cliente: o cliente que está atrasado acha que está certo.",
+        "Checar 'ainda tenho o lock?' antes de escrever reduz a janela, mas não a fecha — a pausa pode acontecer entre a checagem e a escrita.",
+        "É o mesmo raciocínio do visibility timeout de fila e da liderança em Raft (o 'termo' é o fencing token)."
+      ],
+      "solucao": "Sem fencing, A acorda com a crença (razoável, do ponto de vista dele) de que ainda tem o lock e escreve por cima do trabalho de B: duas escritas 'com lock' que se atropelam. Isso é split-brain em miniatura, e é o modo de falha real de todo lock distribuído com TTL — inclusive o famoso padrão de lock no Redis. A causa é fundamental: o lock depende do RELÓGIO, e uma pausa arbitrária (GC longo, suspensão de VM, throttling de cgroup, celular entrando em modo de economia, I/O travado) faz o dono perder a noção do tempo sem perceber. Checar 'ainda tenho o lock?' imediatamente antes de escrever ENCURTA a janela, mas não a fecha — a pausa pode ocorrer entre a checagem e a escrita. A única correção real é o FENCING TOKEN: cada aquisição incrementa um contador monotônico, o cliente carrega o número e o RECURSO (o banco, o arquivo, o serviço de armazenamento) rejeita qualquer operação com token menor ou igual ao último aceito. O ponto crucial é que a verificação mora no recurso, e não no cliente: quem está atrasado não tem como saber que está. É exatamente o que o 'termo' do Raft faz na eleição de líder. Conclusão prática: lock distribuído só é seguro quando o recurso participa da verificação; se o recurso não sabe fazer isso, o melhor caminho é mover a exclusão mútua para dentro dele — por exemplo, `pg_try_advisory_xact_lock` ou um UPDATE condicional no próprio banco.",
+      "criterios": [
+        "Mostra o log das duas execuções (sem e com fencing)",
+        "Explica que a pausa faz o dono perder a noção do tempo",
+        "Afirma que a verificação do token mora no RECURSO",
+        "Reconhece que checar antes de escrever não fecha a janela",
+        "Relaciona com um caso real (Raft, visibility timeout, ou lock no Redis)"
+      ],
+      "postmortem": false
+    },
+    {
+      "id": "quorum-simulado",
+      "titulo": "Simular quórum e achar a configuração que sobrevive a uma réplica fora",
+      "termos": ["quorum", "cap", "replicacao"],
+      "nivel": 5,
+      "tempoMin": 40,
+      "ambiente": "node",
+      "enunciado": "Implemente um mini sistema de 3 réplicas com quórum configurável e descubra empiricamente o que R + W > N significa.\n\n```js\nconst N = 3\nconst replicas = [\n  { id: 0, dados: new Map(), viva: true },\n  { id: 1, dados: new Map(), viva: true },\n  { id: 2, dados: new Map(), viva: true },\n]\n\nfunction escrever(chave, valor, versao, W) {\n  const vivas = replicas.filter((r) => r.viva)\n  if (vivas.length < W) throw new Error('sem quórum de escrita')\n  vivas.slice(0, W).forEach((r) => r.dados.set(chave, { valor, versao }))\n  return true\n}\n\nfunction ler(chave, R) {\n  const vivas = replicas.filter((r) => r.viva)\n  if (vivas.length < R) throw new Error('sem quórum de leitura')\n  const respostas = vivas.slice(0, R).map((r) => r.dados.get(chave)).filter(Boolean)\n  // devolve a de MAIOR versão (é por isso que quórum sozinho não basta: sem versão, qual é a nova?)\n  return respostas.sort((a, b) => b.versao - a.versao)[0] || null\n}\n```\n\nExperimentos, todos com uma réplica derrubada (`replicas[2].viva = false`):\n\n1. `W=1, R=1`: escreva e leia várias vezes. Você lê o valor novo SEMPRE?\n2. `W=2, R=2`: repita. O que muda?\n3. `W=3, R=1`: escreva com uma réplica fora. O que acontece?\n4. Tire a VERSÃO da resposta e mostre por que a leitura passa a ser ambígua.\n\nEntregue um relato com os quatro resultados e a conclusão sobre R+W>N.",
+      "passos": [
+        "Implemente as funções e derrube a réplica 2",
+        "Rode os três cenários de quórum e registre o comportamento de cada um",
+        "Force uma escrita parcial (W=2 com uma réplica divergente) e leia com R=1",
+        "Remova o campo versão e mostre a ambiguidade",
+        "Escreva o relato com a conclusão"
+      ],
+      "entrega": {
+        "tipo": "texto",
+        "rotulo": "Relato com os quatro experimentos e a conclusão",
+        "minimoChars": 350
+      },
+      "dicas": [
+        "A regra é R + W > N: a leitura e a escrita precisam se SOBREPOR em ao menos uma réplica.",
+        "W=3 com uma réplica fora não consegue quórum: escrita indisponível — esse é o lado CP do CAP.",
+        "Quórum garante sobreposição, não ORDEM: sem versão você não sabe qual valor é o mais novo."
+      ],
+      "solucao": "Com N=3: (1) `W=1, R=1` dá 1+1=2, que NÃO é maior que 3 — não há sobreposição garantida, e você lê valor velho de forma imprevisível; é rápido, disponível e inconsistente. (2) `W=2, R=2` dá 4 > 3: leitura e escrita sempre compartilham ao menos uma réplica, então a leitura enxerga a escrita mais recente — e ainda tolera UMA réplica fora nos dois lados. É por isso que W=2/R=2 com N=3 é o padrão do Cassandra (`QUORUM`) e o motivo de N ímpar ser preferido. (3) `W=3, R=1` também soma 4 > 3 e é consistente, mas a escrita exige TODAS as réplicas: com uma fora, a escrita fica indisponível — este é o lado CP do CAP, e a escolha é legítima quando perder escrita é inaceitável. (4) Sem versão, o quórum entrega duas respostas e você não tem como saber qual é a mais nova: quórum garante SOBREPOSIÇÃO, não ordem. É por isso que sistemas reais carregam versionamento (vector clock, ou um timestamp lógico) e fazem read repair — corrigir a réplica atrasada durante a leitura. E é por isso que last-write-wins por timestamp físico perde dados quando os relógios divergem: a escrita mais NOVA pode ter carimbo menor e ser descartada em silêncio. Pontos que completam o quadro: escrita parcial (W confirmadas, as outras falharam) deixa réplicas divergentes até o anti-entropy passar; e o 'sloppy quorum' do Dynamo aceita gravar em réplicas substitutas durante uma partição — ganha disponibilidade e deixa de garantir a sobreposição.",
+      "criterios": [
+        "Traz o resultado dos quatro experimentos",
+        "Explica R + W > N como sobreposição garantida",
+        "Identifica W=3 com réplica fora como escolha CP (escrita indisponível)",
+        "Explica por que versão/relógio lógico é necessário além do quórum",
+        "Menciona read repair ou o risco do last-write-wins por relógio físico"
+      ],
+      "postmortem": false
+    },
+    {
+      "id": "uuid-v4-vs-v7",
+      "titulo": "Medir o custo de UUIDv4 como chave primária",
+      "termos": ["id-distribuido", "postgres-internals/btree", "postgres-internals/hot-update"],
+      "nivel": 4,
+      "tempoMin": 35,
+      "ambiente": "postgres",
+      "enunciado": "Você vai medir, com número, por que id aleatório destrói a localidade do índice.\n\n```sql\nCREATE EXTENSION IF NOT EXISTS pgcrypto;\n\nCREATE TABLE t_v4 (id uuid primary key default gen_random_uuid(), v text);\nCREATE TABLE t_seq (id bigserial primary key, v text);\n```\n\nInsira 500 mil linhas em cada uma, medindo o tempo (`\\timing on` no psql):\n\n```sql\nINSERT INTO t_v4 (v) SELECT repeat('x', 50) FROM generate_series(1, 500000);\nINSERT INTO t_seq (v) SELECT repeat('x', 50) FROM generate_series(1, 500000);\n```\n\nCompare:\n```sql\nSELECT relname, pg_size_pretty(pg_relation_size(indexrelid)) AS tamanho_indice\n  FROM pg_stat_user_indexes WHERE relname IN ('t_v4','t_seq');\n```\n\nSe tiver a extensão `pgstattuple`, compare também a densidade das folhas: `SELECT * FROM pgstatindex('t_v4_pkey');` e olhe `avg_leaf_density`.\n\nResponda: qual dos dois índices é MAIOR, e por quê? (Entregue: o nome da tabela cujo índice ficou maior.)",
+      "passos": [
+        "Crie as duas tabelas e ligue o \\timing",
+        "Insira 500 mil linhas em cada e anote os tempos",
+        "Compare o tamanho dos dois índices",
+        "Se possível, compare avg_leaf_density com pgstatindex",
+        "Explique o mecanismo: onde cada inserção cai na árvore"
+      ],
+      "entrega": {
+        "tipo": "escolha",
+        "rotulo": "Qual índice ficou MAIOR?",
+        "opcoes": [
+          "t_v4 (UUID aleatório)",
+          "t_seq (bigserial)",
+          "Os dois ficaram iguais",
+          "Depende do fillfactor"
+        ],
+        "correta": 0
+      },
+      "dicas": [
+        "Pense em ONDE cada inserção cai na árvore B: no fim, ou num ponto aleatório?",
+        "Inserção no fim preenche a página até encher e abre uma nova; inserção aleatória divide páginas pela metade.",
+        "Página dividida ao meio significa índice com ~50-70% de ocupação em vez de ~90%."
+      ],
+      "solucao": "O índice de `t_v4` fica claramente maior (tipicamente 40-60 % a mais) e a inserção é mais lenta. O mecanismo: com id SEQUENCIAL, toda inserção cai na página mais à direita da árvore B, que é preenchida até encher e só então uma página nova é aberta — ocupação alta (~90 %), pouquíssimas divisões de página, e a página quente permanece em cache. Com UUIDv4 (aleatório), cada inserção cai numa página ALEATÓRIA da árvore: a página precisa ser lida (muitas vezes do disco, porque o índice inteiro não cabe em cache), é dividida ao meio quando enche, e as duas metades ficam com ~50 % de ocupação. Efeitos somados: índice maior, mais WAL (cada divisão de página é escrita), pior taxa de acerto em cache e mais bloat. A alternativa não é voltar ao auto-increment (que é ponto de coordenação e não serve a sistema distribuído): é usar um id ORDENÁVEL NO TEMPO — UUIDv7, ULID ou Snowflake — que tem prefixo de timestamp e aleatoriedade no resto. Assim as inserções voltam a ser quase sequenciais e você mantém a unicidade sem coordenação. Ponto de segurança que costuma aparecer junto: id ordenável exposto publicamente vaza volume de negócio e permite enumeração; a resposta é ter id interno ordenável e id público opaco, não sacrificar o índice.",
+      "criterios": [],
+      "postmortem": false
+    },
+    {
+      "id": "correlation-id-async",
+      "titulo": "Correlation id atravessando async sem passar por parâmetro",
+      "termos": ["correlation-id", "tracing", "serviço-descoberta"],
+      "nivel": 4,
+      "tempoMin": 35,
+      "ambiente": "node",
+      "enunciado": "Implemente propagação de correlation id num serviço Node usando `AsyncLocalStorage`, e prove que ele sobrevive a `await`, a callbacks e a chamadas de saída.\n\n```js\nimport { AsyncLocalStorage } from 'node:async_hooks'\nimport http from 'node:http'\nimport crypto from 'node:crypto'\n\nconst ctx = new AsyncLocalStorage()\nconst log = (...a) => console.log(`[${ctx.getStore()?.id ?? 'sem-id'}]`, ...a)\n\nhttp.createServer((req, res) => {\n  const id = req.headers['x-request-id'] || crypto.randomUUID()\n  ctx.run({ id }, async () => {\n    res.setHeader('X-Request-Id', id)          // devolve para o cliente\n    log('entrou', req.url)\n    await camadaDeServico()\n    res.end('ok')\n  })\n}).listen(3030)\n\nasync function camadaDeServico() {\n  log('serviço')                                // sem receber o id por parâmetro\n  await new Promise((r) => setTimeout(r, 50))\n  await camadaDeDados()\n}\nasync function camadaDeDados() { log('dados') }\n```\n\nTeste com 3 requisições simultâneas e ids diferentes (`curl -H 'x-request-id: req-A' ...` etc.) e confirme que as linhas de log NÃO se misturam.\n\nDepois acrescente dois casos que costumam PERDER o contexto e conserte-os:\n1. um `setTimeout` agendado e disparado depois (funciona?);\n2. um trabalho enfileirado num array e processado por um worker separado (aqui o contexto se perde — resolva carregando o id NA MENSAGEM).\n\nEntregue um relato com o log das 3 requisições simultâneas e a explicação dos dois casos.",
+      "passos": [
+        "Implemente o servidor com AsyncLocalStorage e devolva o id no header de resposta",
+        "Dispare 3 requisições simultâneas com ids diferentes e confirme que os logs não se misturam",
+        "Teste o setTimeout agendado dentro do contexto",
+        "Teste o trabalho enfileirado processado fora do contexto e mostre a perda",
+        "Corrija o caso 2 propagando o id dentro da mensagem"
+      ],
+      "entrega": {
+        "tipo": "texto",
+        "rotulo": "Relato com o log e a explicação dos dois casos",
+        "minimoChars": 350
+      },
+      "dicas": [
+        "AsyncLocalStorage propaga pela cadeia ASSÍNCRONA: await, promise e callback agendados DENTRO do ctx.run herdam o contexto.",
+        "O contexto se perde quando o trabalho atravessa uma fronteira de processo, de fila ou de tempo desligada da cadeia.",
+        "Devolver o id no header de resposta é o que permite ao usuário informar o código ao suporte."
+      ],
+      "solucao": "`AsyncLocalStorage` mantém um contexto por cadeia assíncrona: tudo que for iniciado DENTRO de `ctx.run()` — `await`, promessas, `setTimeout`, callbacks de I/O — herda o mesmo store, mesmo em requisições concorrentes. Por isso os logs das 3 requisições simultâneas ficam corretamente separados sem passar o id por parâmetro em nenhuma função, o que é o ganho prático: instrumentar o logger uma vez em vez de poluir toda assinatura do código. O caso 1 (setTimeout dentro do contexto) FUNCIONA, porque o agendamento acontece dentro da cadeia. O caso 2 PERDE o contexto, e a razão é conceitual, não um defeito da API: o trabalho foi desacoplado da cadeia original — outro tick, outro laço, possivelmente outro processo. Toda fronteira assíncrona (fila, job, worker, processo, requisição HTTP de saída) exige propagação EXPLÍCITA: o id viaja como campo da mensagem ou como cabeçalho, e o consumidor abre um `ctx.run` novo com ele. Três complementos que valem em produção: devolver o id no header `X-Request-Id` da resposta (assim o usuário informa o código exato ao suporte); usar o padrão W3C `traceparent` em vez de um header próprio, para interoperar com tracing de verdade; e guardar `causation_id` além do correlation id, o que permite reconstruir a árvore de causas quando um evento dispara outros.",
+      "criterios": [
+        "Mostra o log das 3 requisições sem mistura",
+        "Explica que o contexto segue a cadeia assíncrona iniciada dentro do ctx.run",
+        "Identifica corretamente onde o contexto se perde e por quê",
+        "Corrige propagando o id dentro da mensagem",
+        "Cita devolver o id na resposta ou o padrão traceparent"
+      ],
+      "postmortem": false
+    },
+    {
+      "id": "tail-latency-fanout",
+      "titulo": "Calcular por que o p99 de um nó vira o caso comum",
+      "termos": ["scatter-gather", "system-design/percentil", "latencia-numeros"],
+      "nivel": 5,
+      "tempoMin": 25,
+      "ambiente": "node",
+      "enunciado": "Uma requisição consulta N réplicas em paralelo e só responde quando TODAS voltam. Cada réplica tem 1 % de chance de ser lenta (p99). Você vai calcular e simular a chance de a requisição inteira ser lenta.\n\nPrimeiro, no papel: se cada nó é lento com probabilidade p = 0,01 de forma independente, a chance de NENHUM ser lento é (1-p)^N. Calcule para N = 1, 10, 100.\n\nDepois simule:\n\n```js\nfunction simular(N, p, amostras = 100000) {\n  let lentas = 0\n  for (let i = 0; i < amostras; i++) {\n    let algumLento = false\n    for (let n = 0; n < N; n++) if (Math.random() < p) { algumLento = true; break }\n    if (algumLento) lentas++\n  }\n  return (lentas / amostras * 100).toFixed(1)\n}\nfor (const N of [1, 10, 50, 100]) console.log('N =', N, '→', simular(N, 0.01), '% das requisições encontram ao menos um nó lento')\n```\n\nDepois implemente HEDGED REQUEST: se a resposta de um nó passar do p95, dispare uma cópia da consulta para outra réplica e use a primeira que voltar. Meça quanto tráfego extra isso custa e quanto da cauda ele elimina.\n\nEntregue a PORCENTAGEM (inteiro) de requisições que encontram ao menos um nó lento com N = 100 e p = 1 %.",
+      "passos": [
+        "Calcule (1-p)^N no papel para N = 1, 10, 100",
+        "Rode a simulação e confira os números",
+        "Implemente hedged request com limiar no p95",
+        "Meça o tráfego extra gerado pelo hedge",
+        "Conclua sobre a diferença entre média e cauda em fan-out"
+      ],
+      "entrega": {
+        "tipo": "numero",
+        "rotulo": "% de requisições que encontram ao menos um nó lento (N=100, p=1%)",
+        "esperado": 63,
+        "tolerancia": 0.05,
+        "unidade": "%"
+      },
+      "dicas": [
+        "1 - (0,99)^100 ≈ 0,634.",
+        "É o mesmo formato do limite de (1 - 1/e) quando N·p ≈ 1.",
+        "Hedged request custa cerca de 5 % de tráfego extra quando o limiar é o p95."
+      ],
+      "solucao": "Com N=100 e p=1 %, a chance de pelo menos um nó ser lento é 1 - 0,99^100 ≈ 63 %. Ou seja: o p99 de UM nó virou o CASO MAIS COMUM do conjunto. É o problema 'tail at scale', e ele explica por que sistemas com fan-out alto investem tanto na cauda: melhorar a média não muda nada, porque o que domina é o pior de N. As mitigações, em ordem de custo-benefício: (1) HEDGED REQUEST — se a primeira resposta passar do p95, dispare uma cópia para outra réplica e use a que voltar primeiro; custa ~5 % de tráfego extra (só 5 % das requisições passam do p95) e corta a cauda drasticamente; a variante 'tied request' cancela a gêmea assim que uma começa a ser atendida, reduzindo ainda mais o desperdício; (2) RESPOSTA PARCIAL com prazo — devolve o que chegou até o deadline e marca o que faltou, o que exige que o produto tolere resultado incompleto (busca tolera, cobrança não); (3) REDUZIR O FAN-OUT — particionamento melhor, para que cada requisição toque menos nós; é o ganho estrutural, e o mais difícil. E a conclusão metodológica: em sistema com fan-out, medir média é inútil e até p99 pode ser pouco — é preciso p999, e é preciso medir a latência do CONJUNTO, não a de cada nó isoladamente.",
+      "criterios": [],
+      "postmortem": false
+    },
+    {
+      "id": "pesquisa-flp-e-relogio",
+      "titulo": "Pesquisa: por que relógio não serve para ordenar eventos",
+      "termos": ["relogio-logico", "deteccao-falha", "dois-generais"],
+      "nivel": 5,
+      "tempoMin": 30,
+      "ambiente": "papel",
+      "enunciado": "Exercício de PESQUISA. Leia sobre relógios em sistemas distribuídos — o artigo original de Leslie Lamport ('Time, Clocks, and the Ordering of Events in a Distributed System', 1978) ou o capítulo 8 do 'Designing Data-Intensive Applications' (Kleppmann), seção sobre relógios não confiáveis.\n\nResponda em um parágrafo, cobrindo obrigatoriamente:\n\n1. Por que comparar timestamps de máquinas diferentes para ordenar eventos é incorreto (cite pelo menos duas causas concretas);\n2. O que é a relação 'happened-before' e o que o relógio de Lamport garante — e o que ele NÃO garante;\n3. O que um vector clock detecta que o relógio de Lamport não detecta;\n4. Que perda de dados o last-write-wins por timestamp físico pode causar.\n\n**Cole o link da fonte** ou uma citação entre aspas.",
+      "passos": [
+        "Leia sobre happened-before e relógios lógicos",
+        "Liste as causas de divergência entre relógios físicos",
+        "Entenda o que o relógio de Lamport garante em UMA direção só",
+        "Descubra o que vector clock acrescenta",
+        "Escreva a resposta com o link da fonte"
+      ],
+      "entrega": {
+        "tipo": "pesquisa",
+        "rotulo": "Sua resposta + a fonte",
+        "deveConter": ["happened-before|happens-before|aconteceu antes", "drift|deriva|ntp|salto", "concorrente|concurrent|concorrência|concorrencia", "last-write-wins|lww|ultima escrita|última escrita"],
+        "exigeFonte": true,
+        "minimoChars": 350,
+        "ondeProcurar": [
+          "Lamport (1978) — Time, Clocks, and the Ordering of Events in a Distributed System",
+          "Designing Data-Intensive Applications, cap. 8 (Unreliable Clocks)",
+          "Documentação do Cassandra sobre last-write-wins e timestamps"
+        ]
+      },
+      "dicas": [
+        "Duas causas concretas: deriva do cristal (drift) e saltos do NTP — inclusive para trás.",
+        "Lamport garante que 'se A causou B, então C(A) < C(B)'. A recíproca NÃO vale.",
+        "Vector clock permite dizer 'estes dois eventos são CONCORRENTES', que é diferente de 'um veio antes'."
+      ],
+      "solucao": "(1) Relógios de máquinas diferentes divergem por deriva do cristal (tipicamente dezenas de ppm, o que dá segundos por semana) e por CORREÇÃO do NTP, que pode saltar para trás — então um evento mais novo pode receber carimbo menor que um mais velho; em nuvem, some-se a pausa de VM e o throttling. (2) A relação happened-before (→) de Lamport é causal: A → B se A e B são do mesmo processo com A antes, ou se A é o envio de uma mensagem e B a recepção, mais transitividade. O relógio de Lamport garante que, se A → B, então C(A) < C(B); a RECÍPROCA não vale — C(A) < C(B) não implica que A causou B, podendo os dois ser concorrentes. Ou seja, ele dá uma ordem total consistente com a causalidade, mas não permite DETECTAR concorrência. (3) O vector clock guarda um contador por nó, e comparando dois vetores dá para concluir três coisas em vez de duas: A antes de B, B antes de A, ou A e B CONCORRENTES. É essa terceira resposta que permite tratar conflito explicitamente em vez de descartar uma escrita em silêncio. (4) Last-write-wins por timestamp físico descarta a escrita com carimbo menor: se os relógios divergem, a escrita realmente mais nova pode ser jogada fora sem erro, sem log e sem ninguém perceber — perda silenciosa de dados. A mitigação moderna é o HLC (hybrid logical clock), que combina tempo físico com um componente lógico, garantindo monotonicidade e mantendo o carimbo próximo do tempo real.",
+      "criterios": [
+        "Cita duas causas concretas de divergência de relógio",
+        "Define happened-before e o que Lamport garante em uma direção só",
+        "Explica que vector clock detecta concorrência",
+        "Explica a perda silenciosa do last-write-wins",
+        "Traz link ou citação da fonte"
+      ],
+      "postmortem": false
+    }
+  ]
+}

@@ -71,6 +71,8 @@ describe('persistência (escrita atômica + recarga)', () => {
     assert.deepEqual(estado.termos, {})
     assert.deepEqual(estado.historico, [])
     assert.equal(estado.streak.atual, 0)
+    assert.deepEqual(estado.nos, {})
+    assert.deepEqual(estado.xp, { total: 0, porDia: {} })
   })
 
   test('arquivo corrompido começa do zero em vez de derrubar o servidor', () => {
@@ -111,9 +113,14 @@ describe('retrocompatibilidade do data/progresso.json', () => {
     }
     const p = novoProgresso(antigo)
     const estado = p.obter()
-    assert.equal(estado.versao, 2)
+    assert.equal(estado.versao, 3)
     assert.deepEqual(estado.praticas, {})
     assert.deepEqual(estado.cursos, {})
+    // V2: os campos novos nascem vazios num progresso.json antigo, sem migração nem perda
+    assert.deepEqual(estado.nos, {})
+    assert.deepEqual(estado.xp, { total: 0, porDia: {} })
+    assert.deepEqual(estado.diario, [])
+    assert.deepEqual(estado.entrevistas, {})
     assert.equal(estado.termos['node-internals/event-loop'].nivel, 3.3)
     assert.equal(estado.streak.melhor, 5)
     assert.equal(estado.historico.length, 1)
@@ -138,11 +145,13 @@ describe('retrocompatibilidade do data/progresso.json', () => {
     assert.deepEqual(estado.cursos, {})
     assert.deepEqual(estado.historico, [])
     assert.equal(estado.streak.atual, 0)
+    assert.deepEqual(estado.nos, {})
+    assert.deepEqual(estado.xp, { total: 0, porDia: {} })
   })
 
   test('progressoVazio tem as chaves que o front espera', () => {
     const v = progressoVazio()
-    assert.deepEqual(Object.keys(v).sort(), ['cursos', 'historico', 'praticas', 'streak', 'termos', 'versao'])
+    assert.deepEqual(Object.keys(v).sort(), ['cursos', 'diario', 'entrevistas', 'historico', 'nos', 'praticas', 'streak', 'termos', 'versao', 'xp'])
   })
 })
 
@@ -216,7 +225,7 @@ describe('histórico por dia', () => {
     avaliarN(p, 4)
     const h = p.obter().historico
     assert.equal(h.length, 1)
-    assert.deepEqual(h[0], { dia: HOJE, avaliacoes: 4 })
+    assert.deepEqual(h[0], { dia: HOJE, avaliacoes: 4, xp: 0 })
   })
 
   test('28 dias de histórico: ordenado, sem buraco de ordem e terminando hoje', () => {
