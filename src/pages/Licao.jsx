@@ -1,182 +1,253 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+// A LIÇÃO: a sessão de 8-12 itens de um nó, em tela cheia, um item por tela.
+// O plano vem de GET /api/licao/:moduloId/:n (server/licao.js); os componentes de modo são os de
+// src/modes/. Ao fechar, POST /api/licao/:moduloId/:n/concluir devolve XP e o próximo nó.
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { api } from '../api.js'
 import { useStore } from '../store.jsx'
+import { Carregando, Confirmar, Erro } from '../components/Comuns.jsx'
 import Blocos from '../components/Blocos.jsx'
-import { Barra, Carregando, Erro } from '../components/Comuns.jsx'
-import { IcoCheck, IcoSeta } from '../components/Icones.jsx'
-import '../cursos.css'
+import { IcoCheck, IcoSeta, IcoX } from '../components/Icones.jsx'
+import { nomeAmbiente } from '../lib/util.js'
 
-/**
- * /curso/:id/licao/:licaoId — a lição: blocos vindos do Markdown, atividades embutidas (mesmo fluxo
- * das práticas) e o botão de concluir. Entrar já marca como "última lição vista" (continuar de onde parei).
- */
+import Flashcards from '../modes/Flashcards.jsx'
+import Quiz from '../modes/Quiz.jsx'
+import Digitar from '../modes/Digitar.jsx'
+import VF from '../modes/VF.jsx'
+import Explique from '../modes/Explique.jsx'
+import SintomaCausa from '../modes/SintomaCausa.jsx'
+import Lacuna from '../modes/Lacuna.jsx'
+import Ordenar from '../modes/Ordenar.jsx'
+import Conexoes from '../modes/Conexoes.jsx'
+import Confundiveis from '../modes/Confundiveis.jsx'
+import RecallLivre from '../modes/RecallLivre.jsx'
+
+/** um bloco de leitura do curso, dentro da sessão */
+function Leitura({ item, onConcluir }) {
+  return (
+    <div>
+      <div className="recall__topo">
+        <span className="chip">leitura · {item.cursoTitulo}</span>
+        {item.concluida && <span className="dim small">já lida</span>}
+      </div>
+      <div className="card leitura">
+        <h2 className="leitura__titulo">{item.titulo}</h2>
+        <Blocos blocos={item.blocos} />
+        <div className="acoes">
+          <button className="btn btn--primary btn--block" onClick={() => onConcluir([{ tipo: 'leitura', ok: true }])} autoFocus>
+            Li — continuar
+          </button>
+        </div>
+        <p className="dim small">
+          O curso inteiro está em <Link to={`/curso/${item.cursoId}`}>{item.cursoTitulo}</Link>.
+        </p>
+      </div>
+    </div>
+  )
+}
+
+/** a missão: o exercício que se faz FORA do app. A lição propõe; a entrega acontece no laboratório. */
+function Missao({ item, onConcluir }) {
+  return (
+    <div>
+      <div className="recall__topo">
+        <span className="chip chip--amber">missão · fora do app</span>
+        <span className="dim small mono">~{item.tempoMin} min · {nomeAmbiente(item.ambiente)}</span>
+      </div>
+      <div className="card">
+        <div className="eyebrow">Para fazer no terminal, não aqui</div>
+        <h2 className="leitura__titulo">{item.titulo}</h2>
+        {item.concluida ? (
+          <div className="feedback ok">
+            <b className="green">Você já entregou esta.</b> Nota {item.nota}. Dá para reabrir e tentar de novo no laboratório.
+          </div>
+        ) : (
+          <p className="dim small">
+            Exercícios levam de 20 a 50 minutos — por isso eles não entram no meio da sessão. Abra agora
+            se tiver tempo, ou marque para depois e siga a lição.
+          </p>
+        )}
+        <div className="acoes acoes--col">
+          <Link to={`/pratica/${item.deckId}/${item.exId}`} className="btn btn--primary btn--block">
+            Abrir o exercício
+            <IcoSeta width={18} height={18} />
+          </Link>
+          <button className="btn btn--ghost btn--block" onClick={() => onConcluir([{ tipo: 'missao', ok: item.concluida, nota: item.concluida ? item.nota : undefined }])}>
+            {item.concluida ? 'Continuar' : 'Deixar para depois — continuar a lição'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function Licao() {
-  const { id, licaoId } = useParams()
+  const { moduloId, n } = useParams()
   const navegar = useNavigate()
-  const { mostrarAviso } = useStore()
-  const [curso, setCurso] = useState(null)
+  const { termos, avaliar, recarregarEstrutura, mostrarAviso } = useStore()
+
+  const [licao, setLicao] = useState(null)
   const [erro, setErro] = useState(null)
-  const [prog, setProg] = useState(null)
-  const [atividades, setAtividades] = useState({})
-  const [salvando, setSalvando] = useState(false)
+  const [i, setI] = useState(0)
+  const [respostas, setRespostas] = useState([])
+  const [saindo, setSaindo] = useState(false)
+  const [fechando, setFechando] = useState(false)
+  const respostasRef = useRef(respostas)
+  respostasRef.current = respostas
 
-  const carregar = useCallback(() => {
+  useEffect(() => {
+    let vivo = true
+    setLicao(null)
     setErro(null)
+    setI(0)
+    setRespostas([])
     api
-      .curso(id)
-      .then((c) => {
-        setCurso(c)
-        setProg(c.progresso)
-        const mapa = {}
-        for (const a of c.atividades || []) mapa[a.id] = a
-        setAtividades(mapa)
-      })
-      .catch((e) => setErro(e.message))
-  }, [id])
+      .licao(moduloId, n)
+      .then((l) => vivo && setLicao(l))
+      .catch((e) => vivo && setErro(e.message))
+    return () => {
+      vivo = false
+    }
+  }, [moduloId, n])
+
+  const pool = useMemo(() => (licao ? termos.filter((t) => t.deckId === licao.modulo.deckId) : []), [licao, termos])
+  const item = licao ? licao.itens[i] : null
+  const total = licao ? licao.itens.length : 0
+
+  const fechar = useCallback(
+    async (itens) => {
+      setFechando(true)
+      try {
+        const r = await api.licaoConcluir(moduloId, n, itens)
+        await recarregarEstrutura()
+        navegar(`/resultado/${moduloId}/${n}`, { state: { resultado: r, modulo: licao.modulo } })
+      } catch (e) {
+        setFechando(false)
+        mostrarAviso(`Não fechou a lição: ${e.message}`, 4000)
+      }
+    },
+    [moduloId, n, navegar, recarregarEstrutura, licao, mostrarAviso],
+  )
+
+  /** um item terminou: grava a avaliação SM-2 (quando for termo) e anda para o próximo */
+  const concluirItem = useCallback(
+    async (resultados) => {
+      const r = Array.isArray(resultados) ? resultados[0] || {} : {}
+      const atual = licao.itens[i]
+      const registro = { tipo: atual.tipo === 'termo' ? 'termo' : atual.tipo === 'leitura' ? 'leitura' : atual.tipo === 'missao' ? 'exercicio' : 'termo', ref: atual.termoId || atual.licaoId || atual.exId || 'recall' }
+      if (typeof r.nota === 'number') registro.nota = r.nota
+      else registro.ok = r.ok !== false
+
+      // termo: a nota vira avaliação SM-2 de verdade (é ela que conta para a ofensiva)
+      if (atual.tipo === 'termo' && typeof r.nota === 'number' && r.item) {
+        try {
+          await avaliar({ deckId: r.item.deckId, termoId: r.item.id, nota: r.nota, modo: atual.modo, resposta: r.resposta })
+        } catch {
+          /* o aviso já apareceu no store; a sessão continua para não perder o resto */
+        }
+      }
+
+      const novas = [...respostasRef.current, registro]
+      setRespostas(novas)
+      if (i + 1 < total) setI(i + 1)
+      else fechar(novas)
+    },
+    [licao, i, total, avaliar, fechar],
+  )
 
   useEffect(() => {
-    setCurso(null)
-    carregar()
-  }, [carregar])
+    const onKey = (e) => {
+      if (e.key === 'Escape' && !saindo) setSaindo(true)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [saindo])
 
-  // "continuar de onde parei"
-  useEffect(() => {
-    if (!curso) return
-    api
-      .licaoVisto(id, licaoId)
-      .then((r) => setProg(r.progresso))
-      .catch(() => {})
-    window.scrollTo(0, 0)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id, licaoId, Boolean(curso)])
+  if (erro) return <Erro texto={erro} onRetry={() => navegar(0)} />
+  if (!licao) return <Carregando texto="Montando a lição…" />
 
-  const ctx = useMemo(() => {
-    if (!curso) return null
-    const todas = curso.modulos.flatMap((m) => m.licoes.map((l) => ({ ...l, moduloTitulo: m.titulo })))
-    const i = todas.findIndex((l) => l.id === licaoId)
-    if (i < 0) return { naoExiste: true, todas }
-    return { licao: todas[i], anterior: todas[i - 1] || null, proxima: todas[i + 1] || null, indice: i, total: todas.length, todas }
-  }, [curso, licaoId])
+  const pct = total ? Math.round((i / total) * 100) : 0
 
-  const concluir = async (valor) => {
-    setSalvando(true)
-    try {
-      const r = await api.licaoConcluir(id, licaoId, valor)
-      setProg(r.progresso)
-      mostrarAviso(valor ? 'Lição concluída.' : 'Lição desmarcada.')
-      if (valor && ctx && ctx.proxima) navegar(`/curso/${id}/licao/${ctx.proxima.id}`)
-    } catch (e) {
-      mostrarAviso(`Não gravou: ${e.message}`, 4000)
-    } finally {
-      setSalvando(false)
+  function renderItem() {
+    if (item.tipo === 'leitura') return <Leitura item={item} onConcluir={concluirItem} />
+    if (item.tipo === 'missao') return <Missao item={item} onConcluir={concluirItem} />
+    if (item.tipo === 'recall') return <RecallLivre termos={item.termos} onConcluir={concluirItem} />
+
+    const termo = pool.find((t) => t.id === item.termoId)
+    if (!termo) {
+      return (
+        <div className="card">
+          <p className="dim">Termo não encontrado neste módulo.</p>
+          <button className="btn btn--primary btn--block" onClick={() => concluirItem([{ ok: false }])}>
+            Pular
+          </button>
+        </div>
+      )
+    }
+    const comuns = { item: termo, pool, onConcluir: concluirItem }
+    switch (item.modo) {
+      case 'quiz':
+        return <Quiz {...comuns} />
+      case 'quiz-inv':
+        return <Quiz {...comuns} invertido />
+      case 'digitar':
+        return <Digitar {...comuns} />
+      case 'vf':
+        return <VF {...comuns} />
+      case 'explique':
+        return <Explique {...comuns} />
+      case 'sintoma-causa':
+        return <SintomaCausa {...comuns} />
+      case 'lacuna':
+        return <Lacuna {...comuns} lacuna={item.lacuna} />
+      case 'ordenar':
+        return <Ordenar {...comuns} sequencia={item.sequencia || []} />
+      case 'conexoes':
+        return <Conexoes {...comuns} />
+      case 'confundiveis':
+        return <Confundiveis {...comuns} />
+      default:
+        return <Flashcards {...comuns} />
     }
   }
 
-  if (erro) return <Erro texto={erro} onRetry={carregar} />
-  if (!curso || !ctx) return <Carregando />
-  if (ctx.naoExiste)
-    return (
-      <Erro
-        texto={`A lição "${licaoId}" não existe em ${curso.titulo}.`}
-        onRetry={() => navegar(`/curso/${id}`)}
-      />
-    )
-
-  const { licao, anterior, proxima } = ctx
-  const estado = (prog && prog.licoes && prog.licoes[licao.id]) || null
-  const concluida = Boolean(estado && estado.concluidaEm)
-  const daLicao = licao.atividades.map((a) => atividades[a]).filter(Boolean)
-  const feitas = daLicao.filter((a) => a.estado && a.estado.estado === 'concluida').length
-
   return (
-    <div>
-      <div className="eyebrow">
-        <Link to="/cursos" className="muted">
-          Cursos
-        </Link>{' '}
-        /{' '}
-        <Link to={`/curso/${curso.id}`} className="muted">
-          {curso.titulo}
-        </Link>{' '}
-        / {licao.moduloTitulo}
-      </div>
-      <h1 style={{ marginTop: 6 }}>{licao.titulo}</h1>
-      <div className="ctx" style={{ marginTop: 8 }}>
-        <span className="chip mono">
-          lição {ctx.indice + 1}/{ctx.total}
-        </span>
-        {daLicao.length > 0 && (
-          <span className={`chip ${feitas === daLicao.length ? 'chip--peri' : 'chip--amber'}`}>
-            {feitas}/{daLicao.length} atividades
-          </span>
-        )}
-        {concluida && <span className="chip chip--peri">concluída</span>}
-      </div>
-      {prog && (
-        <div style={{ marginTop: 10 }}>
-          <Barra valor={prog.concluidas} max={prog.total} cor={prog.pct === 100 ? 'green' : ''} />
-        </div>
-      )}
-
-      <div className="card" style={{ marginTop: 14 }}>
-        <Blocos
-          blocos={licao.blocos}
-          atividades={atividades}
-          cursoId={curso.id}
-          aoMudarAtividade={(a) => setAtividades((m) => ({ ...m, [a.id]: a }))}
-        />
-      </div>
-
-      <div className="card card--2 licao__fim">
-        <div className="row row--between">
-          <div>
-            <div className="eyebrow">{concluida ? 'Lição concluída' : 'Terminou a lição?'}</div>
-            <p className="dim small" style={{ margin: '6px 0 0' }}>
-              {daLicao.length > 0 && feitas < daLicao.length
-                ? `Ainda faltam ${daLicao.length - feitas} de ${daLicao.length} atividades — dá para concluir assim mesmo e voltar depois.`
-                : 'Marcar a lição não avalia termo nenhum: quem vira nota SM-2 é a atividade.'}
-            </p>
+    <div className="licao">
+      <header className="licao__topo">
+        <button className="iconbtn" onClick={() => setSaindo(true)} aria-label="Sair da lição">
+          <IcoX />
+        </button>
+        <div className="licao__progresso">
+          <div className="progress" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100} aria-label={`Item ${i + 1} de ${total}`}>
+            <span style={{ width: `${pct}%` }} />
           </div>
         </div>
-        <div className="acoes">
-          {concluida ? (
-            <button className="btn" disabled={salvando} onClick={() => concluir(false)}>
-              Desmarcar
-            </button>
-          ) : (
-            <button className="btn btn--primary btn--lg" disabled={salvando} onClick={() => concluir(true)}>
-              <IcoCheck /> Marcar como concluída{proxima ? ' e seguir' : ''}
-            </button>
-          )}
-          {proxima && (
-            <Link to={`/curso/${curso.id}/licao/${proxima.id}`} className="btn btn--ghost">
-              <IcoSeta /> Próxima: {proxima.titulo}
-            </Link>
-          )}
-        </div>
-      </div>
+        <span className="dim mono small licao__contador">
+          {i + 1}/{total}
+        </span>
+      </header>
 
-      <div className="licao__nav">
-        {anterior ? (
-          <Link to={`/curso/${curso.id}/licao/${anterior.id}`} className="btn btn--ghost">
-            ← {anterior.titulo}
-          </Link>
-        ) : (
-          <Link to={`/curso/${curso.id}`} className="btn btn--ghost">
-            ← Sumário
-          </Link>
-        )}
-        {proxima ? (
-          <Link to={`/curso/${curso.id}/licao/${proxima.id}`} className="btn">
-            {proxima.titulo} →
-          </Link>
-        ) : (
-          <Link to={`/curso/${curso.id}`} className="btn">
-            Fim do curso · sumário
-          </Link>
-        )}
-      </div>
+      <p className="licao__kicker dim small">
+        {licao.modulo.titulo} · {licao.no.titulo}
+        {item && item.tipo === 'termo' && item.vencido && <span className="chip chip--amber chip--xs" style={{ marginLeft: 8 }}>revisão</span>}
+      </p>
+
+      <div className="licao__palco">{fechando ? <Carregando texto="Fechando a lição…" cartoes={1} /> : renderItem()}</div>
+
+      {saindo && (
+        <Confirmar
+          titulo="Sair da lição?"
+          texto={
+            respostas.length
+              ? `Você respondeu ${respostas.length} de ${total}. As avaliações dos termos já foram gravadas, mas o nó não fecha e você não ganha o XP.`
+              : 'Nada foi respondido ainda.'
+          }
+          confirmar="Sair"
+          perigo
+          onSim={() => navegar(`/modulo/${moduloId}`)}
+          onNao={() => setSaindo(false)}
+        />
+      )}
     </div>
   )
 }

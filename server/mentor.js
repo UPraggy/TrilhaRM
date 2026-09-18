@@ -536,5 +536,6 @@ export function criarMentor({ arquivoConfig, repo, progresso }) {
     return { status: 200, corpo: { ...avaliacao, modelo, uso } }
   }
 
-  return { obterConfig, salvarConfig, listarModelos, avaliar, avaliarPratica, aguardarEscrita: () => filaEscrita }
+  // `completar` sai daqui para server/entrevista.js: a fila de modelos gratuitos é a mesma
+  return { obterConfig, salvarConfig, listarModelos, avaliar, avaliarPratica, completar, aguardarEscrita: () => filaEscrita }
 }

@@ -10,7 +10,7 @@ import Associar from '../modes/Associar.jsx'
 import VF from '../modes/VF.jsx'
 import Explique from '../modes/Explique.jsx'
 import { filtrarVencidos, montarPlano, ordenarParaEstudo } from '../lib/sessao.js'
-import { chaveTermo, nomeModo, MODOS } from '../lib/util.js'
+import { chaveTermo, nomeModo, MODOS_LIVRES } from '../lib/util.js'
 
 const LIMITE_SESSAO = 30
 
@@ -27,7 +27,8 @@ export default function Estudo() {
   const fonte = params.get('fonte') || 'tudo'
   const soVencidos = params.get('so') === 'vencidos' || fonte === 'revisao'
   const limite = Number(params.get('n')) || LIMITE_SESSAO
-  const modoValido = MODOS.some((m) => m.id === modo)
+  // só os modos LIVRES valem aqui: os da lição dependem de dado que o servidor calcula (server/licao.js)
+  const modoValido = MODOS_LIVRES.some((m) => m.id === modo)
 
   // fila congelada no início da sessão (não muda quando o progresso muda)
   const [plano, setPlano] = useState(null)

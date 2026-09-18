@@ -18,7 +18,18 @@ export const MODOS = [
   { id: 'vf', nome: 'Verdadeiro ou falso', desc: 'A afirmação está certa ou trocaram a definição?' },
   { id: 'explique', nome: 'Explique', desc: 'Pergunta de entrevista. Escreva, compare com a profundidade, dê a nota.' },
   { id: 'misto', nome: 'Misturar modos', desc: 'Cada termo cai num modo aleatório.' },
+  // V2: os modos que a LIÇÃO monta sozinha (server/licao.js escolhe pelo nível do termo).
+  // Não aparecem na sessão livre por deck porque dependem de dado que o servidor calcula.
+  { id: 'sintoma-causa', nome: 'Sintoma → causa', desc: 'Um sintoma de produção; escolha o conceito que o explica.', soLicao: true },
+  { id: 'lacuna', nome: 'Lacuna', desc: 'A definição com o conceito-chave apagado no meio.', soLicao: true },
+  { id: 'ordenar', nome: 'Ordenar', desc: 'As fases ou passos fora de ordem, para recolocar.', soLicao: true },
+  { id: 'confundiveis', nome: 'Pares confundíveis', desc: 'Duas definições parecidas: qual é de qual.', soLicao: true },
+  { id: 'conexoes', nome: 'Mapa de conexões', desc: 'Dado um termo, marque os que se ligam a ele.', soLicao: true },
+  { id: 'recall', nome: 'Recall livre', desc: '3 minutos escrevendo tudo; depois a lista para conferir.', soLicao: true },
 ]
+
+/** os modos que a tela de sessão livre oferece (a lição usa todos) */
+export const MODOS_LIVRES = MODOS.filter((m) => !m.soLicao)
 
 /** ambientes dos exercícios práticos (content/praticas) */
 export const AMBIENTES = {

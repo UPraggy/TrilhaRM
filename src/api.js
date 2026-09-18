@@ -27,6 +27,25 @@ export const api = {
   deck: (id) => req(`/api/decks/${encodeURIComponent(id)}`),
   termos: () => req('/api/termos'),
   trilhas: () => req('/api/trilhas'),
+  // V2: trilha -> modulo -> no (o caminho estilo Duolingo)
+  estrutura: () => req('/api/estrutura'),
+  modulo: (id) => req(`/api/modulos/${encodeURIComponent(id)}`),
+  // lição: a sessão de um nó
+  licao: (moduloId, n) => req(`/api/licao/${encodeURIComponent(moduloId)}/${encodeURIComponent(n)}`),
+  licaoConcluir: (moduloId, n, itens) =>
+    req(`/api/licao/${encodeURIComponent(moduloId)}/${encodeURIComponent(n)}/concluir`, { method: 'POST', body: JSON.stringify({ itens }) }),
+  licaoHistorico: (moduloId, n) => req(`/api/licao/${encodeURIComponent(moduloId)}/${encodeURIComponent(n)}/historico`),
+  // diário de erros
+  diario: (moduloId) => req(`/api/diario${moduloId ? `?modulo=${encodeURIComponent(moduloId)}` : ''}`),
+  diarioAnotar: (corpo) => req('/api/diario', { method: 'POST', body: JSON.stringify(corpo) }),
+  diarioAtualizar: (id, campos) => req(`/api/diario/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(campos) }),
+  diarioRemover: (id) => req(`/api/diario/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  // entrevista simulada
+  entrevista: (moduloId) => req(`/api/entrevista/${encodeURIComponent(moduloId)}`),
+  entrevistaIniciar: (moduloId) => req(`/api/entrevista/${encodeURIComponent(moduloId)}/iniciar`, { method: 'POST', body: '{}' }),
+  entrevistaResponder: (moduloId, resposta) => req(`/api/entrevista/${encodeURIComponent(moduloId)}/responder`, { method: 'POST', body: JSON.stringify({ resposta }) }),
+  entrevistaEncerrar: (moduloId) => req(`/api/entrevista/${encodeURIComponent(moduloId)}/encerrar`, { method: 'POST', body: '{}' }),
+  entrevistaDescartar: (moduloId) => req(`/api/entrevista/${encodeURIComponent(moduloId)}`, { method: 'DELETE' }),
   progresso: () => req('/api/progresso'),
   revisao: () => req('/api/progresso/revisao'),
   avaliar: (corpo) => req('/api/progresso/avaliar', { method: 'POST', body: JSON.stringify(corpo) }),
@@ -52,9 +71,11 @@ export const api = {
   // cursos (lições em Markdown em content/cursos)
   cursos: () => req('/api/cursos'),
   curso: (id) => req(`/api/cursos/${encodeURIComponent(id)}`),
-  licaoConcluir: (id, licaoId, concluida = true) =>
+  // ⚠️ prefixo `curso` obrigatório: sem ele estas chaves colidiam com as da LIÇÃO da V2 no mesmo
+  // objeto literal, e a última declarada vencia em silêncio (a lição fechava na rota do curso e dava 404).
+  cursoLicaoConcluir: (id, licaoId, concluida = true) =>
     req(`/api/cursos/${encodeURIComponent(id)}/licao/${encodeURIComponent(licaoId)}/concluir`, { method: 'POST', body: JSON.stringify({ concluida }) }),
-  licaoVisto: (id, licaoId) => req(`/api/cursos/${encodeURIComponent(id)}/licao/${encodeURIComponent(licaoId)}/visto`, { method: 'POST', body: '{}' }),
+  cursoLicaoVisto: (id, licaoId) => req(`/api/cursos/${encodeURIComponent(id)}/licao/${encodeURIComponent(licaoId)}/visto`, { method: 'POST', body: '{}' }),
   // atividades embutidas nas lições - mesmo fluxo (e mesma correção) das práticas
   cursoAtividade: (id, atvId) => req(`/api/cursos/${encodeURIComponent(id)}/atividade/${encodeURIComponent(atvId)}`),
   cursoAtividadeIniciar: (id, atvId) => req(`/api/cursos/${encodeURIComponent(id)}/atividade/${encodeURIComponent(atvId)}/iniciar`, { method: 'POST', body: '{}' }),

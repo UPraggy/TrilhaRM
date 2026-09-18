@@ -80,3 +80,61 @@ Executada antes da 2 porque tudo depois depende dos módulos existirem de verdad
 - **Cursos novos**: `04-sistemas-que-nao-caem` (T3), `05-deploy-sem-downtime` (T4) e
   `06-interview-english` (T5, **escrito em inglês**). Agora há pelo menos um curso por trilha.
 - **`02-postgres-que-nao-trava`** foi religado ao módulo `postgres-internals`, onde ele pertence.
+
+## Etapa 2 — Shell e navegação: Início · Trilha · Biblioteca · Perfil ✅
+
+- **`src/nav.js`** (novo): os menus são DADO, num lugar só. `PRINCIPAL` (4 destinos), `BIBLIOTECA`,
+  `PERFIL` e `ROTAS_IMERSIVAS`. A barra inferior passou de 5 itens (que espelhavam a divisão técnica)
+  para 4 (que espelham a intenção: o que fazer agora · o caminho · o acervo · eu).
+- **`src/pages/Trilha.jsx`** (novo): o mapa vertical, com seletor das 5 trilhas, barra de progresso,
+  coroas por módulo e o botão "continuar". Pré-requisito aparece como aviso, nunca como bloqueio.
+- **`src/pages/Modulo.jsx`** (novo): os nós em ordem + "tudo deste tema" num lugar só (vocabulário,
+  curso, laboratório, chefão, entrevista simulada).
+- **`src/pages/Biblioteca.jsx`** e **`src/pages/Perfil.jsx`** (novos): as telas antigas (Glossário,
+  Cursos, Laboratório, Treinos, Matriz, Config) continuam existindo — só passaram a ser alcançadas
+  por aqui, em vez de disputar espaço na barra.
+- **`src/pages/Anatomia.jsx`** (novo): o diagrama Trilha → Módulo → Lição e a tabela "quero X → vou em
+  Y". É a resposta direta a "não entendi a divisão de módulos e trilha".
+- **Tela cheia para a sessão**: `/licao/*` e `/entrevista/*` renderizam sem cabeçalho, sem barra e sem
+  rodapé — só progresso e sair.
+- **`src/components/{IconeModulo,Coroas}.jsx`** (novos): um ícone por módulo (do campo `icone`) e as
+  coroas 0–5 (a mesma escala de sempre, agora com forma visual).
+- `src/pages/Licao.jsx` do curso virou **`LicaoCurso.jsx`**; `/licao/:moduloId/:n` agora é a sessão.
+- **Trocar de rota volta ao topo** (`Layout.jsx`): sem isso, sair de uma lição rolada até o fim abria a
+  tela de resultado no meio, e ela aparecia em branco.
+
+## Etapa 3 — A Lição e os 6 modos novos ✅
+
+- **`server/licao.js`** (novo): monta o plano da sessão. Ordena os termos com **vencidos primeiro**
+  (é a promessa do SM-2), escolhe o modo pelo NÍVEL de cada termo (`novo` → apresenta;
+  `baixo` → reconhecer; `medio` → aplicar; `alto` → diagnosticar) e evita repetir o modo anterior.
+  A escolha é determinística por semente: recarregar a página não embaralha a lição.
+- **Sem campo novo no conteúdo**: `lacunaDe()` escolhe a palavra a apagar da própria definição
+  (prefere uma palavra do termo) e `sequenciaDe()` extrai a sequência do padrão "(1) … (2) … (3) …"
+  que a `profundidade` já usa. Módulos sem esse padrão simplesmente não recebem o modo "ordenar".
+- **6 modos novos**: `SintomaCausa` (o mais valioso para o degrau 4 — um sintoma de produção, qual
+  conceito explica), `Lacuna`, `Ordenar` (toque, não arrastar: arrastar a 360 px é impreciso),
+  `Confundiveis` (contra o vizinho mais parecido por tags — distrator distante não mede nada),
+  `Conexoes` (usa `relacionados[]`; marcar a mais conta) e `RecallLivre` (3 min escrevendo e SÓ DEPOIS
+  a lista — ver antes vira reconhecimento, não recall).
+- **`src/pages/Licao.jsx`** e **`Resultado.jsx`** (novos): um item por tela, barra no topo, e no fim
+  XP, acertos, coroas, ofensiva e o próximo nó.
+- **Itens que não são termo**: `leitura` (um bloco do curso dentro da sessão) e `missao` (o exercício
+  de 20–50 min, que a lição PROPÕE e o laboratório entrega — meter um exercício longo no meio da
+  sessão quebraria os 10 minutos).
+- ⚠️ **Bug encontrado e corrigido no caminho**: `licaoConcluir` colidia com a chave de mesmo nome do
+  curso no mesmo objeto literal de `src/api.js`. A última declarada vencia em silêncio e a lição
+  fechava na rota do curso, dando 404. As do curso passaram a ter prefixo (`cursoLicaoConcluir`,
+  `cursoLicaoVisto`), como as `cursoAtividade*`.
+
+## Etapa 4 — Entrevista simulada, diário de erros e duelo ✅
+
+- **`server/entrevista.js`** (novo): 3 a 5 rodadas em que o mentor pergunta **em cima da resposta
+  anterior**; no fim avalia a conversa INTEIRA. Sem key ou sem rede, a entrevista continua com
+  perguntas tiradas do próprio conteúdo (`perguntaEntrevista`) — degrada, não quebra. O módulo de
+  inglês entrevista em inglês, porque `estrutura.json` marca `idioma: "en"`.
+- **Diário de erros**: `progresso.diario` + rotas `/api/diario*` e `src/pages/DiarioErros.jsx`.
+  Exporta em Markdown por `GET /api/diario.md`.
+- **Duelo contra o passado** (`src/pages/Duelo.jsx` + `GET /api/licao/:m/:n/historico`): as duas
+  últimas tentativas da MESMA lição, item a item, com o delta de nota.
+- `mentor.completar` passou a ser exportado para a entrevista reusar a fila de modelos gratuitos.

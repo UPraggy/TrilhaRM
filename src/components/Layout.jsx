@@ -1,34 +1,9 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect } from 'react'
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom'
 import Logo from './Logo.jsx'
-import {
-  IcoBusca,
-  IcoCasa,
-  IcoChama,
-  IcoCurso,
-  IcoEngrenagem,
-  IcoGrade,
-  IcoLivro,
-  IcoMenu,
-  IcoTerminal,
-  IcoX,
-} from './Icones.jsx'
+import { IcoBusca, IcoChama } from './Icones.jsx'
+import { PRINCIPAL, ehImersiva } from '../nav.js'
 import { useStore } from '../store.jsx'
-
-/** as quatro camadas do app + o resto; o cabeçalho do desktop mostra tudo */
-const PRINCIPAIS = [
-  { to: '/', rotulo: 'Início', Ico: IcoCasa, end: true },
-  { to: '/praticas', rotulo: 'Praticar', Ico: IcoTerminal },
-  { to: '/cursos', rotulo: 'Cursos', Ico: IcoCurso },
-  { to: '/treinos', rotulo: 'Treinos', Ico: IcoChama },
-]
-/** no celular vivem atrás do botão "Mais"; no desktop ficam na barra do cabeçalho */
-const SECUNDARIOS = [
-  { to: '/glossario', rotulo: 'Glossário', Ico: IcoLivro, desc: 'Buscar um termo e ver os relacionados' },
-  { to: '/matriz', rotulo: 'Matriz', Ico: IcoGrade, desc: 'Nível por deck, ofensiva e histórico' },
-  { to: '/config', rotulo: 'Config', Ico: IcoEngrenagem, desc: 'Mentor IA, chave do OpenRouter, reset' },
-]
-const LINKS = [...PRINCIPAIS, ...SECUNDARIOS]
 
 export function Streak() {
   const { progresso } = useStore()
@@ -39,7 +14,7 @@ export function Streak() {
     ? `Hoje já contou. Melhor sequência: ${s.melhor || 0} dias.`
     : `Faltam ${falta} avaliações hoje para manter a ofensiva. Melhor: ${s.melhor || 0} dias.`
   return (
-    <Link to="/matriz" className={`streak ${on ? 'on' : ''}`} title={titulo} aria-label={`Ofensiva: ${s.atual || 0} dias. ${titulo}`}>
+    <Link to="/perfil" className={`streak ${on ? 'on' : ''}`} title={titulo} aria-label={`Ofensiva: ${s.atual || 0} dias. ${titulo}`}>
       <IcoChama />
       <b>{s.atual || 0}</b>
       <span className="dim">{s.atual === 1 ? 'dia' : 'dias'}</span>
@@ -48,63 +23,38 @@ export function Streak() {
   )
 }
 
-/** Folha de baixo com o que não coube na barra de 5. Fecha no Esc, no toque fora e ao navegar. */
-function MenuMais({ aberto, onFechar, botaoRef }) {
-  const primeiro = useRef(null)
-  useEffect(() => {
-    if (!aberto) return
-    const onKey = (e) => {
-      if (e.key === 'Escape') {
-        e.stopPropagation()
-        onFechar()
-      }
-    }
-    window.addEventListener('keydown', onKey)
-    if (primeiro.current) primeiro.current.focus()
-    return () => window.removeEventListener('keydown', onKey)
-  }, [aberto, onFechar])
-
-  // devolve o foco para o botão que abriu
-  useEffect(() => {
-    if (!aberto && botaoRef.current && botaoRef.current.dataset.usou === '1') {
-      botaoRef.current.dataset.usou = '0'
-      botaoRef.current.focus()
-    }
-  }, [aberto, botaoRef])
-
-  if (!aberto) return null
-  return (
-    <div className="folha-bg" onClick={onFechar}>
-      <div className="folha" role="dialog" aria-modal="true" aria-label="Mais telas" onClick={(e) => e.stopPropagation()}>
-        <div className="folha__topo">
-          <span className="eyebrow">Mais</span>
-          <button className="btn btn--sm btn--ghost folha__x" onClick={onFechar} aria-label="Fechar o menu">
-            <IcoX width={18} height={18} />
-          </button>
-        </div>
-        {SECUNDARIOS.map(({ to, rotulo, Ico, desc }, i) => (
-          <NavLink key={to} to={to} className="folha__item" onClick={onFechar} ref={i === 0 ? primeiro : null}>
-            <Ico />
-            <span className="folha__txt">
-              <b>{rotulo}</b>
-              <span className="dim small">{desc}</span>
-            </span>
-          </NavLink>
-        ))}
-      </div>
-    </div>
-  )
-}
-
 export default function Layout() {
   const { aviso } = useStore()
-  const [menu, setMenu] = useState(false)
-  const botaoRef = useRef(null)
   const { pathname } = useLocation()
+  const imersiva = ehImersiva(pathname)
 
+  // sessão em tela cheia: sem cabeçalho, sem barra inferior, sem rodapé.
+  // A classe no <body> existe porque o CSS precisa remover o padding reservado para a barra.
   useEffect(() => {
-    setMenu(false)
+    document.body.classList.toggle('imersivo', imersiva)
+    return () => document.body.classList.remove('imersivo')
+  }, [imersiva])
+
+  // trocar de rota volta ao topo. Sem isto, sair de uma lição rolada até o fim abre a tela seguinte
+  // no meio — e a de resultado aparece em branco, porque o conteúdo dela é curto.
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: 'auto' })
   }, [pathname])
+
+  if (imersiva) {
+    return (
+      <>
+        <main className="main main--imersivo" id="conteudo">
+          <Outlet />
+        </main>
+        {aviso && (
+          <div className="toast" role="status">
+            {aviso}
+          </div>
+        )}
+      </>
+    )
+  }
 
   return (
     <>
@@ -120,7 +70,7 @@ export default function Layout() {
             </span>
           </Link>
           <nav className="header__nav" aria-label="Principal">
-            {LINKS.map(({ to, rotulo, end }) => (
+            {PRINCIPAL.map(({ to, rotulo, end }) => (
               <NavLink key={to} to={to} end={end} className="navlink">
                 {rotulo}
               </NavLink>
@@ -145,30 +95,14 @@ export default function Layout() {
         <div>Construo o ambiente inteiro — código, servidor, rede e tudo entre os dois.</div>
       </footer>
 
-      <nav className="bottomnav" aria-label="Principal (celular)">
-        {PRINCIPAIS.map(({ to, rotulo, Ico, end }) => (
+      <nav className="bottomnav bottomnav--4" aria-label="Principal (celular)">
+        {PRINCIPAL.map(({ to, rotulo, Ico, end }) => (
           <NavLink key={to} to={to} end={end}>
             <Ico />
             <span>{rotulo}</span>
           </NavLink>
         ))}
-        <button
-          type="button"
-          ref={botaoRef}
-          className={`bottomnav__mais ${menu ? 'active' : ''}`}
-          aria-haspopup="dialog"
-          aria-expanded={menu}
-          onClick={(e) => {
-            e.currentTarget.dataset.usou = '1'
-            setMenu((v) => !v)
-          }}
-        >
-          <IcoMenu />
-          <span>Mais</span>
-        </button>
       </nav>
-
-      <MenuMais aberto={menu} onFechar={() => setMenu(false)} botaoRef={botaoRef} />
 
       {aviso && (
         <div className="toast" role="status">

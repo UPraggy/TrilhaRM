@@ -3,7 +3,7 @@ import { Link, useParams } from 'react-router-dom'
 import { useStore } from '../store.jsx'
 import { Barra, Carregando, EstadoTermo } from '../components/Comuns.jsx'
 import { IcoGiro } from '../components/Icones.jsx'
-import { classeNivel, fmtDataCurta, fmtNivel, MODOS, diasAte, nomeAmbiente, statusPratica } from '../lib/util.js'
+import { classeNivel, fmtDataCurta, fmtNivel, MODOS_LIVRES, diasAte, nomeAmbiente, statusPratica } from '../lib/util.js'
 
 export default function DeckPage() {
   const { id } = useParams()
@@ -73,7 +73,7 @@ export default function DeckPage() {
           <h2>Modos</h2>
         </div>
         <div className="modos">
-          {MODOS.map((m, i) => (
+          {MODOS_LIVRES.map((m, i) => (
             <Link key={m.id} to={`/estudar/${m.id}?fonte=${fonte}`} className="modo">
               <span className="modo__num">{String(i + 1).padStart(2, '0')}</span>
               <span className="modo__nome">{m.nome}</span>
@@ -82,7 +82,7 @@ export default function DeckPage() {
           ))}
           {praticaDeck && (
             <Link to={`/praticas?deck=${id}`} className="modo">
-              <span className="modo__num">{String(MODOS.length + 1).padStart(2, '0')}</span>
+              <span className="modo__num">{String(MODOS_LIVRES.length + 1).padStart(2, '0')}</span>
               <span className="modo__nome">Praticar</span>
               <span className="modo__desc">
                 {praticaDeck.exercicios.length} exercícios reais fora do app · {rp.feitas} feitos.

@@ -7,10 +7,13 @@ import { fileURLToPath } from 'node:url'
 import { criarCursos } from './cursos.js'
 import { criarRepositorio } from './decks.js'
 import { criarEstrutura } from './estrutura.js'
+import { criarLicao } from './licao.js'
+import { criarEntrevista } from './entrevista.js'
 import { criarProgresso } from './progresso.js'
 import { carregarEnv, criarMentor } from './mentor.js'
 import { corrigir, criarPraticas, notaAutomatica, notaChecklist } from './praticas.js'
 import { hojeISO, vencido } from './sm2.js'
+import { faltaParaMeta, resultadoLicao } from './xp.js'
 import { criarTelegram } from './telegram.js'
 import { criarTreinos } from './treinos.js'
 import { criarProgressoTreinos } from './progresso-treinos.js'
@@ -20,6 +23,7 @@ const RAIZ = path.resolve(__dirname, '..')
 // --port N na linha de comando vence a env PORT (o launcher de preview exporta PORT=5173 para o Vite)
 const argPorta = process.argv.indexOf('--port')
 const PORT = (argPorta > -1 && Number(process.argv[argPorta + 1])) || Number(process.env.PORT) || 8790
+const MAX_ITENS_RESPOSTA = 40
 const DIST = path.join(RAIZ, 'dist')
 const CONTEUDO = path.join(RAIZ, 'content')
 const ARQ_PROGRESSO = path.join(RAIZ, 'data', 'progresso.json')
@@ -34,6 +38,7 @@ const treinos = criarTreinos(CONTEUDO, repo)
 const progTreinos = criarProgressoTreinos(progresso, { arquivo: path.join(RAIZ, 'data', 'progresso-treinos.json') })
 // Trilha -> Módulo -> Lição: amarra deck + curso + práticas + treino por tema (content/estrutura.json)
 const estrutura = criarEstrutura(CONTEUDO, { repo, cursos, praticas, treinos, progresso })
+const licoes = criarLicao({ estrutura, repo, cursos, praticas, progresso })
 const telegram = criarTelegram({
   arquivoConfig: ARQ_CONFIG, // o token mora ao lado da key do OpenRouter, fora do git
   arquivoEstado: path.join(RAIZ, 'data', 'telegram.json'),
@@ -47,6 +52,7 @@ const telegram = criarTelegram({
   porta: PORT,
 })
 const mentor = criarMentor({ arquivoConfig: ARQ_CONFIG, repo, progresso })
+const entrevistas = criarEntrevista({ estrutura, repo, mentor, progresso })
 
 const app = express()
 app.disable('x-powered-by')
@@ -115,6 +121,43 @@ api.get('/modulos/:id', (req, res) => {
   res.json(m)
 })
 
+// ---- lição: a sessão de 8-12 itens de um nó --------------------------------
+api.get('/licao/:moduloId/:n', (req, res) => {
+  const r = licoes.montar(String(req.params.moduloId), String(req.params.n))
+  if (r.erro) return res.status(r.status || 400).json({ erro: r.erro })
+  res.json(r.licao)
+})
+
+/**
+ * Fecha a lição. body { itens: [{ tipo, ref, ok, nota }] }
+ * NÃO conta avaliação: cada termo já foi avaliado item a item por POST /progresso/avaliar durante a
+ * sessão. Aqui entram XP, coroas e a marca de concluído - senão a ofensiva inflaria.
+ */
+api.post('/licao/:moduloId/:n/concluir', (req, res) => {
+  const noId = `${req.params.moduloId}/${req.params.n}`
+  const alvo = estrutura.no(noId)
+  if (!alvo) return res.status(404).json({ erro: 'lição não encontrada' })
+  const itens = Array.isArray(req.body?.itens) ? req.body.itens.slice(0, MAX_ITENS_RESPOSTA) : []
+  if (!itens.length) return res.status(400).json({ erro: 'nenhum item respondido' })
+  const primeiraVez = !progresso.no(noId)
+  const r = resultadoLicao(itens, { primeiraVez })
+  const gravado = progresso.concluirNo({ noId, xp: r.xp, acertos: r.acertos, total: r.total, itens })
+  const modulo = estrutura.modulo(String(req.params.moduloId))
+  const proximo = modulo ? modulo.nos.find((x) => x.estado === 'disponivel') : null
+  res.json({
+    ...r,
+    primeiraVez: gravado.primeiraVez,
+    xpDia: gravado.xpDia,
+    xpTotal: gravado.xpTotal,
+    meta: faltaParaMeta(gravado.xpDia),
+    streak: gravado.streak,
+    coroas: modulo ? modulo.progresso.coroas : 0,
+    nivelMedio: modulo ? modulo.progresso.nivelMedio : 0,
+    proximo: proximo ? { id: proximo.id, n: proximo.n, tipo: proximo.tipo, titulo: proximo.titulo, treinoId: proximo.treinoId || null } : null,
+    moduloConcluido: modulo ? modulo.progresso.concluido : false,
+  })
+})
+
 api.get('/progresso', (_req, res) => {
   res.json(progresso.obter())
 })
@@ -165,6 +208,79 @@ api.post('/progresso/avaliar', (req, res) => {
 api.post('/progresso/reset', async (_req, res) => {
   await progresso.reset()
   res.json({ ok: true, progresso: progresso.obter() })
+})
+
+
+// ---- duelo contra o passado: o histórico de um nó -------------------------
+api.get('/licao/:moduloId/:n/historico', (req, res) => {
+  const noId = `${req.params.moduloId}/${req.params.n}`
+  if (!estrutura.no(noId)) return res.status(404).json({ erro: 'lição não encontrada' })
+  const s = progresso.no(noId)
+  res.json({ noId, historico: s ? s.historico || [] : [], melhorXp: s ? s.melhorXp : 0, vezes: s ? (s.historico || []).length : 0 })
+})
+
+// ---- diário de erros ------------------------------------------------------
+api.get('/diario', (req, res) => {
+  res.json({ erros: progresso.diario({ moduloId: req.query.modulo ? String(req.query.modulo) : undefined }) })
+})
+
+// body { moduloId, deckId, termoId, titulo, achei, era, detectar, origem }
+api.post('/diario', (req, res) => {
+  const b = req.body || {}
+  if (!String(b.titulo || '').trim() && !String(b.achei || '').trim()) return res.status(400).json({ erro: 'escreva pelo menos o título ou "o que eu achei"' })
+  res.json({ erro: null, entrada: progresso.anotarErro(b) })
+})
+
+api.put('/diario/:id', (req, res) => {
+  const e = progresso.atualizarErro(String(req.params.id), req.body || {})
+  if (!e) return res.status(404).json({ erro: 'entrada não encontrada' })
+  res.json({ entrada: e })
+})
+
+api.delete('/diario/:id', (req, res) => {
+  res.json(progresso.removerErro(String(req.params.id)))
+})
+
+// exporta o diário em Markdown - matéria-prima de revisão antes de uma entrevista
+api.get('/diario.md', (_req, res) => {
+  const lista = progresso.diario()
+  const linhas = ['# Diário de erros — Trilha RM', '']
+  for (const e of lista) {
+    linhas.push(`## ${e.titulo || e.termoId || 'sem título'}`)
+    linhas.push(`*${e.dia}${e.moduloId ? ` · ${e.moduloId}` : ''}*`, '')
+    if (e.achei) linhas.push(`**O que eu achei:** ${e.achei}`, '')
+    if (e.era) linhas.push(`**O que era:** ${e.era}`, '')
+    if (e.detectar) linhas.push(`**Como detectar da próxima:** ${e.detectar}`, '')
+    linhas.push('')
+  }
+  res.set('Content-Type', 'text/markdown; charset=utf-8')
+  res.send(linhas.join('\n'))
+})
+
+// ---- entrevista simulada (multi-turno com o mentor) -----------------------
+api.get('/entrevista/:moduloId', (req, res) => {
+  const r = entrevistas.obter(String(req.params.moduloId))
+  res.status(r.status).json(r.corpo)
+})
+
+api.post('/entrevista/:moduloId/iniciar', (req, res) => {
+  const r = entrevistas.iniciar(String(req.params.moduloId))
+  res.status(r.status).json(r.corpo)
+})
+
+api.post('/entrevista/:moduloId/responder', async (req, res) => {
+  const r = await entrevistas.responder(String(req.params.moduloId), req.body?.resposta)
+  res.status(r.status).json(r.corpo)
+})
+
+api.post('/entrevista/:moduloId/encerrar', async (req, res) => {
+  const r = await entrevistas.encerrar(String(req.params.moduloId))
+  res.status(r.status).json(r.corpo)
+})
+
+api.delete('/entrevista/:moduloId', (req, res) => {
+  const r = entrevistas.descartar(String(req.params.moduloId))
+  res.status(r.status).json(r.corpo)
 })
 
 // ---- práticas (exercícios resolvidos fora do app) -------------------------

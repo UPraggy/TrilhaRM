@@ -29,11 +29,16 @@ export function distribuir(itens, n) {
   return baldes
 }
 
-/** quantos nós um módulo tem: o maior entre vocabulário, leituras e exercícios (teto MAX_NOS) */
-export function contarNos({ totalTermos, totalLeituras, totalExercicios }) {
+/**
+ * Quantos nós um módulo tem. Quem manda é o VOCABULÁRIO (uma lição precisa de ~6 termos para chegar
+ * aos 8-12 itens), com as leituras do curso como piso — até duas por nó.
+ * ⚠️ Exercício NÃO cria nó: ele é longo (20-50 min) e se distribui entre os nós que já existem.
+ * Deixar cada exercício abrir um nó deixava as lições com 3 termos e vazias.
+ */
+export function contarNos({ totalTermos, totalLeituras }) {
   const porTermos = Math.ceil((totalTermos || 0) / TERMOS_POR_NO)
-  const n = Math.max(porTermos, totalLeituras || 0, totalExercicios || 0)
-  return Math.max(1, Math.min(MAX_NOS, n))
+  const porLeituras = Math.ceil((totalLeituras || 0) / 2)
+  return Math.max(1, Math.min(MAX_NOS, Math.max(porTermos, porLeituras)))
 }
 
 /** média de nível 0..5 dos termos do módulo; termo nunca visto conta 0 (é o que ele sabe hoje) */
@@ -146,7 +151,7 @@ export function criarEstrutura(raizConteudo, { repo, cursos, praticas, treinos, 
    */
   function nosDoModulo(m, { deck, leituras, exercicios, chefao, estadoNos }) {
     const termos = deck ? deck.termos : []
-    const n = contarNos({ totalTermos: termos.length, totalLeituras: leituras.length, totalExercicios: exercicios.length })
+    const n = contarNos({ totalTermos: termos.length, totalLeituras: leituras.length })
     const blocosTermos = distribuir(termos, n)
     const blocosLeituras = distribuir(leituras, n)
     const blocosExercicios = distribuir(exercicios, n)

@@ -9,6 +9,8 @@ export function StoreProvider({ children }) {
   const [decks, setDecks] = useState([])
   const [termos, setTermos] = useState([])
   const [trilhas, setTrilhas] = useState({ fases: [], origem: 'auto' })
+  // V2: a estrutura resolvida (trilhas -> modulos -> nos). null = ainda carregando
+  const [estrutura, setEstrutura] = useState(null)
   const [progresso, setProgresso] = useState({ termos: {}, praticas: {}, streak: { atual: 0, melhor: 0 }, historico: [] })
   const [praticas, setPraticas] = useState([])
   // null = ainda carregando (a Home mostra esqueleto); [] = carregou e não tem nada
@@ -24,7 +26,7 @@ export function StoreProvider({ children }) {
     setCarregando(true)
     setErro(null)
     try {
-      const [d, t, tr, p, pr, cs, ts] = await Promise.all([
+      const [d, t, tr, p, pr, cs, ts, es] = await Promise.all([
         api.decks(),
         api.termos(),
         api.trilhas(),
@@ -32,9 +34,11 @@ export function StoreProvider({ children }) {
         api.praticas().catch(() => ({ praticas: [], erros: [] })),
         api.cursos().catch(() => ({ cursos: [], erros: [] })),
         api.treinos().catch(() => ({ treinos: [], erros: [] })),
+        api.estrutura().catch(() => null),
       ])
+      setEstrutura(es)
       setDecks(d.decks || [])
-      setErrosConteudo([...(d.erros || []), ...(pr.erros || []), ...(cs.erros || []), ...(ts.erros || [])])
+      setErrosConteudo([...(d.erros || []), ...(pr.erros || []), ...(cs.erros || []), ...(ts.erros || []), ...((es && es.erros) || [])])
       setTermos(t.termos || [])
       setTrilhas(tr || { fases: [] })
       setProgresso({ praticas: {}, cursos: {}, ...p })
@@ -64,8 +68,10 @@ export function StoreProvider({ children }) {
           api.progresso(),
           api.cursos().catch(() => ({ cursos: [], erros: [] })),
           api.treinos().catch(() => ({ treinos: [], erros: [] })),
+          api.estrutura().catch(() => null),
         ])
-          .then(([d, t, tr, pr, p, cs, ts]) => {
+          .then(([d, t, tr, pr, p, cs, ts, es]) => {
+            if (es) setEstrutura(es)
             setDecks(d.decks || [])
             setErrosConteudo([...(d.erros || []), ...(pr.erros || []), ...(cs.erros || []), ...(ts.erros || [])])
             setTermos(t.termos || [])
@@ -231,10 +237,23 @@ export function StoreProvider({ children }) {
     return fases[fases.length - 1].numero
   }, [trilhas, resumo])
 
+  /** recarrega só a estrutura (depois de fechar um nó, o caminho muda) */
+  const recarregarEstrutura = useCallback(async () => {
+    try {
+      const es = await api.estrutura()
+      setEstrutura(es)
+      return es
+    } catch {
+      return null
+    }
+  }, [])
+
   const valor = {
     decks,
     termos,
     trilhas,
+    estrutura,
+    recarregarEstrutura,
     praticas,
     cursos,
     treinos,

@@ -14,7 +14,7 @@ import {
   IcoSeta,
   IcoTerminal,
 } from '../components/Icones.jsx'
-import { classeNivel, fmtNivel, MODOS, pct } from '../lib/util.js'
+import { classeNivel, fmtNivel, MODOS_LIVRES, pct } from '../lib/util.js'
 
 /* ------------------------------------------------------------------ *
  * tempo estimado de uma lição: palavras do texto + 5 min por atividade
@@ -527,7 +527,7 @@ export default function Home() {
           <span className="dim small nota-secao">(todos os decks)</span>
         </div>
         <div className="modos">
-          {MODOS.map((m, i) => (
+          {MODOS_LIVRES.map((m, i) => (
             <Link key={m.id} to={`/estudar/${m.id}?fonte=tudo`} className="modo">
               <span className="modo__num">{String(i + 1).padStart(2, '0')}</span>
               <span className="modo__nome">{m.nome}</span>
@@ -535,7 +535,7 @@ export default function Home() {
             </Link>
           ))}
           <Link to="/praticas" className="modo">
-            <span className="modo__num">{String(MODOS.length + 1).padStart(2, '0')}</span>
+            <span className="modo__num">{String(MODOS_LIVRES.length + 1).padStart(2, '0')}</span>
             <span className="modo__nome">Praticar</span>
             <span className="modo__desc">Exercício real fora do app. Volte e registre: o app corrige ou você se avalia.</span>
           </Link>
