@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useStore } from '../store.jsx'
 import ConfigTelegram from '../components/ConfigTelegram.jsx'
 import { obterConfig, salvarConfig, listarModelos, avaliarComMentor } from '../api.js'
+import { useT } from '../i18n/index.jsx'
 
 /**
  * /config - Mentor IA (OpenRouter): key (mascarada), modelo gratuito, idioma do feedback e teste.
@@ -9,6 +10,7 @@ import { obterConfig, salvarConfig, listarModelos, avaliarComMentor } from '../a
  */
 export default function Config() {
   const { termos, mostrarAviso } = useStore()
+  const { t, idioma, trocar, idiomas } = useT()
   const [config, setConfig] = useState(null)
   const [erroConfig, setErroConfig] = useState(null)
   const [modelos, setModelos] = useState({ modelos: [], fallback: false, carregando: true })
@@ -75,9 +77,30 @@ export default function Config() {
   const outros = lista.filter((m) => !/deepseek/i.test(m.id))
 
   return (
-    <div>
-      <div className="eyebrow">Configurações</div>
-      <h1 style={{ marginTop: 6 }}>Mentor IA (OpenRouter)</h1>
+    <div className="page">
+      <p className="kicker">{t('Perfil')}</p>
+      <h1>{t('Ajustes')}</h1>
+
+      {/* IDIOMA vem primeiro: é o ajuste que muda tudo o que está abaixo dele. */}
+      <div className="card">
+        <h2>{t('Idioma')}</h2>
+        <p className="dim small">{t('A interface inteira, o bot do Telegram e os cards mudam junto.')}</p>
+        <div className="acoes">
+          {idiomas.map((l) => (
+            <button
+              key={l.id}
+              type="button"
+              className={`btn ${l.id === idioma ? 'btn--primary' : 'btn--ghost'}`}
+              onClick={() => trocar(l.id)}
+              aria-pressed={l.id === idioma}
+            >
+              {l.nome}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <h2 className="secao">Mentor IA (OpenRouter)</h2>
       <p className="muted small" style={{ marginTop: 6 }}>
         No modo Explique e nas práticas de texto, um modelo gratuito lê sua resposta, compara com o gabarito e sugere o nível 0–5. No modo automático o app tenta os gratuitos em ordem até um responder — é o que mais funciona, porque os modelos livres vivem saturando.
       </p>

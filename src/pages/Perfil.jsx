@@ -4,9 +4,11 @@ import { PERFIL } from '../nav.js'
 import { useStore } from '../store.jsx'
 import { META_XP_DIA } from '../lib/xp.js'
 import { IcoChama } from '../components/Icones.jsx'
+import { useT } from '../i18n/index.jsx'
 
 export default function Perfil() {
   const { progresso, resumo, estrutura, resumoPraticas } = useStore()
+  const { t } = useT()
   const s = progresso.streak || {}
   const xpHoje = s.xpHoje || 0
   const faltaXp = Math.max(0, META_XP_DIA - xpHoje)
@@ -19,33 +21,33 @@ export default function Perfil() {
 
   return (
     <div className="page perfil">
-      <h1>Perfil</h1>
+      <h1>{t('Perfil')}</h1>
 
       <div className="perfil__hoje">
         <div className={`perfil__streak ${s.atual > 0 ? 'on' : ''}`}>
           <IcoChama width={26} height={26} />
           <b>{s.atual || 0}</b>
-          <span className="dim small">{s.atual === 1 ? 'dia' : 'dias'} de ofensiva</span>
-          <span className="dim mono small">melhor: {s.melhor || 0}</span>
+          <span className="dim small">{s.atual === 1 ? t('dia') : t('dias')} {t('de ofensiva')}</span>
+          <span className="dim mono small">{t('melhor:')} {s.melhor || 0}</span>
         </div>
         <div className="perfil__metas">
           <div>
-            <span className="dim small">Meta do dia — avaliações <b>(é esta que conta)</b></span>
+            <span className="dim small">{t('Meta do dia — avaliações')} <b>{t('(é esta que conta)')}</b></span>
             <div className="progress">
               <span style={{ width: `${Math.min(100, Math.round(((s.avaliacoesHoje || 0) / (s.minimoDia || 10)) * 100))}%` }} />
             </div>
             <span className="dim mono small">
               {s.avaliacoesHoje || 0}/{s.minimoDia || 10}
-              {faltaAval > 0 ? ` · faltam ${faltaAval}` : ' · fechou hoje'}
+              {faltaAval > 0 ? ` · ${t('faltam')} ${faltaAval}` : ` · ${t('o dia já contou')}`}
             </span>
           </div>
           <div>
-            <span className="dim small">XP do dia</span>
+            <span className="dim small">{t('XP do dia')}</span>
             <div className="progress progress--amber">
               <span style={{ width: `${Math.min(100, Math.round((xpHoje / META_XP_DIA) * 100))}%` }} />
             </div>
             <span className="dim mono small">
-              {xpHoje}/{META_XP_DIA} XP{faltaXp > 0 ? ` · faltam ${faltaXp}` : ' · meta batida'} · total {s.xpTotal || 0}
+              {xpHoje}/{META_XP_DIA} XP{faltaXp > 0 ? ` · ${t('faltam')} ${faltaXp}` : ` · ${t('meta batida')}`} · {t('total')} {s.xpTotal || 0}
             </span>
           </div>
         </div>
@@ -54,19 +56,19 @@ export default function Perfil() {
       <div className="perfil__numeros">
         <div className="stat">
           <b>{pctNivel3}%</b>
-          <span className="dim small">dos termos em nível 3+ ("aplico")</span>
+          <span className="dim small">{t('dos termos em nível 3+ ("aplico")')}</span>
         </div>
         <div className="stat">
           <b>{resumo.vencidos}</b>
-          <span className="dim small">termos para revisar hoje</span>
+          <span className="dim small">{t('termos para revisar hoje')}</span>
         </div>
         <div className="stat">
           <b>{nosFeitos}/{nosTotal}</b>
-          <span className="dim small">lições concluídas</span>
+          <span className="dim small">{t('lições concluídas')}</span>
         </div>
         <div className="stat">
           <b>{resumoPraticas.geral.feitas}</b>
-          <span className="dim small">exercícios entregues</span>
+          <span className="dim small">{t('exercícios entregues')}</span>
         </div>
       </div>
 
@@ -74,8 +76,8 @@ export default function Perfil() {
         {PERFIL.map(({ to, rotulo, Ico, desc }) => (
           <Link key={to} to={to} className="card card--link">
             <Ico />
-            <b>{rotulo}</b>
-            <span className="dim small">{desc}</span>
+            <b>{t(rotulo)}</b>
+            <span className="dim small">{t(desc)}</span>
           </Link>
         ))}
       </div>

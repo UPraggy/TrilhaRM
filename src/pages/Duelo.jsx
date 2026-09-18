@@ -5,15 +5,16 @@ import { Link, useParams } from 'react-router-dom'
 import { api } from '../api.js'
 import { Carregando, Vazio } from '../components/Comuns.jsx'
 import { classeNivel, fmtDataCurta } from '../lib/util.js'
+import { useT } from '../i18n/index.jsx'
 
 /** o item comparável entre duas tentativas: a nota (ou acertou/errou) por referência */
 function chaveItem(it) {
   return `${it.tipo}:${it.ref}`
 }
 
-function rotuloItem(it) {
-  if (it.tipo === 'leitura') return 'leitura'
-  if (it.tipo === 'exercicio') return 'exercício'
+function rotuloItem(it, t) {
+  if (it.tipo === 'leitura') return t('leitura')
+  if (it.tipo === 'exercicio') return t('exercício')
   return it.ref
 }
 
@@ -23,6 +24,7 @@ function valor(it) {
 }
 
 export default function Duelo() {
+  const { t } = useT()
   const { moduloId, n } = useParams()
   const [dados, setDados] = useState(null)
 
@@ -33,20 +35,19 @@ export default function Duelo() {
       .catch(() => setDados({ historico: [] }))
   }, [moduloId, n])
 
-  if (!dados) return <Carregando texto="Buscando as tentativas…" cartoes={2} />
+  if (!dados) return <Carregando texto={t('Buscando as tentativas…')} cartoes={2} />
 
   const hist = dados.historico || []
   if (hist.length < 2) {
     return (
       <div className="page duelo">
-        <p className="kicker"><Link to={`/modulo/${moduloId}`}>Voltar ao módulo</Link></p>
-        <h1>Duelo contra o passado</h1>
-        <Vazio titulo={hist.length ? 'Só uma tentativa até agora' : 'Você ainda não fez esta lição'}>
-          O duelo compara você com você mesmo. Refaça esta lição e volte aqui — aí dá para ver, item a
-          item, o que melhorou e o que continua igual.
+        <p className="kicker"><Link to={`/modulo/${moduloId}`}>{t('Voltar ao módulo')}</Link></p>
+        <h1>{t('Duelo contra o passado')}</h1>
+        <Vazio titulo={hist.length ? t('Só uma tentativa até agora') : t('Você ainda não fez esta lição')}>
+          {t('O duelo compara você com você mesmo. Refaça esta lição e volte aqui — aí dá para ver, item a item, o que melhorou e o que continua igual.')}
           <div className="acoes" style={{ marginTop: 12 }}>
             <Link to={`/licao/${moduloId}/${n}`} className="btn btn--primary">
-              {hist.length ? 'Refazer a lição' : 'Fazer a lição'}
+              {hist.length ? t('Refazer a lição') : t('Fazer a lição')}
             </Link>
           </div>
         </Vazio>
@@ -69,10 +70,10 @@ export default function Duelo() {
 
   return (
     <div className="page duelo">
-      <p className="kicker"><Link to={`/modulo/${moduloId}`}>Voltar ao módulo</Link></p>
-      <h1>Duelo contra o passado</h1>
+      <p className="kicker"><Link to={`/modulo/${moduloId}`}>{t('Voltar ao módulo')}</Link></p>
+      <h1>{t('Duelo contra o passado')}</h1>
       <p className="lead">
-        {fmtDataCurta(anterior.dia)} contra {fmtDataCurta(atual.dia)} — a mesma lição, item a item.
+        {fmtDataCurta(anterior.dia)} {t('contra')} {fmtDataCurta(atual.dia)} {t('— a mesma lição, item a item.')}
       </p>
 
       <div className="duelo__placar">
@@ -89,10 +90,10 @@ export default function Duelo() {
 
       <p className={`duelo__veredito ${deltaXp >= 0 ? 'ok' : 'bad'}`}>
         {melhoraram > pioraram
-          ? `Você melhorou em ${melhoraram} ${melhoraram === 1 ? 'item' : 'itens'}${pioraram ? ` e caiu em ${pioraram}` : ''}.`
+          ? `${t('Você melhorou em')} ${melhoraram} ${melhoraram === 1 ? t('item') : t('itens')}${pioraram ? ` ${t('e caiu em')} ${pioraram}` : ''}.`
           : melhoraram === pioraram
-            ? 'Empate técnico — mesmo desempenho.'
-            : `Caiu em ${pioraram} ${pioraram === 1 ? 'item' : 'itens'}. Vale reler a profundidade desses termos.`}
+            ? t('Empate técnico — mesmo desempenho.')
+            : `${t('Caiu em')} ${pioraram} ${pioraram === 1 ? t('item') : t('itens')}. ${t('Vale reler a profundidade desses termos.')}`}
         {' '}
         <span className="dim">({deltaXp >= 0 ? '+' : ''}{deltaXp} XP)</span>
       </p>
@@ -101,7 +102,7 @@ export default function Duelo() {
         <table className="tabela duelo__tabela">
           <thead>
             <tr>
-              <th>Item</th>
+              <th>{t('Item')}</th>
               <th>{fmtDataCurta(anterior.dia)}</th>
               <th>{fmtDataCurta(atual.dia)}</th>
               <th></th>
@@ -110,7 +111,7 @@ export default function Duelo() {
           <tbody>
             {linhas.map(({ it, antes, delta }, i) => (
               <tr key={i}>
-                <td className="mono small">{rotuloItem(it)}</td>
+                <td className="mono small">{rotuloItem(it, t)}</td>
                 <td className={antes ? classeNivel(valor(antes)) : 'dim'}>{antes ? valor(antes) : '–'}</td>
                 <td className={classeNivel(valor(it))}>{valor(it)}</td>
                 <td className={delta > 0 ? 'green' : delta < 0 ? 'rose' : 'dim'}>
@@ -124,16 +125,16 @@ export default function Duelo() {
 
       {hist.length > 2 && (
         <p className="dim small">
-          Esta lição tem {hist.length} tentativas guardadas (as 10 últimas). O melhor XP foi {dados.melhorXp}.
+          {t('Esta lição tem')} {hist.length} {t('tentativas guardadas (as 10 últimas). O melhor XP foi')} {dados.melhorXp}.
         </p>
       )}
 
       <div className="acoes acoes--col">
         <Link to={`/licao/${moduloId}/${n}`} className="btn btn--primary btn--block">
-          Refazer mais uma vez
+          {t('Refazer mais uma vez')}
         </Link>
         <Link to="/perfil/erros" className="btn btn--ghost btn--block">
-          Anotar o que caiu no diário de erros
+          {t('Anotar o que caiu no diário de erros')}
         </Link>
       </div>
     </div>

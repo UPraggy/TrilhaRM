@@ -261,7 +261,7 @@ const ICONES = { pratica: iconePratica, treino: iconeTreino, curso: iconeCurso, 
  * O card mais importante: o QR da URL do túnel. Aponta a câmera e abre — a URL do quick tunnel
  * muda a cada restart e é impossível de digitar no celular.
  */
-export function cardLink(url, { nota = '' } = {}) {
+export function cardLink(url, { nota = '', t = (s) => s } = {}) {
   const alvo = String(url || '').trim()
   const { tela, limite } = moldura({ etiqueta: 'LINK DO APP', nota })
   const topoQR = 96
@@ -308,18 +308,19 @@ export function cardLink(url, { nota = '' } = {}) {
 }
 
 /** resumo do dia: vencidos, novos, avaliações e a barra da ofensiva */
-export function cardHoje({ vencidos = 0, novos = 0, avaliacoesHoje = 0, minimoDia = 10, streak = 0, dia = '' } = {}) {
-  const { tela } = moldura({ etiqueta: 'HOJE', titulo: 'O que estudar agora', nota: dia })
+// `t` é a tradução do servidor (server/i18n.js). Padrão identidade: quem não passa nada continua em PT.
+export function cardHoje({ vencidos = 0, novos = 0, avaliacoesHoje = 0, minimoDia = 10, streak = 0, dia = '', t = (s) => s } = {}) {
+  const { tela } = moldura({ etiqueta: t('HOJE'), titulo: t('O que estudar agora'), nota: dia })
   const larguraBloco = Math.floor((LARGURA - MARGEM * 2 - 24) / 3)
   const yBlocos = 150
-  bloco(tela, { x: MARGEM, y: yBlocos, largura: larguraBloco, valor: vencidos, rotulo: 'termos vencidos', cor: vencidos ? CORES.amber : CORES.verde })
-  bloco(tela, { x: MARGEM + larguraBloco + 12, y: yBlocos, largura: larguraBloco, valor: novos, rotulo: 'termos novos', cor: CORES.peri })
+  bloco(tela, { x: MARGEM, y: yBlocos, largura: larguraBloco, valor: vencidos, rotulo: t('termos vencidos'), cor: vencidos ? CORES.amber : CORES.verde })
+  bloco(tela, { x: MARGEM + larguraBloco + 12, y: yBlocos, largura: larguraBloco, valor: novos, rotulo: t('termos novos'), cor: CORES.peri })
   bloco(tela, {
     x: MARGEM + (larguraBloco + 12) * 2,
     y: yBlocos,
     largura: larguraBloco,
     valor: `${avaliacoesHoje}/${minimoDia}`,
-    rotulo: 'avaliações de hoje',
+    rotulo: t('avaliações de hoje'),
     cor: avaliacoesHoje >= minimoDia ? CORES.verde : CORES.bone,
     escalaValor: 5,
   })
@@ -327,7 +328,7 @@ export function cardHoje({ vencidos = 0, novos = 0, avaliacoesHoje = 0, minimoDi
   const yBarra = yBlocos + 132
   const falta = Math.max(0, minimoDia - avaliacoesHoje)
   // a chama vai à ESQUERDA do texto da ofensiva, medido: com posição fixa o "12 dias" passa por cima
-  const rotuloStreak = `${streak} dia${streak === 1 ? '' : 's'}`
+  const rotuloStreak = `${streak} ${streak === 1 ? t('dia') : t('dias')}`
   const largStreak = medirTexto(rotuloStreak, 3, { negrito: true })
   const xChama = LARGURA - MARGEM - largStreak - 56
   iconeChama(tela, xChama, yBarra - 12, 40, streak > 0 ? CORES.amber : CORES.fg3)
@@ -339,7 +340,7 @@ export function cardHoje({ vencidos = 0, novos = 0, avaliacoesHoje = 0, minimoDi
     negrito: true,
     alinhamento: 'direita',
   })
-  const rotulo = falta ? `faltam ${falta} avaliações para fechar o dia` : 'dia fechado, ofensiva garantida'
+  const rotulo = falta ? `${t('faltam')} ${falta} ${t('avaliações para fechar o dia')}` : t('dia fechado, ofensiva garantida')
   texto(tela, cortarTexto(rotulo, xChama - MARGEM - 20, 2), { x: MARGEM, y: yBarra + 4, escala: 2, cor: falta ? CORES.fg1 : CORES.verde })
   barra(tela, {
     x: MARGEM,
@@ -353,8 +354,8 @@ export function cardHoje({ vencidos = 0, novos = 0, avaliacoesHoje = 0, minimoDi
 }
 
 /** ofensiva: número grande, recorde e o histograma dos últimos 28 dias */
-export function cardOfensiva({ atual = 0, melhor = 0, ultimos28 = [], minimoDia = 10 } = {}) {
-  const { tela } = moldura({ etiqueta: 'OFENSIVA', nota: `mínimo ${minimoDia} avaliações por dia` })
+export function cardOfensiva({ atual = 0, melhor = 0, ultimos28 = [], minimoDia = 10, t = (s) => s } = {}) {
+  const { tela } = moldura({ etiqueta: t('OFENSIVA'), nota: `${t('mínimo')} ${minimoDia} ${t('avaliações por dia')}` })
   const dias = (Array.isArray(ultimos28) ? ultimos28 : []).slice(-28).map((d) => {
     if (d && typeof d === 'object') return Number(d.avaliacoes) || 0
     return Number(d) || 0
@@ -398,8 +399,8 @@ export function cardOfensiva({ atual = 0, melhor = 0, ultimos28 = [], minimoDia 
 }
 
 /** matriz: uma barra por fase com o % de termos em nível >= 3 */
-export function cardMatriz({ fases = [], nota = '' } = {}) {
-  const { tela, y, limite } = moldura({ etiqueta: 'MATRIZ', titulo: 'Domínio por fase', nota })
+export function cardMatriz({ fases = [], nota = '', t = (s) => s } = {}) {
+  const { tela, y, limite } = moldura({ etiqueta: t('MATRIZ'), titulo: t('Domínio por trilha'), nota })
   const lista = (Array.isArray(fases) ? fases : []).slice(0, 5)
   if (!lista.length) {
     texto(tela, 'sem fases com termos ainda', { x: MARGEM, y: y + 20, escala: 3, cor: CORES.fg2 })
@@ -425,7 +426,7 @@ export function cardMatriz({ fases = [], nota = '' } = {}) {
 }
 
 /** cartão da tarefa sugerida: exercício, treino ou lição */
-export function cardSugestao({ tipo = 'pratica', titulo = '', subtitulo = '', tempoMin = null, nivel = null, nota = '' } = {}) {
+export function cardSugestao({ tipo = 'pratica', titulo = '', subtitulo = '', tempoMin = null, nivel = null, nota = '', t = (s) => s } = {}) {
   const rotuloTipo = { pratica: 'EXERCÍCIO', treino: 'TREINO ESPECIAL', curso: 'LIÇÃO', licao: 'LIÇÃO' }[tipo] || 'SUGESTÃO'
   const { tela, limite } = moldura({ etiqueta: rotuloTipo, nota })
   const tamIcone = 108
@@ -462,8 +463,8 @@ export function cardSugestao({ tipo = 'pratica', titulo = '', subtitulo = '', te
 }
 
 /** progresso de uma temporada (Treino Especial): etapa atual, total e % concluído */
-export function cardTreino({ titulo = '', etapaAtual = 0, totalEtapas = 0, pct = 0, nota = '' } = {}) {
-  const { tela, limite } = moldura({ etiqueta: 'TREINO ESPECIAL', titulo: String(titulo || 'Treino'), nota })
+export function cardTreino({ titulo = '', etapaAtual = 0, totalEtapas = 0, pct = 0, nota = '', t = (s) => s } = {}) {
+  const { tela, limite } = moldura({ etiqueta: t('TREINO ESPECIAL'), titulo: String(titulo || t('Treino')), nota })
   const p = Math.max(0, Math.min(100, Math.round(Number(pct) || 0)))
   const total = Math.max(0, Number(totalEtapas) || 0)
   const atual = Math.max(0, Math.min(total, Number(etapaAtual) || 0))

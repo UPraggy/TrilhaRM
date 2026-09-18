@@ -9,8 +9,10 @@ import { IcoCartas, IcoChama, IcoCheck, IcoCurso, IcoFaisca, IcoSeta, IcoTermina
 import IconeModulo from '../components/IconeModulo.jsx'
 import Coroas from '../components/Coroas.jsx'
 import { nomeAmbiente } from '../lib/util.js'
+import { useT } from '../i18n/index.jsx'
 
 function No({ no, moduloId }) {
+  const { t } = useT()
   const bloqueado = no.estado === 'bloqueado'
   const feito = no.estado === 'feito'
   const destino = no.tipo === 'chefao' ? `/treino/${no.treinoId}` : `/licao/${moduloId}/${no.n}`
@@ -24,28 +26,28 @@ function No({ no, moduloId }) {
           {feito ? <IcoCheck width={20} height={20} /> : no.tipo === 'chefao' ? <IcoChama width={20} height={20} /> : no.n}
         </span>
         <span className="nos__txt">
-          <b>{no.tipo === 'chefao' ? `Chefão · ${no.titulo}` : no.titulo}</b>
+          <b>{no.tipo === 'chefao' ? `${t('Chefão')} · ${no.titulo}` : `${t('Lição')} ${no.n}`}</b>
           <span className="dim small">
             {no.tipo === 'chefao'
-              ? `${no.totalItens} etapas — o Treino Especial deste módulo`
+              ? `${no.totalItens} ${t('etapas — o Treino Especial deste módulo')}`
               : [
-                  no.termos.length ? `${no.termos.length} ${no.termos.length === 1 ? 'termo' : 'termos'}` : null,
-                  no.leituras.length ? `${no.leituras.length} leitura${no.leituras.length > 1 ? 's' : ''}` : null,
-                  no.exercicios.length ? `${no.exercicios.length} exercício${no.exercicios.length > 1 ? 's' : ''}` : null,
+                  no.termos.length ? `${no.termos.length} ${no.termos.length === 1 ? t('termo') : t('termos')}` : null,
+                  no.leituras.length ? `${no.leituras.length} ${no.leituras.length === 1 ? t('leitura') : t('leituras')}` : null,
+                  no.exercicios.length ? `${no.exercicios.length} ${no.exercicios.length === 1 ? t('exercício') : t('exercícios')}` : null,
                 ]
                   .filter(Boolean)
                   .join(' · ')}
           </span>
           {feito && (
             <span className="dim mono small">
-              {no.xp} XP{no.ultimoAcerto != null ? ` · ${Math.round(no.ultimoAcerto * 100)}% de acerto` : ''}
+              {no.xp} XP{no.ultimoAcerto != null ? ` · ${Math.round(no.ultimoAcerto * 100)}% ${t('de acerto')}` : ''}
               {no.vezes > 1 ? ` · ${no.vezes}×` : ''}
             </span>
           )}
         </span>
         {!bloqueado && (
           <span className="nos__ir">
-            {feito ? <span className="dim small">refazer</span> : <IcoSeta width={18} height={18} />}
+            {feito ? <span className="dim small">{t('refazer')}</span> : <IcoSeta width={18} height={18} />}
           </span>
         )}
       </Tag>
@@ -57,6 +59,7 @@ export default function Modulo() {
   const { id } = useParams()
   const navegar = useNavigate()
   const { mostrarAviso } = useStore()
+  const { t } = useT()
   const [modulo, setModulo] = useState(null)
   const [erro, setErro] = useState(null)
 
@@ -74,16 +77,16 @@ export default function Modulo() {
   }, [id])
 
   if (erro) return <Erro texto={erro} onRetry={() => navegar(0)} />
-  if (!modulo) return <Carregando texto="Abrindo o módulo…" />
+  if (!modulo) return <Carregando texto={t('Abrindo o módulo…')} />
 
   const p = modulo.progresso
   const c = modulo.conteudo
-  const proximo = modulo.nos.find((n) => n.estado === 'disponivel')
+  const proximo = modulo.nos.find((x) => x.estado === 'disponivel')
 
   return (
     <div className="page modulo" style={{ '--cor-modulo': modulo.trilha.cor }}>
       <p className="kicker">
-        <Link to={`/trilha/${modulo.trilha.id}`}>Trilha {modulo.trilha.numero} · {modulo.trilha.titulo}</Link>
+        <Link to={`/trilha/${modulo.trilha.id}`}>{t('Trilha')} {modulo.trilha.numero} · {modulo.trilha.titulo}</Link>
       </p>
 
       <header className="modulo__topo">
@@ -95,29 +98,29 @@ export default function Modulo() {
           <p className="lead">{modulo.resumo}</p>
           <div className="modulo__meta">
             <Coroas n={p.coroas} />
-            <span className="dim mono small">nível médio {p.nivelMedio.toFixed(1)} · {p.vistos}/{p.total} termos vistos</span>
+            <span className="dim mono small">{t('nível médio')} {p.nivelMedio.toFixed(1)} · {p.vistos}/{p.total} {t('termos vistos')}</span>
           </div>
         </div>
       </header>
 
       {modulo.emProducao ? (
-        <Vazio titulo="Este módulo ainda não tem conteúdo">
-          O deck <code>{modulo.deckId}</code> está declarado em <code>content/estrutura.json</code> mas o arquivo
-          não existe. Gere com o prompt de <code>content/PROMPT-MASTER.md</code> e solte em{' '}
-          <code>content/decks/</code> — sem build e sem restart.
+        <Vazio titulo={t('Este módulo ainda não tem conteúdo')}>
+          <code>{modulo.deckId}</code> {t('está declarado em')} <code>content/estrutura.json</code>{' '}
+          {t('mas o arquivo não existe. Gere com o prompt de')} <code>content/PROMPT-MASTER.md</code>{' '}
+          {t('e solte em')} <code>content/decks/</code> {t('— sem build e sem restart.')}
         </Vazio>
       ) : (
         <>
           <div className="modulo__barras">
             <div>
-              <span className="dim small">Lições</span>
+              <span className="dim small">{t('Lições')}</span>
               <div className="progress">
                 <span style={{ width: `${p.pct}%` }} />
               </div>
               <span className="dim mono small">{p.nosFeitos}/{p.nosTotal}</span>
             </div>
             <div>
-              <span className="dim small">Exercícios</span>
+              <span className="dim small">{t('Exercícios')}</span>
               <div className="progress">
                 <span style={{ width: `${c.exercicios ? Math.round((p.exerciciosFeitos / c.exercicios) * 100) : 0}%` }} />
               </div>
@@ -127,10 +130,10 @@ export default function Modulo() {
 
           {(p.vencidos > 0 || p.novos > 0) && (
             <p className="dim small modulo__fila">
-              {p.vencidos > 0 && <><b>{p.vencidos}</b> {p.vencidos === 1 ? 'termo vencido' : 'termos vencidos'}</>}
+              {p.vencidos > 0 && <><b>{p.vencidos}</b> {p.vencidos === 1 ? t('termo vencido') : t('termos vencidos')}</>}
               {p.vencidos > 0 && p.novos > 0 && ' · '}
-              {p.novos > 0 && <><b>{p.novos}</b> {p.novos === 1 ? 'termo novo' : 'termos novos'}</>}
-              {' '}— a lição já começa pelos vencidos.
+              {p.novos > 0 && <><b>{p.novos}</b> {p.novos === 1 ? t('termo novo') : t('termos novos')}</>}
+              {' '}{t('— a lição já começa pelos vencidos.')}
             </p>
           )}
 
@@ -139,54 +142,54 @@ export default function Modulo() {
               to={proximo.tipo === 'chefao' ? `/treino/${proximo.treinoId}` : `/licao/${modulo.id}/${proximo.n}`}
               className="btn btn--primary btn--block"
             >
-              {p.nosFeitos === 0 ? 'Começar a primeira lição' : `Continuar — ${proximo.titulo}`}
+              {p.nosFeitos === 0 ? t('Começar a primeira lição') : `${t('Continuar —')} ${proximo.titulo}`}
               <IcoSeta width={18} height={18} />
             </Link>
           )}
 
-          <h2 className="secao">Lições deste módulo</h2>
+          <h2 className="secao">{t('Lições deste módulo')}</h2>
           <ol className="nos">
             {modulo.nos.map((n) => (
               <No key={n.id} no={n} moduloId={modulo.id} />
             ))}
           </ol>
 
-          <h2 className="secao">Tudo deste tema</h2>
+          <h2 className="secao">{t('Tudo deste tema')}</h2>
           <div className="modulo__tudo">
             <Link to={`/deck/${modulo.deckId}`} className="card card--link">
               <IcoCartas />
-              <b>Vocabulário</b>
-              <span className="dim small">{c.termos} termos — estudar solto, no modo que quiser</span>
+              <b>{t('Vocabulário')}</b>
+              <span className="dim small">{c.termos} {t('termos — estudar solto, no modo que quiser')}</span>
             </Link>
             {c.cursosIds.map((cid) => (
               <Link key={cid} to={`/curso/${cid}`} className="card card--link">
                 <IcoCurso />
-                <b>Curso</b>
-                <span className="dim small">{c.leituras} lições em Markdown</span>
+                <b>{t('Curso')}</b>
+                <span className="dim small">{c.leituras} {t('lições em Markdown')}</span>
               </Link>
             ))}
             <Link to="/praticas" className="card card--link" onClick={() => mostrarAviso(`Filtre por ${modulo.titulo}`)}>
               <IcoTerminal />
-              <b>Laboratório</b>
-              <span className="dim small">{c.exercicios} exercícios fora do app</span>
+              <b>{t('Laboratório')}</b>
+              <span className="dim small">{c.exercicios} {t('exercícios fora do app')}</span>
             </Link>
             {c.chefao && (
               <Link to={`/treino/${c.chefao.treinoId}`} className="card card--link">
                 <IcoChama />
-                <b>Chefão</b>
-                <span className="dim small">{c.chefao.titulo} — {c.chefao.etapas} etapas</span>
+                <b>{t('Chefão')}</b>
+                <span className="dim small">{c.chefao.titulo} — {c.chefao.etapas} {t('etapas')}</span>
               </Link>
             )}
             <Link to={`/entrevista/${modulo.id}`} className="card card--link">
               <IcoFaisca />
-              <b>Entrevista simulada</b>
-              <span className="dim small">3 a 5 rodadas; o mentor pergunta em cima da sua resposta</span>
+              <b>{t('Entrevista simulada')}</b>
+              <span className="dim small">{t('3 a 5 rodadas; o mentor pergunta em cima da sua resposta')}</span>
             </Link>
           </div>
 
           {c.exercicios > 0 && (
             <>
-              <h2 className="secao">Exercícios (ambientes)</h2>
+              <h2 className="secao">{t('Exercícios (ambientes)')}</h2>
               <p className="dim small">
                 {[...new Set(modulo.nos.flatMap((n) => n.exercicios.map((e) => e.ambiente)))].map(nomeAmbiente).join(' · ')}
               </p>

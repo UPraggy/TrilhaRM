@@ -4,20 +4,22 @@ import Logo from './Logo.jsx'
 import { IcoBusca, IcoChama } from './Icones.jsx'
 import { PRINCIPAL, ehImersiva } from '../nav.js'
 import { useStore } from '../store.jsx'
+import { useT } from '../i18n/index.jsx'
 
 export function Streak() {
   const { progresso } = useStore()
+  const { t } = useT()
   const s = progresso.streak || {}
   const on = (s.atual || 0) > 0
   const falta = Math.max(0, (s.minimoDia || 10) - (s.avaliacoesHoje || 0))
   const titulo = s.hojeContou
-    ? `Hoje já contou. Melhor sequência: ${s.melhor || 0} dias.`
-    : `Faltam ${falta} avaliações hoje para manter a ofensiva. Melhor: ${s.melhor || 0} dias.`
+    ? t('Hoje já contou. Melhor sequência: {n} dias.', { n: s.melhor || 0 })
+    : t('Faltam {f} avaliações hoje para manter a ofensiva. Melhor: {n} dias.', { f: falta, n: s.melhor || 0 })
   return (
-    <Link to="/perfil" className={`streak ${on ? 'on' : ''}`} title={titulo} aria-label={`Ofensiva: ${s.atual || 0} dias. ${titulo}`}>
+    <Link to="/perfil" className={`streak ${on ? 'on' : ''}`} title={titulo} aria-label={`${t('Ofensiva')}: ${s.atual || 0}. ${titulo}`}>
       <IcoChama />
       <b>{s.atual || 0}</b>
-      <span className="dim">{s.atual === 1 ? 'dia' : 'dias'}</span>
+      <span className="dim">{s.atual === 1 ? t('dia') : t('dias')}</span>
       {!s.hojeContou && <span className="dim mono small">· {s.avaliacoesHoje || 0}/{s.minimoDia || 10}</span>}
     </Link>
   )
@@ -25,6 +27,7 @@ export function Streak() {
 
 export default function Layout() {
   const { aviso } = useStore()
+  const { t } = useT()
   const { pathname } = useLocation()
   const imersiva = ehImersiva(pathname)
 
@@ -59,7 +62,7 @@ export default function Layout() {
   return (
     <>
       <a className="pular" href="#conteudo">
-        Pular para o conteúdo
+        {t('Pular para o conteúdo')}
       </a>
       <header className="header">
         <div className="header__in">
@@ -69,15 +72,15 @@ export default function Layout() {
               Trilha <span>RM</span>
             </span>
           </Link>
-          <nav className="header__nav" aria-label="Principal">
+          <nav className="header__nav" aria-label={t('Principal')}>
             {PRINCIPAL.map(({ to, rotulo, end }) => (
               <NavLink key={to} to={to} end={end} className="navlink">
-                {rotulo}
+                {t(rotulo)}
               </NavLink>
             ))}
           </nav>
           <div className="header__spacer" />
-          <NavLink to="/glossario" className="iconbtn so-compacto" aria-label="Glossário: buscar um termo">
+          <NavLink to="/glossario" className="iconbtn so-compacto" aria-label={t('Glossário: buscar um termo')}>
             <IcoBusca />
           </NavLink>
           <Streak />
@@ -92,14 +95,14 @@ export default function Layout() {
         <div>
           <b>Trilha RM · Rafael MR</b>
         </div>
-        <div>Construo o ambiente inteiro — código, servidor, rede e tudo entre os dois.</div>
+        <div>{t('Construo o ambiente inteiro — código, servidor, rede e tudo entre os dois.')}</div>
       </footer>
 
-      <nav className="bottomnav bottomnav--4" aria-label="Principal (celular)">
+      <nav className="bottomnav bottomnav--4" aria-label={t('Principal (celular)')}>
         {PRINCIPAL.map(({ to, rotulo, Ico, end }) => (
           <NavLink key={to} to={to} end={end}>
             <Ico />
-            <span>{rotulo}</span>
+            <span>{t(rotulo)}</span>
           </NavLink>
         ))}
       </nav>

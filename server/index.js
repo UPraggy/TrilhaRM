@@ -597,10 +597,11 @@ api.get('/config', (_req, res) => {
   res.json(mentor.obterConfig())
 })
 
-// body { openrouterKey?, modelo?, idiomaFeedback? } - key vazia/omitida mantém; "__apagar__" remove
+// body { openrouterKey?, modelo?, idiomaFeedback?, idioma? } - key vazia/omitida mantém; "__apagar__" remove
+// `idioma` é a língua da INTERFACE e vale também para o bot e os cards (ver server/i18n.js)
 api.put('/config', (req, res) => {
-  const { openrouterKey, modelo, idiomaFeedback } = req.body || {}
-  const r = mentor.salvarConfig({ openrouterKey, modelo, idiomaFeedback })
+  const { openrouterKey, modelo, idiomaFeedback, idioma } = req.body || {}
+  const r = mentor.salvarConfig({ openrouterKey, modelo, idiomaFeedback, idioma })
   if (!r.ok) return res.status(400).json({ erro: r.erro })
   res.json({ ok: true, config: mentor.obterConfig() })
 })

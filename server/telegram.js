@@ -25,6 +25,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { cardHoje, cardLink, cardMatriz, cardOfensiva, cardSugestao, cardTreino } from './cards.js'
 import { hojeISO, vencido } from './sm2.js'
+import { criarI18n } from './i18n.js'
 
 export const API_TELEGRAM = 'https://api.telegram.org'
 const POLL_TIMEOUT_S = 50 // long polling: o Telegram segura a resposta até 50s
@@ -139,6 +140,10 @@ export function criarTelegram({
   agora = () => new Date(),
   log = (...a) => console.log('[telegram]', ...a),
 } = {}) {
+  // O bot e os cards falam a língua escolhida na interface. O tradutor LÊ o config a cada chamada
+  // (server/i18n.js) porque o bot fica ligado por dias: trocar o idioma na tela precisa valer na
+  // próxima mensagem, sem restart do PM2.
+  const i18n = criarI18n(arquivoConfig)
   const dirConfig = path.dirname(arquivoConfig)
   const dirEstado = path.dirname(arquivoEstado)
   let filaEscrita = Promise.resolve()
@@ -726,14 +731,14 @@ export function criarTelegram({
     const u = urlDoTunel()
     const alvo = u || '' // sem túnel o card mostra o painel "sem QR": QR de 127.0.0.1 no celular não abre nada
     if (cacheCardLink.png && cacheCardLink.url === alvo) return cacheCardLink.png
-    const png = cardLink(alvo, { nota: u ? 'túnel do cloudflared' : `LAN: 127.0.0.1:${porta}` })
+    const png = cardLink(alvo, { t: i18n.t, nota: u ? 'túnel do cloudflared' : `LAN: 127.0.0.1:${porta}` })
     cacheCardLink = { url: alvo, png }
     return png
   }
 
   function pngHoje(pan) {
     const s = pan.streak || {}
-    return cardHoje({
+    return cardHoje({ t: i18n.t,
       vencidos: pan.vencidos,
       novos: pan.novos,
       avaliacoesHoje: s.avaliacoesHoje || 0,
@@ -745,11 +750,11 @@ export function criarTelegram({
 
   function pngOfensiva(pan) {
     const s = pan.streak || {}
-    return cardOfensiva({ atual: s.atual || 0, melhor: s.melhor || 0, ultimos28: ultimos28(pan), minimoDia: s.minimoDia || 10 })
+    return cardOfensiva({ t: i18n.t, atual: s.atual || 0, melhor: s.melhor || 0, ultimos28: ultimos28(pan), minimoDia: s.minimoDia || 10 })
   }
 
   function pngMatriz(pan) {
-    return cardMatriz({
+    return cardMatriz({ t: i18n.t,
       fases: fasesDaMatriz(pan),
       nota: `nível médio ${pan.nivelMedio.toFixed(2)} · ${pan.pct3}% em nível ≥3`,
     })
@@ -757,7 +762,7 @@ export function criarTelegram({
 
   function pngSugestao(s) {
     if (!s) {
-      return cardSugestao({
+      return cardSugestao({ t: i18n.t,
         tipo: 'pratica',
         titulo: 'Tudo concluído por aqui',
         subtitulo: 'exercícios, treinos e lições em dia — bom momento para revisar',
@@ -766,7 +771,7 @@ export function criarTelegram({
     }
     const d = s.dados
     if (s.tipo === 'pratica') {
-      return cardSugestao({
+      return cardSugestao({ t: i18n.t,
         tipo: 'pratica',
         titulo: d.titulo,
         subtitulo: `${d.deckTitulo} · ambiente: ${d.ambiente}`,
@@ -777,7 +782,7 @@ export function criarTelegram({
     }
     if (s.tipo === 'treino') {
       const dur = d.duracaoDias ? `${d.duracaoDias} dias` : `${d.tempoTotalMin} min`
-      return cardSugestao({
+      return cardSugestao({ t: i18n.t,
         tipo: 'treino',
         titulo: d.titulo,
         subtitulo: `${dur} · ${d.concluidas}/${d.total} etapas concluídas`,
@@ -785,7 +790,7 @@ export function criarTelegram({
         nota: d.estado === 'andamento' ? 'temporada em andamento' : 'temporada nova',
       })
     }
-    return cardSugestao({
+    return cardSugestao({ t: i18n.t,
       tipo: 'curso',
       titulo: d.licaoTitulo,
       subtitulo: `${d.cursoTitulo} · ${d.feitas}/${d.total} lições`,
@@ -798,7 +803,7 @@ export function criarTelegram({
     const t = sugerirTreino(pan)
     if (!t) return pngSugestao(null)
     if (t.estado === 'andamento' || t.concluidas > 0) {
-      return cardTreino({
+      return cardTreino({ t: i18n.t,
         titulo: t.titulo,
         etapaAtual: t.concluidas,
         totalEtapas: t.total,

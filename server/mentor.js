@@ -111,7 +111,8 @@ export function certificadoDoAntivirus() {
 }
 
 function configVazia() {
-  return { openrouterKey: '', modelo: MODELO_PADRAO, idiomaFeedback: 'pt' }
+  // `idioma` é a LÍNGUA DA INTERFACE (site, bot e cards). `idiomaFeedback` é só a do mentor.
+  return { openrouterKey: '', modelo: MODELO_PADRAO, idiomaFeedback: 'pt', idioma: 'pt' }
 }
 
 export function mascararKey(key) {
@@ -270,6 +271,7 @@ export function criarMentor({ arquivoConfig, repo, progresso }) {
       modelo: c.modelo,
       modeloPadrao: MODELO_PADRAO,
       idiomaFeedback: c.idiomaFeedback,
+      idioma: c.idioma || 'pt',
     }
   }
 
@@ -294,6 +296,11 @@ export function criarMentor({ arquivoConfig, repo, progresso }) {
       const l = String(patch.idiomaFeedback).trim().toLowerCase()
       if (l !== 'pt' && l !== 'en') return { ok: false, erro: 'idiomaFeedback deve ser pt ou en' }
       c.idiomaFeedback = l
+    }
+    if (patch.idioma !== undefined && patch.idioma !== null) {
+      const l = String(patch.idioma).trim().toLowerCase()
+      if (l !== 'pt' && l !== 'en') return { ok: false, erro: 'idioma deve ser pt ou en' }
+      c.idioma = l
     }
     salvar()
     return { ok: true }
