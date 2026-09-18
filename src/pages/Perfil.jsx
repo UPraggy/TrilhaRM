@@ -16,8 +16,8 @@ export default function Perfil() {
 
   const nivel3 = Object.values(resumo.porDeck).reduce((a, d) => a + d.n3, 0)
   const pctNivel3 = resumo.total ? Math.round((nivel3 / resumo.total) * 100) : 0
-  const nosFeitos = estrutura ? estrutura.trilhas.reduce((a, t) => a + t.progresso.nosFeitos, 0) : 0
-  const nosTotal = estrutura ? estrutura.trilhas.reduce((a, t) => a + t.progresso.nosTotal, 0) : 0
+  const nosFeitos = estrutura ? estrutura.trilhas.reduce((a, tr) => a + tr.progresso.nosFeitos, 0) : 0
+  const nosTotal = estrutura ? estrutura.trilhas.reduce((a, tr) => a + tr.progresso.nosTotal, 0) : 0
 
   return (
     <div className="page perfil">

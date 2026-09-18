@@ -145,3 +145,31 @@ describe('i18n do servidor (bot e cards)', () => {
     assert.deepEqual(vazias, [])
   })
 })
+
+describe('i18n — a armadilha do sombreamento', () => {
+  /**
+   * `t` é a convenção de i18n e também o nome que todo mundo dá ao item numa lambda
+   * (`termos.map((t) => …)`). Quando as duas coisas se encontram no mesmo arquivo, o `t` de dentro
+   * sombreia a função de tradução — e o erro só aparece em tempo de execução, numa tela específica.
+   * Aconteceu de verdade em Biblioteca.jsx durante a V2; este teste existe para não acontecer de novo.
+   */
+  test('nenhum arquivo que usa useT() declara uma lambda com o parâmetro `t`', () => {
+    const suspeitos = []
+    for (const arq of arquivosDoFront()) {
+      const src = fs.readFileSync(arq, 'utf8')
+      if (!src.includes('useT()')) continue
+      const linhas = src.split('\n')
+      linhas.forEach((linha, i) => {
+        // (t) => …   |   (a, t) => …   |   (t, i) => …
+        if (/\((?:[\w$]+,\s*)*\bt\b(?:,\s*[\w$]+)*\)\s*=>/.test(linha) && !linha.includes('const { t }')) {
+          suspeitos.push(`${path.relative(RAIZ, arq)}:${i + 1}  ${linha.trim().slice(0, 90)}`)
+        }
+      })
+    }
+    assert.deepEqual(
+      suspeitos,
+      [],
+      'lambda com parâmetro `t` num arquivo que traduz — renomeie o parâmetro (tr, termo, x):\n  ' + suspeitos.join('\n  '),
+    )
+  })
+})

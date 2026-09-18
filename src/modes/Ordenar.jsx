@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Bloco, Contexto } from '../components/Comuns.jsx'
 import { embaralhar } from '../lib/util.js'
+import { useT } from '../i18n/index.jsx'
 
 export const NOTA_ORDENAR = { tudo: 4, maioria: 3, pouco: 1 }
 
@@ -12,6 +13,7 @@ export const NOTA_ORDENAR = { tudo: 4, maioria: 3, pouco: 1 }
  * Toque em vez de arrastar: arrastar a 360 px é impreciso e o alvo de toque fica menor que 44 px.
  */
 export default function Ordenar({ item, sequencia, onConcluir }) {
+  const { t } = useT()
   const embaralhada = useMemo(() => embaralhar(sequencia.map((texto, i) => ({ texto, i }))), [sequencia])
   const [montada, setMontada] = useState([])
   const [conferido, setConferido] = useState(false)
@@ -27,9 +29,9 @@ export default function Ordenar({ item, sequencia, onConcluir }) {
 
   return (
     <div>
-      <Contexto termo={item} extra={<span className="chip">ordenar</span>} />
+      <Contexto termo={item} extra={<span className="chip">{t('ordenar')}</span>} />
       <div className="card">
-        <div className="eyebrow">Coloque na ordem certa — {item.termo}</div>
+        <div className="eyebrow">{t('Coloque na ordem certa —')} {item.termo}</div>
 
         <ol className="ordenar__montada">
           {montada.map((p, pos) => (
@@ -37,13 +39,13 @@ export default function Ordenar({ item, sequencia, onConcluir }) {
               <span className="ordenar__n">{pos + 1}</span>
               <span>{p.texto}</span>
               {!conferido && (
-                <button className="btn btn--sm btn--ghost" onClick={() => setMontada(montada.filter((x) => x.i !== p.i))} aria-label={`Tirar "${p.texto}" da ordem`}>
+                <button className="btn btn--sm btn--ghost" onClick={() => setMontada(montada.filter((x) => x.i !== p.i))} aria-label={`${t('Tirar da ordem')}: ${p.texto}`}>
                   ×
                 </button>
               )}
             </li>
           ))}
-          {!montada.length && <li className="dim ordenar__vazia">Toque nos passos abaixo, na ordem.</li>}
+          {!montada.length && <li className="dim ordenar__vazia">{t('Toque nos passos abaixo, na ordem.')}</li>}
         </ol>
 
         {!conferido && (
@@ -59,7 +61,7 @@ export default function Ordenar({ item, sequencia, onConcluir }) {
         {!conferido && montada.length === sequencia.length && (
           <div className="acoes">
             <button className="btn btn--primary btn--block" onClick={() => setConferido(true)} autoFocus>
-              Conferir
+              {t('Conferir')}
             </button>
           </div>
         )}
@@ -68,19 +70,19 @@ export default function Ordenar({ item, sequencia, onConcluir }) {
           <>
             <div className={`feedback ${acertos === sequencia.length ? 'ok' : 'bad'}`}>
               {acertos === sequencia.length ? (
-                <><b className="green">Ordem certa.</b> Nota {NOTA_ORDENAR.tudo}.</>
+                <><b className="green">{t('Ordem certa.')}</b> {t('Nota')} {NOTA_ORDENAR.tudo}.</>
               ) : (
-                <><b className="rose">{acertos} de {sequencia.length} na posição certa.</b> Nota {nota}.</>
+                <><b className="rose">{acertos} {t('de')} {sequencia.length} {t('na posição certa.')}</b> {t('Nota')} {nota}.</>
               )}
             </div>
             {acertos < sequencia.length && (
-              <Bloco label="A ordem certa">
+              <Bloco label={t('A ordem certa')}>
                 {sequencia.map((s, i) => `${i + 1}. ${s}`).join('\n')}
               </Bloco>
             )}
             <div className="acoes">
               <button className="btn btn--primary btn--block" onClick={() => onConcluir([{ item, nota }])} autoFocus>
-                Continuar
+                {t('Continuar')}
               </button>
             </div>
           </>

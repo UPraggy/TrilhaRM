@@ -316,7 +316,7 @@
   "Aconteceu isto em produção": "This happened in production",
   "Qual conceito explica o que você está vendo?": "Which concept explains what you are seeing?",
   "Isso.": "That's it.",
-  "Diagnóstico certo — nota": "Correct diagnosis — score",
+  "Diagnóstico certo — nota": "Right diagnosis — score",
   "Não era.": "Not that one.",
   "O conceito é": "The concept is",
   "Por quê": "Why",
@@ -396,5 +396,10 @@
     "O que eu achei · o que era · como detectar",
     "Trilha → Módulo → Lição, e onde está cada coisa",
     "Mentor IA, bot do Telegram, idioma, reset"
-  ]
+  ],
+  "e": "and",
+  "nenhum": "none",
+  "Começa com": "Starts with",
+  "Tirar da ordem": "Remove from the order",
+  "A lista dos termos só aparece depois. Ver antes vira reconhecimento, não recall.": "The list of terms only appears afterwards. Seeing it first turns this into recognition, not recall."
 }

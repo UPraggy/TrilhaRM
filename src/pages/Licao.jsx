@@ -21,25 +21,27 @@ import Ordenar from '../modes/Ordenar.jsx'
 import Conexoes from '../modes/Conexoes.jsx'
 import Confundiveis from '../modes/Confundiveis.jsx'
 import RecallLivre from '../modes/RecallLivre.jsx'
+import { useT } from '../i18n/index.jsx'
 
 /** um bloco de leitura do curso, dentro da sessão */
 function Leitura({ item, onConcluir }) {
+  const { t } = useT()
   return (
     <div>
       <div className="recall__topo">
-        <span className="chip">leitura · {item.cursoTitulo}</span>
-        {item.concluida && <span className="dim small">já lida</span>}
+        <span className="chip">{t('leitura')} · {item.cursoTitulo}</span>
+        {item.concluida && <span className="dim small">{t('já lida')}</span>}
       </div>
       <div className="card leitura">
         <h2 className="leitura__titulo">{item.titulo}</h2>
         <Blocos blocos={item.blocos} />
         <div className="acoes">
           <button className="btn btn--primary btn--block" onClick={() => onConcluir([{ tipo: 'leitura', ok: true }])} autoFocus>
-            Li — continuar
+            {t('Li — continuar')}
           </button>
         </div>
         <p className="dim small">
-          O curso inteiro está em <Link to={`/curso/${item.cursoId}`}>{item.cursoTitulo}</Link>.
+          {t('O curso inteiro está em')} <Link to={`/curso/${item.cursoId}`}>{item.cursoTitulo}</Link>.
         </p>
       </div>
     </div>
@@ -48,32 +50,32 @@ function Leitura({ item, onConcluir }) {
 
 /** a missão: o exercício que se faz FORA do app. A lição propõe; a entrega acontece no laboratório. */
 function Missao({ item, onConcluir }) {
+  const { t } = useT()
   return (
     <div>
       <div className="recall__topo">
-        <span className="chip chip--amber">missão · fora do app</span>
+        <span className="chip chip--amber">{t('missão · fora do app')}</span>
         <span className="dim small mono">~{item.tempoMin} min · {nomeAmbiente(item.ambiente)}</span>
       </div>
       <div className="card">
-        <div className="eyebrow">Para fazer no terminal, não aqui</div>
+        <div className="eyebrow">{t('Para fazer no terminal, não aqui')}</div>
         <h2 className="leitura__titulo">{item.titulo}</h2>
         {item.concluida ? (
           <div className="feedback ok">
-            <b className="green">Você já entregou esta.</b> Nota {item.nota}. Dá para reabrir e tentar de novo no laboratório.
+            <b className="green">{t('Você já entregou esta.')}</b> {t('Nota')} {item.nota}. {t('Dá para reabrir e tentar de novo no laboratório.')}
           </div>
         ) : (
           <p className="dim small">
-            Exercícios levam de 20 a 50 minutos — por isso eles não entram no meio da sessão. Abra agora
-            se tiver tempo, ou marque para depois e siga a lição.
+            {t('Exercícios levam de 20 a 50 minutos — por isso eles não entram no meio da sessão. Abra agora se tiver tempo, ou marque para depois e siga a lição.')}
           </p>
         )}
         <div className="acoes acoes--col">
           <Link to={`/pratica/${item.deckId}/${item.exId}`} className="btn btn--primary btn--block">
-            Abrir o exercício
+            {t('Abrir o exercício')}
             <IcoSeta width={18} height={18} />
           </Link>
           <button className="btn btn--ghost btn--block" onClick={() => onConcluir([{ tipo: 'missao', ok: item.concluida, nota: item.concluida ? item.nota : undefined }])}>
-            {item.concluida ? 'Continuar' : 'Deixar para depois — continuar a lição'}
+            {item.concluida ? t('Continuar') : t('Deixar para depois — continuar a lição')}
           </button>
         </div>
       </div>
@@ -85,6 +87,7 @@ export default function Licao() {
   const { moduloId, n } = useParams()
   const navegar = useNavigate()
   const { termos, avaliar, recarregarEstrutura, mostrarAviso } = useStore()
+  const { t } = useT()
 
   const [licao, setLicao] = useState(null)
   const [erro, setErro] = useState(null)
@@ -110,7 +113,7 @@ export default function Licao() {
     }
   }, [moduloId, n])
 
-  const pool = useMemo(() => (licao ? termos.filter((t) => t.deckId === licao.modulo.deckId) : []), [licao, termos])
+  const pool = useMemo(() => (licao ? termos.filter((x) => x.deckId === licao.modulo.deckId) : []), [licao, termos])
   const item = licao ? licao.itens[i] : null
   const total = licao ? licao.itens.length : 0
 
@@ -123,7 +126,7 @@ export default function Licao() {
         navegar(`/resultado/${moduloId}/${n}`, { state: { resultado: r, modulo: licao.modulo } })
       } catch (e) {
         setFechando(false)
-        mostrarAviso(`Não fechou a lição: ${e.message}`, 4000)
+        mostrarAviso(`${t('Não fechou a lição:')} ${e.message}`, 4000)
       }
     },
     [moduloId, n, navegar, recarregarEstrutura, licao, mostrarAviso],
@@ -164,7 +167,7 @@ export default function Licao() {
   }, [saindo])
 
   if (erro) return <Erro texto={erro} onRetry={() => navegar(0)} />
-  if (!licao) return <Carregando texto="Montando a lição…" />
+  if (!licao) return <Carregando texto={t('Montando a lição…')} />
 
   const pct = total ? Math.round((i / total) * 100) : 0
 
@@ -173,13 +176,13 @@ export default function Licao() {
     if (item.tipo === 'missao') return <Missao item={item} onConcluir={concluirItem} />
     if (item.tipo === 'recall') return <RecallLivre termos={item.termos} onConcluir={concluirItem} />
 
-    const termo = pool.find((t) => t.id === item.termoId)
+    const termo = pool.find((x) => x.id === item.termoId)
     if (!termo) {
       return (
         <div className="card">
-          <p className="dim">Termo não encontrado neste módulo.</p>
+          <p className="dim">{t('Termo não encontrado neste módulo.')}</p>
           <button className="btn btn--primary btn--block" onClick={() => concluirItem([{ ok: false }])}>
-            Pular
+            {t('Pular')}
           </button>
         </div>
       )
@@ -214,11 +217,11 @@ export default function Licao() {
   return (
     <div className="licao">
       <header className="licao__topo">
-        <button className="iconbtn" onClick={() => setSaindo(true)} aria-label="Sair da lição">
+        <button className="iconbtn" onClick={() => setSaindo(true)} aria-label={t('Sair da lição')}>
           <IcoX />
         </button>
         <div className="licao__progresso">
-          <div className="progress" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100} aria-label={`Item ${i + 1} de ${total}`}>
+          <div className="progress" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100} aria-label={`${t('Item')} ${i + 1} ${t('de')} ${total}`}>
             <span style={{ width: `${pct}%` }} />
           </div>
         </div>
@@ -229,20 +232,20 @@ export default function Licao() {
 
       <p className="licao__kicker dim small">
         {licao.modulo.titulo} · {licao.no.titulo}
-        {item && item.tipo === 'termo' && item.vencido && <span className="chip chip--amber chip--xs" style={{ marginLeft: 8 }}>revisão</span>}
+        {item && item.tipo === 'termo' && item.vencido && <span className="chip chip--amber chip--xs" style={{ marginLeft: 8 }}>{t('revisão')}</span>}
       </p>
 
-      <div className="licao__palco">{fechando ? <Carregando texto="Fechando a lição…" cartoes={1} /> : renderItem()}</div>
+      <div className="licao__palco">{fechando ? <Carregando texto={t('Fechando a lição…')} cartoes={1} /> : renderItem()}</div>
 
       {saindo && (
         <Confirmar
-          titulo="Sair da lição?"
+          titulo={t('Sair da lição?')}
           texto={
             respostas.length
-              ? `Você respondeu ${respostas.length} de ${total}. As avaliações dos termos já foram gravadas, mas o nó não fecha e você não ganha o XP.`
-              : 'Nada foi respondido ainda.'
+              ? `${t('Você respondeu')} ${respostas.length} ${t('de')} ${total}. ${t('As avaliações dos termos já foram gravadas, mas o nó não fecha e você não ganha o XP.')}`
+              : t('Nada foi respondido ainda.')
           }
-          confirmar="Sair"
+          confirmar={t('Sair')}
           perigo
           onSim={() => navegar(`/modulo/${moduloId}`)}
           onNao={() => setSaindo(false)}

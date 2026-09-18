@@ -6,11 +6,13 @@ import { api } from '../api.js'
 import { useStore } from '../store.jsx'
 import { Carregando, Confirmar, Vazio } from '../components/Comuns.jsx'
 import { fmtDataCurta } from '../lib/util.js'
+import { useT } from '../i18n/index.jsx'
 
 const VAZIA = { titulo: '', achei: '', era: '', detectar: '', moduloId: '' }
 
 export default function DiarioErros() {
   const { estrutura, mostrarAviso } = useStore()
+  const { t } = useT()
   const [lista, setLista] = useState(null)
   const [filtro, setFiltro] = useState('')
   const [nova, setNova] = useState(VAZIA)
@@ -18,7 +20,7 @@ export default function DiarioErros() {
   const [editando, setEditando] = useState(null)
   const [apagar, setApagar] = useState(null)
 
-  const modulos = useMemo(() => (estrutura ? estrutura.trilhas.flatMap((t) => t.modulos.map((m) => ({ id: m.id, titulo: m.titulo }))) : []), [estrutura])
+  const modulos = useMemo(() => (estrutura ? estrutura.trilhas.flatMap((tr) => tr.modulos.map((m) => ({ id: m.id, titulo: m.titulo }))) : []), [estrutura])
 
   const carregar = () =>
     api
@@ -37,9 +39,9 @@ export default function DiarioErros() {
       setNova(VAZIA)
       setAbrindo(false)
       await carregar()
-      mostrarAviso('Anotado.')
+      mostrarAviso(t('Anotado.'))
     } catch (err) {
-      mostrarAviso(`Não anotou: ${err.message}`, 4000)
+      mostrarAviso(`${t('Não anotou:')} ${err.message}`, 4000)
     }
   }
 
@@ -49,7 +51,7 @@ export default function DiarioErros() {
       setEditando(null)
       await carregar()
     } catch (err) {
-      mostrarAviso(`Não salvou: ${err.message}`, 4000)
+      mostrarAviso(`${t('Não salvou:')} ${err.message}`, 4000)
     }
   }
 
@@ -57,24 +59,24 @@ export default function DiarioErros() {
 
   return (
     <div className="page diario">
-      <p className="kicker"><Link to="/perfil">Perfil</Link></p>
-      <h1>Diário de erros</h1>
+      <p className="kicker"><Link to="/perfil">{t('Perfil')}</Link></p>
+      <h1>{t('Diário de erros')}</h1>
       <p className="lead">
-        Todo erro vira uma entrada de três campos: <b>o que eu achei</b>, <b>o que era</b> e{' '}
-        <b>como detectar da próxima</b>. O terceiro é o que muda alguma coisa — os dois primeiros só
-        descrevem o passado.
+        {t('Todo erro vira uma entrada de três campos:')} <b>{t('O que eu achei')}</b>, <b>{t('O que era')}</b>{' '}
+        {t('e')} <b>{t('Como detectar da próxima')}</b>.{' '}
+        {t('O terceiro é o que muda alguma coisa — os dois primeiros só descrevem o passado.')}
       </p>
 
       <div className="diario__acoes">
         <button className="btn btn--primary" onClick={() => setAbrindo((v) => !v)}>
-          {abrindo ? 'Cancelar' : 'Anotar um erro'}
+          {abrindo ? t('Cancelar') : t('Anotar um erro')}
         </button>
         <a className="btn btn--ghost" href="/api/diario.md" download="diario-de-erros.md">
-          Exportar em Markdown
+          {t('Exportar em Markdown')}
         </a>
         {modulos.length > 0 && (
-          <select className="select" value={filtro} onChange={(e) => setFiltro(e.target.value)} aria-label="Filtrar por módulo">
-            <option value="">todos os módulos</option>
+          <select className="select" value={filtro} onChange={(e) => setFiltro(e.target.value)} aria-label={t('Filtrar por módulo')}>
+            <option value="">{t('todos os módulos')}</option>
             {modulos.map((m) => (
               <option key={m.id} value={m.id}>
                 {m.titulo}
@@ -87,25 +89,25 @@ export default function DiarioErros() {
       {abrindo && (
         <form className="card diario__form" onSubmit={salvar}>
           <label>
-            <span className="eyebrow">Título (o conceito ou a situação)</span>
+            <span className="eyebrow">{t('Título (o conceito ou a situação)')}</span>
             <input className="input" value={nova.titulo} onChange={(e) => setNova({ ...nova, titulo: e.target.value })} placeholder="TIME_WAIT vs CLOSE_WAIT" autoFocus />
           </label>
           <label>
-            <span className="eyebrow">O que eu achei</span>
+            <span className="eyebrow">{t('O que eu achei')}</span>
             <textarea className="textarea" rows={2} value={nova.achei} onChange={(e) => setNova({ ...nova, achei: e.target.value })} placeholder="que os dois eram sintoma de vazamento" />
           </label>
           <label>
-            <span className="eyebrow">O que era</span>
+            <span className="eyebrow">{t('O que era')}</span>
             <textarea className="textarea" rows={2} value={nova.era} onChange={(e) => setNova({ ...nova, era: e.target.value })} placeholder="TIME_WAIT é de quem fecha primeiro e é normal; CLOSE_WAIT é falta de close() no meu código" />
           </label>
           <label>
-            <span className="eyebrow">Como detectar da próxima</span>
+            <span className="eyebrow">{t('Como detectar da próxima')}</span>
             <textarea className="textarea" rows={2} value={nova.detectar} onChange={(e) => setNova({ ...nova, detectar: e.target.value })} placeholder="`ss -s` e olhar QUAL estado cresce antes de mexer em sysctl" />
           </label>
           <label>
-            <span className="eyebrow">Módulo (opcional)</span>
+            <span className="eyebrow">{t('Módulo (opcional)')}</span>
             <select className="select" value={nova.moduloId} onChange={(e) => setNova({ ...nova, moduloId: e.target.value })}>
-              <option value="">— nenhum —</option>
+              <option value="">— {t('nenhum')} —</option>
               {modulos.map((m) => (
                 <option key={m.id} value={m.id}>
                   {m.titulo}
@@ -114,25 +116,25 @@ export default function DiarioErros() {
             </select>
           </label>
           <button className="btn btn--primary btn--block" type="submit">
-            Anotar
+            {t('Anotar')}
           </button>
         </form>
       )}
 
       {lista === null ? (
-        <Carregando texto="Abrindo o diário…" cartoes={2} />
+        <Carregando texto={t('Abrindo o diário…')} cartoes={2} />
       ) : !visiveis.length ? (
-        <Vazio titulo={filtro ? 'Nenhum erro anotado neste módulo' : 'O diário está vazio'}>
+        <Vazio titulo={filtro ? t('Nenhum erro anotado neste módulo') : t('O diário está vazio')}>
           {filtro
-            ? 'Troque o filtro ou anote o primeiro deste módulo.'
-            : 'Na próxima vez que errar numa lição, anote aqui. Em um mês isto vira o melhor roteiro de revisão que você tem — porque é feito só dos seus erros.'}
+            ? t('Troque o filtro ou anote o primeiro deste módulo.')
+            : t('Na próxima vez que errar numa lição, anote aqui. Em um mês isto vira o melhor roteiro de revisão que você tem — porque é feito só dos seus erros.')}
         </Vazio>
       ) : (
         <ul className="diario__lista">
           {visiveis.map((e) => (
             <li key={e.id} className="card diario__item">
               <div className="diario__cab">
-                <b>{e.titulo || e.termoId || 'sem título'}</b>
+                <b>{e.titulo || e.termoId || t('sem título')}</b>
                 <span className="dim mono small">{fmtDataCurta(e.dia)}</span>
               </div>
               {e.moduloId && (
@@ -144,15 +146,15 @@ export default function DiarioErros() {
                 <EditarEntrada entrada={e} onSalvar={(campos) => salvarEdicao(e.id, campos)} onCancelar={() => setEditando(null)} />
               ) : (
                 <>
-                  {e.achei && <p><span className="eyebrow">Eu achei</span> {e.achei}</p>}
-                  {e.era && <p><span className="eyebrow">Era</span> {e.era}</p>}
-                  {e.detectar && <p className="diario__detectar"><span className="eyebrow">Da próxima, detecto por</span> {e.detectar}</p>}
+                  {e.achei && <p><span className="eyebrow">{t('Eu achei')}</span> {e.achei}</p>}
+                  {e.era && <p><span className="eyebrow">{t('Era')}</span> {e.era}</p>}
+                  {e.detectar && <p className="diario__detectar"><span className="eyebrow">{t('Da próxima, detecto por')}</span> {e.detectar}</p>}
                   <div className="diario__botoes">
                     <button className="btn btn--sm btn--ghost" onClick={() => setEditando(e.id)}>
-                      editar
+                      {t('editar')}
                     </button>
                     <button className="btn btn--sm btn--ghost" onClick={() => setApagar(e)}>
-                      apagar
+                      {t('apagar')}
                     </button>
                   </div>
                 </>
@@ -164,9 +166,9 @@ export default function DiarioErros() {
 
       {apagar && (
         <Confirmar
-          titulo="Apagar esta entrada?"
-          texto={apagar.titulo || 'Esta entrada do diário'}
-          confirmar="Apagar"
+          titulo={t('Apagar esta entrada?')}
+          texto={apagar.titulo || t('Esta entrada do diário')}
+          confirmar={t('Apagar')}
           perigo
           onSim={async () => {
             await api.diarioRemover(apagar.id)

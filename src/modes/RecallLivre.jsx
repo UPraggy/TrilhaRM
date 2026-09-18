@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { useT } from '../i18n/index.jsx'
 
 const SEGUNDOS = 180
 
@@ -14,6 +15,7 @@ const SEGUNDOS = 180
  * percentual lembrado, que vira XP e aparece no resultado da lição.
  */
 export default function RecallLivre({ termos, onConcluir }) {
+  const { t } = useT()
   const [fase, setFase] = useState('escrevendo') // escrevendo | conferindo
   const [texto, setTexto] = useState('')
   const [restante, setRestante] = useState(SEGUNDOS)
@@ -23,17 +25,17 @@ export default function RecallLivre({ termos, onConcluir }) {
   useEffect(() => {
     if (fase !== 'escrevendo') return
     if (areaRef.current) areaRef.current.focus()
-    const t = setInterval(() => {
+    const tick = setInterval(() => {
       setRestante((s) => {
         if (s <= 1) {
-          clearInterval(t)
+          clearInterval(tick)
           setFase('conferindo')
           return 0
         }
         return s - 1
       })
     }, 1000)
-    return () => clearInterval(t)
+    return () => clearInterval(tick)
   }, [fase])
 
   const mm = String(Math.floor(restante / 60)).padStart(2, '0')
@@ -50,14 +52,13 @@ export default function RecallLivre({ termos, onConcluir }) {
     return (
       <div>
         <div className="recall__topo">
-          <span className="chip chip--amber">recall livre</span>
+          <span className="chip chip--amber">{t('recall livre')}</span>
           <span className={`recall__timer mono ${restante <= 30 ? 'quase' : ''}`}>{mm}:{ss}</span>
         </div>
         <div className="card">
-          <div className="eyebrow">Sem consultar nada</div>
+          <div className="eyebrow">{t('Sem consultar nada')}</div>
           <p className="pergunta">
-            Escreva tudo o que você lembra deste módulo: conceitos, o que cada um resolve, o trade-off,
-            um exemplo. Frases soltas servem — o que importa é puxar da memória.
+            {t('Escreva tudo o que você lembra deste módulo: conceitos, o que cada um resolve, o trade-off, um exemplo. Frases soltas servem — o que importa é puxar da memória.')}
           </p>
           <textarea
             ref={areaRef}
@@ -69,10 +70,10 @@ export default function RecallLivre({ termos, onConcluir }) {
           />
           <div className="acoes">
             <button className="btn btn--primary btn--block" onClick={() => setFase('conferindo')}>
-              Terminei — ver a lista
+              {t('Terminei — ver a lista')}
             </button>
           </div>
-          <p className="dim small">A lista dos termos só aparece depois. Ver antes vira reconhecimento, não recall.</p>
+          <p className="dim small">{t('A lista dos termos só aparece depois. Ver antes vira reconhecimento, não recall.')}</p>
         </div>
       </div>
     )
@@ -84,30 +85,30 @@ export default function RecallLivre({ termos, onConcluir }) {
   return (
     <div>
       <div className="recall__topo">
-        <span className="chip chip--amber">recall livre</span>
-        <span className="dim small">marque o que você escreveu</span>
+        <span className="chip chip--amber">{t('recall livre')}</span>
+        <span className="dim small">{t('marque o que você escreveu')}</span>
       </div>
       <div className="card">
-        <div className="eyebrow">Quais destes você lembrou?</div>
+        <div className="eyebrow">{t('Quais destes você lembrou?')}</div>
         <div className="conexoes__grade">
-          {termos.map((t) => (
-            <button key={t.id} className={`conexoes__op ${lembrados.has(t.id) ? 'on' : ''}`} onClick={() => alternar(t.id)} aria-pressed={lembrados.has(t.id)}>
-              {t.termo}
+          {termos.map((termo) => (
+            <button key={termo.id} className={`conexoes__op ${lembrados.has(termo.id) ? 'on' : ''}`} onClick={() => alternar(termo.id)} aria-pressed={lembrados.has(termo.id)}>
+              {termo.termo}
             </button>
           ))}
         </div>
         <div className="feedback">
-          <b>{lembrados.size}/{termos.length}</b> — {pct}% do módulo veio da memória.
+          <b>{lembrados.size}/{termos.length}</b> — {pct}% {t('do módulo veio da memória.')}
         </div>
         {texto.trim() && (
           <details className="recall__meu">
-            <summary className="dim small">o que eu escrevi</summary>
+            <summary className="dim small">{t('o que eu escrevi')}</summary>
             <pre className="pre">{texto}</pre>
           </details>
         )}
         <div className="acoes">
           <button className="btn btn--primary btn--block" onClick={() => onConcluir([{ tipo: 'recall', nota, pct, lembrados: [...lembrados] }])} autoFocus>
-            Continuar
+            {t('Continuar')}
           </button>
         </div>
       </div>

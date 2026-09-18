@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Bloco, Contexto } from '../components/Comuns.jsx'
 import { distratores } from '../lib/sessao.js'
 import { embaralhar } from '../lib/util.js'
+import { useT } from '../i18n/index.jsx'
 
 export const NOTA_CERTO = 4
 export const NOTA_ERRADO = 1
@@ -15,6 +16,7 @@ export const NOTA_ERRADO = 1
  * Acerto = 4 (diagnostico) · erro = 1.
  */
 export default function SintomaCausa({ item, pool, onConcluir }) {
+  const { t } = useT()
   const [escolha, setEscolha] = useState(null)
 
   const opcoes = useMemo(() => embaralhar([item, ...distratores(item, pool, 3)]), [item, pool])
@@ -40,12 +42,12 @@ export default function SintomaCausa({ item, pool, onConcluir }) {
 
   return (
     <div>
-      <Contexto termo={item} extra={<span className="chip chip--amber">sintoma → causa</span>} />
+      <Contexto termo={item} extra={<span className="chip chip--amber">{t('sintoma → causa')}</span>} />
       <div className="card">
-        <div className="eyebrow">Aconteceu isto em produção</div>
+        <div className="eyebrow">{t('Aconteceu isto em produção')}</div>
         <p className="pergunta sintoma">{item.exemplo}</p>
         <div className="eyebrow" style={{ marginTop: 14 }}>
-          Qual conceito explica o que você está vendo?
+          {t('Qual conceito explica o que você está vendo?')}
         </div>
         <div className="opcoes">
           {opcoes.map((o, i) => {
@@ -67,26 +69,26 @@ export default function SintomaCausa({ item, pool, onConcluir }) {
             <div className={`feedback ${acertou ? 'ok' : 'bad'}`}>
               {acertou ? (
                 <>
-                  <b className="green">Isso.</b> Diagnóstico certo — nota {NOTA_CERTO}.
+                  <b className="green">{t('Isso.')}</b> {t('Diagnóstico certo — nota')} {NOTA_CERTO}.
                 </>
               ) : (
                 <>
-                  <b className="rose">Não era.</b> O conceito é <b>{item.termo}</b>. Nota {NOTA_ERRADO}.
+                  <b className="rose">{t('Não era.')}</b> {t('O conceito é')} <b>{item.termo}</b>. {t('Nota')} {NOTA_ERRADO}.
                 </>
               )}
             </div>
-            <Bloco label="Por quê">{item.definicao}</Bloco>
-            {!acertou && <Bloco label="Profundidade">{item.profundidade}</Bloco>}
+            <Bloco label={t('Por quê')}>{item.definicao}</Bloco>
+            {!acertou && <Bloco label={t('Profundidade')}>{item.profundidade}</Bloco>}
             <div className="acoes">
               <button className="btn btn--primary btn--block" onClick={continuar} autoFocus>
-                Continuar
+                {t('Continuar')}
               </button>
             </div>
           </>
         )}
       </div>
       <div className="hint-kbd">
-        <span className="kbd">1</span>–<span className="kbd">4</span> escolhe · <span className="kbd">enter</span> continua
+        <span className="kbd">1</span>–<span className="kbd">4</span> {t('escolhe')} · <span className="kbd">enter</span> {t('continua')}
       </div>
     </div>
   )

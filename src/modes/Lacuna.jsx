@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Bloco, Contexto } from '../components/Comuns.jsx'
 import { compararResposta } from '../lib/texto.js'
+import { useT } from '../i18n/index.jsx'
 
 export const NOTA_LACUNA = { certo: 4, quase: 3, revelado: 1 }
 
@@ -10,6 +11,7 @@ export const NOTA_LACUNA = { certo: 4, quase: 3, revelado: 1 }
  * Comparação tolerante (sem acento, Levenshtein ≤ 2), igual ao modo Digitar.
  */
 export default function Lacuna({ item, lacuna, onConcluir }) {
+  const { t } = useT()
   const [texto, setTexto] = useState('')
   const [erros, setErros] = useState(0)
   const [resultado, setResultado] = useState(null)
@@ -26,9 +28,9 @@ export default function Lacuna({ item, lacuna, onConcluir }) {
   if (!lacuna) {
     return (
       <div className="card">
-        <p className="dim">Este termo não tem lacuna disponível.</p>
+        <p className="dim">{t('Este termo não tem lacuna disponível.')}</p>
         <button className="btn btn--primary btn--block" onClick={() => onConcluir([{ item, nota: 2 }])}>
-          Continuar
+          {t('Continuar')}
         </button>
       </div>
     )
@@ -51,9 +53,9 @@ export default function Lacuna({ item, lacuna, onConcluir }) {
 
   return (
     <div>
-      <Contexto termo={item} extra={<span className="chip">lacuna</span>} />
+      <Contexto termo={item} extra={<span className="chip">{t('lacuna')}</span>} />
       <div className="card">
-        <div className="eyebrow">Complete a definição de <b>{item.termo}</b></div>
+        <div className="eyebrow">{t('Complete a definição de')} <b>{item.termo}</b></div>
         <p className="pergunta lacuna__frase">
           {antes}
           <span className={`lacuna__vao ${resultado ? (resultado === 'revelado' ? 'errada' : 'certa') : ''}`}>
@@ -69,23 +71,23 @@ export default function Lacuna({ item, lacuna, onConcluir }) {
               className="input"
               value={texto}
               onChange={(e) => setTexto(e.target.value)}
-              placeholder="a palavra que falta"
-              aria-label="A palavra que falta"
+              placeholder={t('a palavra que falta')}
+              aria-label={t('A palavra que falta')}
               autoComplete="off"
               autoCapitalize="off"
               spellCheck="false"
             />
             <button className="btn btn--primary" type="submit" disabled={!texto.trim()}>
-              Verificar
+              {t('Verificar')}
             </button>
           </form>
         )}
         {!resultado && erros > 0 && (
           <p className="dim small">
-            {erros === 1 ? 'Não é essa.' : 'Ainda não.'} {erros >= 2 && <>Começa com <b className="mono">{lacuna.resposta.slice(0, 2)}</b> e tem {lacuna.resposta.length} letras.</>}
+            {erros === 1 ? t('Não é essa.') : t('Ainda não.')} {erros >= 2 && <>{t('Começa com')} <b className="mono">{lacuna.resposta.slice(0, 2)}</b> {t('e tem')} {lacuna.resposta.length} {t('letras.')}</>}
             {' '}
             <button className="btn btn--sm btn--ghost" type="button" onClick={() => setResultado('revelado')}>
-              revelar
+              {t('revelar')}
             </button>
           </p>
         )}
@@ -93,14 +95,14 @@ export default function Lacuna({ item, lacuna, onConcluir }) {
         {resultado && (
           <>
             <div className={`feedback ${resultado === 'revelado' ? 'bad' : 'ok'}`}>
-              {resultado === 'certo' && <><b className="green">Exato.</b> Nota {NOTA_LACUNA.certo}.</>}
-              {resultado === 'quase' && <><b className="amber">Quase.</b> Era <b>{lacuna.resposta}</b>. Nota {NOTA_LACUNA.quase}.</>}
-              {resultado === 'revelado' && <><b className="rose">Era <b>{lacuna.resposta}</b>.</b> Nota {NOTA_LACUNA.revelado}.</>}
+              {resultado === 'certo' && <><b className="green">{t('Exato.')}</b> {t('Nota')} {NOTA_LACUNA.certo}.</>}
+              {resultado === 'quase' && <><b className="amber">{t('Quase.')}</b> {t('Era')} <b>{lacuna.resposta}</b>. {t('Nota')} {NOTA_LACUNA.quase}.</>}
+              {resultado === 'revelado' && <><b className="rose">{t('Era')} <b>{lacuna.resposta}</b>.</b> {t('Nota')} {NOTA_LACUNA.revelado}.</>}
             </div>
-            {resultado !== 'certo' && <Bloco label="Profundidade">{item.profundidade}</Bloco>}
+            {resultado !== 'certo' && <Bloco label={t('Profundidade')}>{item.profundidade}</Bloco>}
             <div className="acoes">
               <button className="btn btn--primary btn--block" onClick={continuar} autoFocus>
-                Continuar
+                {t('Continuar')}
               </button>
             </div>
           </>

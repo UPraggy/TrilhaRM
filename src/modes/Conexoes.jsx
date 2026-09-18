@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Bloco, Contexto } from '../components/Comuns.jsx'
 import { embaralhar } from '../lib/util.js'
+import { useT } from '../i18n/index.jsx'
 
 export const NOTA_CONEXOES = { perfeito: 5, bom: 4, meio: 3, ruim: 1 }
 
@@ -12,11 +13,12 @@ export const NOTA_CONEXOES = { perfeito: 5, bom: 4, meio: 3, ruim: 1 }
  * Nota pela precisão: acertos e erros contam (marcar tudo não passa).
  */
 export default function Conexoes({ item, pool, onConcluir }) {
+  const { t } = useT()
   const { certos, opcoes } = useMemo(() => {
-    const doDeck = pool.filter((t) => t.deckId === item.deckId && t.id !== item.id)
-    const ligados = doDeck.filter((t) => (item.relacionados || []).includes(t.id)).slice(0, 4)
-    const naoLigados = embaralhar(doDeck.filter((t) => !(item.relacionados || []).includes(t.id))).slice(0, Math.max(2, 7 - ligados.length))
-    return { certos: new Set(ligados.map((t) => t.id)), opcoes: embaralhar([...ligados, ...naoLigados]) }
+    const doDeck = pool.filter((x) => x.deckId === item.deckId && x.id !== item.id)
+    const ligados = doDeck.filter((x) => (item.relacionados || []).includes(x.id)).slice(0, 4)
+    const naoLigados = embaralhar(doDeck.filter((x) => !(item.relacionados || []).includes(x.id))).slice(0, Math.max(2, 7 - ligados.length))
+    return { certos: new Set(ligados.map((x) => x.id)), opcoes: embaralhar([...ligados, ...naoLigados]) }
   }, [item, pool])
 
   const [marcados, setMarcados] = useState(() => new Set())
@@ -42,13 +44,13 @@ export default function Conexoes({ item, pool, onConcluir }) {
 
   return (
     <div>
-      <Contexto termo={item} extra={<span className="chip">conexões</span>} />
+      <Contexto termo={item} extra={<span className="chip">{t('conexões')}</span>} />
       <div className="card">
-        <div className="eyebrow">O que se liga a</div>
+        <div className="eyebrow">{t('O que se liga a')}</div>
         <div className="termo-grande" style={{ marginTop: 6 }}>
           {item.termo}
         </div>
-        <p className="dim small">Marque todos os relacionados. Marcar o que não se liga também conta.</p>
+        <p className="dim small">{t('Marque todos os relacionados. Marcar o que não se liga também conta.')}</p>
 
         <div className="conexoes__grade">
           {opcoes.map((o) => {
@@ -69,22 +71,22 @@ export default function Conexoes({ item, pool, onConcluir }) {
         {!conferido ? (
           <div className="acoes">
             <button className="btn btn--primary btn--block" onClick={() => setConferido(true)} disabled={!marcados.size}>
-              Conferir ({marcados.size} {marcados.size === 1 ? 'marcado' : 'marcados'})
+              {t('Conferir')} ({marcados.size} {marcados.size === 1 ? t('marcado') : t('marcados')})
             </button>
           </div>
         ) : (
           <>
             <div className={`feedback ${nota >= 4 ? 'ok' : 'bad'}`}>
               <b className={nota >= 4 ? 'green' : 'rose'}>
-                {acertos}/{certos.size} conexões
+                {acertos}/{certos.size} {t('conexões')}
               </b>
-              {falsos > 0 && <> · {falsos} {falsos === 1 ? 'marcado a mais' : 'marcados a mais'}</>}
-              {' '}· nota {nota}.
+              {falsos > 0 && <> · {falsos} {falsos === 1 ? t('marcado a mais') : t('marcados a mais')}</>}
+              {' '}· {t('Nota').toLowerCase()} {nota}.
             </div>
-            <Bloco label="Por que se ligam">{item.profundidade}</Bloco>
+            <Bloco label={t('Por que se ligam')}>{item.profundidade}</Bloco>
             <div className="acoes">
               <button className="btn btn--primary btn--block" onClick={() => onConcluir([{ item, nota }])} autoFocus>
-                Continuar
+                {t('Continuar')}
               </button>
             </div>
           </>
