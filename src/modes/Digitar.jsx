@@ -57,10 +57,10 @@ export default function Digitar({ item, onConcluir }) {
       <Contexto termo={item} extra={<span className="chip">digitar</span>} />
       <div className="card">
         <div className="eyebrow">Que termo é este?</div>
-        <p className="pergunta" style={{ marginTop: 6 }}>
+        <p className="pergunta mt-1">
           {item.definicao}
         </p>
-        <form onSubmit={verificar} style={{ marginTop: 14 }}>
+        <form onSubmit={verificar} className="mt-5">
           <input
             ref={inputRef}
             className={`input input--lg mono ${resultado === 'certo' || resultado === 'quase' ? 'ok' : ''} ${resultado === 'revelado' ? 'bad' : ''}`}
@@ -82,7 +82,7 @@ export default function Digitar({ item, onConcluir }) {
             </div>
           )}
           {erros > 0 && !resultado && (
-            <p className="dim small" style={{ marginTop: 8 }}>
+            <p className="dim small mt-2">
               {erros} {erros === 1 ? 'tentativa errada' : 'tentativas erradas'}
             </p>
           )}

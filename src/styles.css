@@ -19,38 +19,7 @@
   font-display: swap;
 }
 
-:root {
-  --bg: #0a0c12;
-  --surface: #11131c;
-  --surface-2: #181b26;
-  --line: rgba(157, 177, 234, 0.16);
-  --line-2: rgba(157, 177, 234, 0.28);
-  --grid: rgba(157, 177, 234, 0.07);
-
-  --peri: #9db1ea;
-  --peri-dim: rgba(157, 177, 234, 0.55);
-  --amber: #eaa94e;
-  --amber-soft: #f4cd8a;
-  --amber-deep: #b9772e;
-  --bone: #f1ede2;
-  --fg-1: #ddd2c1;
-  --fg-2: #a99a83;
-  --fg-3: #7c7060;
-  --green: #7bbf5e;
-  --rose: #c5402a;
-  --rose-soft: #e06a55;
-
-  --display: 'Space Grotesk', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
-  --mono: ui-monospace, 'JetBrains Mono', Consolas, 'SF Mono', Menlo, monospace;
-
-  --r: 12px;
-  --r-sm: 8px;
-  --tap: 44px;
-  --gap: 12px;
-  --max: 980px;
-  --header-h: 56px;
-  --nav-h: 60px;
-}
+/* Os tokens (:root) vivem em src/styles/tokens.css, importado antes deste arquivo. */
 
 * {
   box-sizing: border-box;

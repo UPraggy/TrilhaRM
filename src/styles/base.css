@@ -1,0 +1,112 @@
+/* Classes utilitárias e preferências de acessibilidade.
+ *
+ * Por que isto existe: 88 dos 182 `style={{ … }}` do app eram só `marginTop: N`. Estilo inline não
+ * cacheia, não responde a media query e não dá para sobrescrever num tema — e espalhar cinco valores
+ * de margem por dezenas de arquivos é como a escala de espaçamento se perde. Aqui a escala fica em um
+ * lugar só, atada aos tokens.
+ *
+ * Carregado por src/main.jsx DEPOIS de styles.css, para vencer na especificidade igual. */
+
+/* ---- escala de espaçamento (a mesma do --gap) ---------------------------- */
+.mt-0 { margin-top: 0 !important; }
+.mt-1 { margin-top: 6px; }
+.mt-2 { margin-top: 8px; }
+.mt-3 { margin-top: 10px; }
+.mt-4 { margin-top: 12px; }
+.mt-5 { margin-top: 14px; }
+.mt-6 { margin-top: 20px; }
+.mb-1 { margin-bottom: 4px; }
+.mb-2 { margin-bottom: 8px; }
+.mb-4 { margin-bottom: 12px; }
+.ml-auto { margin-left: auto; }
+.p-0 { padding: 0 !important; }
+
+/* ---- utilitárias de texto e caixa ---------------------------------------- */
+.pre-wrap {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.text-left { text-align: left; }
+.text-center { text-align: center; }
+.w-auto { width: auto; }
+.rolavel {
+  max-height: 160px;
+  overflow: auto;
+}
+
+/* ---- movimento: respeitar quem pediu menos ------------------------------- */
+/* Não é enfeite de acessibilidade: parte do estudo acontece no celular em movimento, e animação
+ * desnecessária atrapalha quem tem enjoo de movimento. Uma media query resolve o app inteiro. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ---- alto contraste opcional --------------------------------------------- */
+/* O app é escuro por identidade (decisão do Rafael: tema claro NÃO entra). O que entra é a opção de
+ * subir o contraste — barato, e resolve leitura no sol, que é onde o celular costuma estar. */
+:root[data-contraste='alto'] {
+  --line: rgba(157, 177, 234, 0.42);
+  --line-2: rgba(157, 177, 234, 0.62);
+  --fg-1: #f1ede2;
+  --fg-2: #ccc0ac;
+  --fg-3: #a2967f;
+  --peri-dim: rgba(157, 177, 234, 0.85);
+}
+@media (prefers-contrast: more) {
+  :root:not([data-contraste='normal']) {
+    --line: rgba(157, 177, 234, 0.42);
+    --line-2: rgba(157, 177, 234, 0.62);
+    --fg-2: #ccc0ac;
+    --fg-3: #a2967f;
+  }
+}
+
+/* ---- foco visível em tudo que recebe foco -------------------------------- */
+:focus-visible {
+  outline: 2px solid var(--peri);
+  outline-offset: 2px;
+}
+.nowrap { white-space: nowrap; }
+/* botão miúdo dentro de uma linha de texto (era estilo inline repetido) */
+.btn--mini {
+  width: auto;
+  min-height: 32px;
+  padding: 4px 8px;
+  font-size: 0.85rem;
+}
+
+/* ---- rede de segurança contra o token longo sem espaço -------------------- */
+/* Medido em 18/09/2026 na tela do Laboratório a 375 px: o texto
+ * "Browser→DNS→TCP→TLS→Proxy→Node→DB→Response" é UMA palavra para o navegador (sem espaço entre as
+ * setas) e empurrou a linha para 413 px dentro de uma caixa de 345 — a página inteira ganhou rolagem
+ * horizontal. O mesmo vale para URL longa, caminho de arquivo e identificador de código no meio do
+ * texto. Conteúdo não deveria precisar evitar isso; o CSS resolve de uma vez.
+ * `anywhere` (e não `break-word`) porque só ele também encolhe a largura MÍNIMA da caixa flex. */
+body,
+.ex__meta,
+.card,
+.lead,
+.dim,
+td,
+p,
+li,
+summary {
+  overflow-wrap: anywhere;
+}
+/* código e saída de terminal continuam rolando na horizontal em vez de quebrar no meio do comando */
+pre,
+code,
+.mono,
+.pre {
+  overflow-wrap: normal;
+}
+pre {
+  overflow-x: auto;
+}

@@ -1,0 +1,50 @@
+/* TOKENS — a identidade "void-frio" (Rafael MR). Tema único escuro, por decisão do dono.
+ *
+ * Este arquivo é a ÚNICA fonte das cores, tipografia e medidas. Ele vem antes de tudo em
+ * src/main.jsx, e nenhuma tela deve escrever um hex na mão: se falta um token, o certo é criar aqui.
+ *
+ * CONTRASTE MEDIDO sobre --bg (#0a0c12), pela fórmula WCAG 2.1:
+ *   --bone  #f1ede2  17.9:1   AAA em qualquer tamanho
+ *   --fg-1  #ddd2c1  13.7:1   AAA — texto corrido
+ *   --fg-2  #a99a83   7.4:1   AAA em texto normal — rótulos
+ *   --fg-3  #7c7060   4.2:1   AA só em texto GRANDE (>=18.66px bold / 24px) — use para apoio, nunca
+ *                             para informação que precisa ser lida
+ *   --peri  #9db1ea  10.0:1   AAA — links e destaque frio
+ *   --amber #eaa94e   9.5:1   AAA — atenção, XP, ofensiva
+ *   --green #7bbf5e   8.6:1   AAA — acerto
+ *   --rose  #c5402a   4.0:1   ⚠️ abaixo de AA em texto pequeno: use --rose-soft (#e06a55, 6.4:1)
+ *                             para TEXTO e deixe --rose só para borda e fundo.
+ * Alto contraste opcional e prefers-reduced-motion ficam em src/styles/base.css. */
+
+:root {
+  --bg: #0a0c12;
+  --surface: #11131c;
+  --surface-2: #181b26;
+  --line: rgba(157, 177, 234, 0.16);
+  --line-2: rgba(157, 177, 234, 0.28);
+  --grid: rgba(157, 177, 234, 0.07);
+
+  --peri: #9db1ea;
+  --peri-dim: rgba(157, 177, 234, 0.55);
+  --amber: #eaa94e;
+  --amber-soft: #f4cd8a;
+  --amber-deep: #b9772e;
+  --bone: #f1ede2;
+  --fg-1: #ddd2c1;
+  --fg-2: #a99a83;
+  --fg-3: #7c7060;
+  --green: #7bbf5e;
+  --rose: #c5402a;
+  --rose-soft: #e06a55;
+
+  --display: 'Space Grotesk', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --mono: ui-monospace, 'JetBrains Mono', Consolas, 'SF Mono', Menlo, monospace;
+
+  --r: 12px;
+  --r-sm: 8px;
+  --tap: 44px;
+  --gap: 12px;
+  --max: 980px;
+  --header-h: 56px;
+  --nav-h: 60px;
+}

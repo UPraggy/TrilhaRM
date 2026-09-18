@@ -910,8 +910,13 @@ body.imersivo .main {
 }
 
 /* ---- barra inferior de 4 destinos ---------------------------------------- */
+/* ⚠️ `.bottomnav` é GRID com `repeat(5, …)` fixo (a V1 tinha 5 itens). Com 4 filhos, sem esta
+   sobrescrita a barra estoura a largura da tela — medido: 428 px num viewport de 375. `flex` aqui
+   não resolveria nada: o contêiner é grid, não flex. */
+.bottomnav--4 {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
 .bottomnav--4 > * {
-  flex: 1 1 0;
   min-width: 0;
 }
 

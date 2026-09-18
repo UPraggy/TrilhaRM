@@ -101,13 +101,13 @@ export default function Config() {
       </div>
 
       <h2 className="secao">Mentor IA (OpenRouter)</h2>
-      <p className="muted small" style={{ marginTop: 6 }}>
+      <p className="muted small mt-1">
         No modo Explique e nas práticas de texto, um modelo gratuito lê sua resposta, compara com o gabarito e sugere o nível 0–5. No modo automático o app tenta os gratuitos em ordem até um responder — é o que mais funciona, porque os modelos livres vivem saturando.
       </p>
 
       {erroConfig && <p className="rose">Não carregou a configuração: {erroConfig}</p>}
 
-      <div className="card" style={{ marginTop: 14 }}>
+      <div className="card mt-5">
         <div className="row row--between">
           <h2>Key do OpenRouter</h2>
           {config && (
@@ -117,7 +117,7 @@ export default function Config() {
           )}
         </div>
         {config && config.origemKey === 'env' && (
-          <p className="dim small" style={{ marginTop: 8 }}>
+          <p className="dim small mt-2">
             A variável <code>OPENROUTER_API_KEY</code> do ambiente está em uso e sobrepõe a key deste formulário.
           </p>
         )}
@@ -145,7 +145,7 @@ export default function Config() {
             )}
           </div>
         </div>
-        <p className="dim small" style={{ margin: '12px 0 0' }}>
+        <p className="dim small mt-4">
           Crie uma key grátis em <a href="https://openrouter.ai/keys" target="_blank" rel="noreferrer">openrouter.ai → Keys</a>. Modelos{' '}
           <code>:free</code> não cobram. A key fica só em <code>data/config.json</code> neste servidor.
         </p>
@@ -202,7 +202,7 @@ export default function Config() {
             <option value="en">English</option>
           </select>
         </div>
-        <p className="dim small" style={{ margin: '12px 0 0' }}>
+        <p className="dim small mt-4">
           A pergunta e a sua resposta seguem o toggle PT/EN do modo Explique; aqui é só a língua em que o mentor escreve.
           Modelos <code>:free</code> têm limite por minuto/dia e saem do ar sem aviso. No modo <b>automático</b> o app já tenta o próximo da fila sozinho; a resposta diz qual modelo respondeu.
         </p>
@@ -215,7 +215,7 @@ export default function Config() {
             {teste && teste.estado === 'rodando' ? 'Testando…' : 'Testar'}
           </button>
         </div>
-        <p className="muted small" style={{ marginTop: 8 }}>
+        <p className="muted small mt-2">
           Envia a resposta "teste" para o primeiro termo carregado e mostra se o mentor respondeu.
           {config && !config.temKey ? ' Salve uma key primeiro.' : ''}
         </p>
@@ -228,7 +228,7 @@ export default function Config() {
 
       <ConfigTelegram mostrarAviso={mostrarAviso} />
 
-      <p className="dim small" style={{ marginTop: 14 }}>
+      <p className="dim small mt-5">
         Esta tela não tem senha — o app roda atrás do túnel do dono. A key nunca é devolvida inteira pela API (só os 4 últimos caracteres).
       </p>
     </div>

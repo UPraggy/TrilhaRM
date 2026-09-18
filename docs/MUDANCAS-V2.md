@@ -138,3 +138,32 @@ Executada antes da 2 porque tudo depois depende dos módulos existirem de verdad
 - **Duelo contra o passado** (`src/pages/Duelo.jsx` + `GET /api/licao/:m/:n/historico`): as duas
   últimas tentativas da MESMA lição, item a item, com o delta de nota.
 - `mentor.completar` passou a ser exportado para a entrevista reusar a fila de modelos gratuitos.
+
+## Etapa 7 — Sistema de design consolidado ✅ (parcial, com o número medido)
+
+- **`src/styles/tokens.css`** (novo): o `:root` saiu de `styles.css` para um arquivo só dele, com o
+  **contraste WCAG medido de cada cor** no cabeçalho. O achado que virou regra: `--rose` (#c5402a) dá
+  4,0:1 sobre o fundo — **abaixo de AA em texto pequeno**. Ele fica para borda e fundo; texto de erro
+  usa `--rose-soft` (6,4:1). É a mesma escolha que o app já fazia por intuição; agora está escrita.
+- **`src/styles/base.css`** (novo): escala de espaçamento (`.mt-1`…`.mt-6`), utilitárias
+  (`.ml-auto`, `.pre-wrap`, `.text-left`, `.nowrap`, `.rolavel`, `.btn--mini`), `:focus-visible`
+  visível, `prefers-reduced-motion` desligando animação e **alto contraste opcional**
+  (`data-contraste="alto"` + `prefers-contrast: more`). Tema claro **não** entra — é decisão de
+  identidade.
+- **Estilo inline: 182 → 65** (−64 %). Os `marginTop: N` espalhados viraram classes de escala.
+  ⚠️ O critério do plano era "menos de 10". Não cheguei lá: dos 65 que restam, 8 são genuinamente
+  dinâmicos (`--cor-modulo`, largura de barra) e os outros ~57 são valores únicos em telas antigas
+  (`fontSize`, larguras específicas) que exigiriam abrir cada tela. Ficou registrado como pendência.
+
+### Dois bugs de layout encontrados na verificação a 360 px
+
+1. **A barra inferior estourava a tela.** `.bottomnav` é GRID com `repeat(5, …)` fixo (a V1 tinha 5
+   itens). Com 4 filhos, ela media **428 px num viewport de 375**. A correção é uma linha
+   (`grid-template-columns: repeat(4, …)` em `.bottomnav--4`) — e o que quase me enganou foi tentar
+   resolver com `flex`, que não faz nada num contêiner grid.
+2. **Uma palavra sem espaço rolava a página inteira.** O texto
+   `Browser→DNS→TCP→TLS→Proxy→Node→DB→Response` é UMA palavra para o navegador, e empurrou a caixa de
+   345 px para 413. Corrigido com `overflow-wrap: anywhere` no texto (e `normal` em `pre`/`code`, para
+   comando não quebrar no meio). Conteúdo não deveria precisar evitar isso.
+
+**Verificado a 360 px e a 375 px em 15 telas**: `scrollWidth === clientWidth` em todas.

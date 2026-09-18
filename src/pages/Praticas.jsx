@@ -71,13 +71,13 @@ export default function Praticas() {
   return (
     <div>
       <div className="eyebrow">§26 · Laboratório</div>
-      <h1 style={{ marginTop: 6 }}>Praticar</h1>
-      <p className="muted small" style={{ marginTop: 6 }}>
+      <h1 className="mt-1">Praticar</h1>
+      <p className="muted small mt-1">
         Exercício real, resolvido <b>fora do app</b> (terminal, psql, Docker, papel). Volte aqui e registre a resposta: saída, número ou escolha o servidor corrige;
         texto e código você se avalia e pode pedir a opinião do mentor. A nota vira revisão SM-2 no termo principal.
       </p>
 
-      <div className="card card--2" style={{ marginTop: 12 }}>
+      <div className="card card--2 mt-4">
         <div className="stats">
           <div className="stat">
             <div className="stat__v green">{g.feitas}</div>
@@ -96,7 +96,7 @@ export default function Praticas() {
             <div className="stat__l">do laboratório</div>
           </div>
         </div>
-        <div style={{ marginTop: 12 }}>
+        <div className="mt-4">
           <Barra valor={g.feitas} max={g.total} grande cor="green" />
         </div>
         {proxima && (
@@ -108,7 +108,7 @@ export default function Praticas() {
         )}
       </div>
 
-      <div className="filtros" style={{ marginTop: 14 }}>
+      <div className="filtros mt-5">
         <span className="toggle" role="group" aria-label="Status">
           {FILTROS_STATUS.map((f) => (
             <button key={f.id} className={status === f.id ? 'active' : ''} onClick={() => setStatus(f.id)}>
@@ -152,7 +152,7 @@ export default function Praticas() {
             const exs = p.exercicios.filter((ex) => passaFiltro(p, ex))
             if (!exs.length) return null
             return (
-              <div key={p.deckId} className="card" style={{ padding: 0 }}>
+              <div key={p.deckId} className="card p-0">
                 <div className="row row--between" style={{ padding: '12px 14px' }}>
                   <Link to={`/deck/${p.deckId}`} style={{ fontWeight: 700, color: 'var(--bone)' }}>
                     {p.deckTitulo}

@@ -32,10 +32,10 @@ export default function DeckPage() {
         </Link>{' '}
         / Fase {deck.fase} {deck.trilha ? `· ${deck.trilha}` : ''}
       </div>
-      <h1 style={{ marginTop: 6 }}>{deck.titulo}</h1>
-      {deck.descricao && <p className="muted" style={{ marginTop: 6 }}>{deck.descricao}</p>}
+      <h1 className="mt-1">{deck.titulo}</h1>
+      {deck.descricao && <p className="muted mt-1">{deck.descricao}</p>}
 
-      <div className="card card--2" style={{ marginTop: 14 }}>
+      <div className="card card--2 mt-5">
         <div className="stats">
           <div className="stat">
             <div className={`stat__v ${classeNivel(media)}`}>{fmtNivel(media)}</div>
@@ -54,7 +54,7 @@ export default function DeckPage() {
             <div className="stat__l">nunca vistos</div>
           </div>
         </div>
-        <div style={{ marginTop: 12 }}>
+        <div className="mt-4">
           <Barra valor={r.total - r.nuncaVistos} max={r.total} grande cor={media != null && media >= 3 ? 'green' : ''} />
         </div>
         <div className="acoes">
@@ -97,14 +97,14 @@ export default function DeckPage() {
           <div className="section__head">
             <span className="section__num">§</span>
             <h2>Práticas ({praticaDeck.exercicios.length})</h2>
-            <span className="dim small mono" style={{ marginLeft: 'auto' }}>
+            <span className="dim small mono" className="ml-auto">
               {rp.feitas}/{rp.total} feitas
             </span>
           </div>
           <p className="muted small" style={{ marginTop: -4 }}>
             Exercícios reais para resolver fora do app e registrar aqui. A nota vira revisão no termo principal.
           </p>
-          <div className="card" style={{ padding: 0 }}>
+          <div className="card p-0">
             {praticaDeck.exercicios.map((ex) => {
               const st = statusPratica((progresso.praticas || {})[`${id}/${ex.id}`])
               return (
@@ -131,12 +131,12 @@ export default function DeckPage() {
         <div className="section__head">
           <span className="section__num">§</span>
           <h2>Termos ({lista.length})</h2>
-          <button className="btn btn--sm btn--ghost" style={{ marginLeft: 'auto' }} onClick={() => setMostrarTermos((v) => !v)}>
+          <button className="btn btn--sm btn--ghost" className="ml-auto" onClick={() => setMostrarTermos((v) => !v)}>
             {mostrarTermos ? 'Ocultar' : 'Mostrar'}
           </button>
         </div>
         {mostrarTermos && (
-          <div className="card" style={{ padding: 0 }}>
+          <div className="card p-0">
             {lista.map((t, i) => {
               const e = estadoDe(t)
               const d = e ? diasAte(e.proximaRevisao) : null

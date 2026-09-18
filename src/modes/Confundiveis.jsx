@@ -51,7 +51,7 @@ export default function Confundiveis({ item, pool, onConcluir }) {
       <Contexto termo={item} extra={<span className="chip chip--amber">{t('confundíveis')}</span>} />
       <div className="card">
         <div className="eyebrow">{t('Qual destas duas definições é de')}</div>
-        <div className="termo-grande" style={{ marginTop: 6 }}>
+        <div className="termo-grande mt-1">
           {item.termo}
         </div>
         <p className="dim small">{t('O outro é')} <b>{parceiro.termo}</b> {t('— parecido de propósito.')}</p>

@@ -224,8 +224,8 @@ export default function Pratica() {
         </Link>{' '}
         / <Link to={`/deck/${deckId}`} className="muted">{(praticas.find((p) => p.deckId === deckId) || {}).deckTitulo || deckId}</Link>
       </div>
-      <h1 style={{ marginTop: 6 }}>{ex.titulo}</h1>
-      <div className="ctx" style={{ marginTop: 8 }}>
+      <h1 className="mt-1">{ex.titulo}</h1>
+      <div className="ctx mt-2">
         <span className={`chip mono ${classeNivel(ex.nivel)}`} title="nível alvo">
           nível {ex.nivel}
         </span>
@@ -233,12 +233,12 @@ export default function Pratica() {
         <span className="chip">{(TIPOS_ENTREGA[tipo] || {}).nome || tipo}</span>
         <span className="chip">~{ex.tempoMin} min</span>
         {ex.postmortem && <span className="chip chip--rose">failure lab · postmortem</span>}
-        <span className={`chip ${st.classe} ${st.id === 'concluida' ? 'mono' : ''}`} style={{ marginLeft: 'auto' }}>
+        <span className={`chip ${st.classe} ${st.id === 'concluida' ? 'mono' : ''}`} className="ml-auto">
           {st.rotulo}
         </span>
       </div>
       {ex.termos.length > 0 && (
-        <p className="small muted" style={{ marginTop: 6 }}>
+        <p className="small muted mt-1">
           Termos:{' '}
           {ex.termos.map((t, i) => (
             <span key={`${t.deckId}/${t.termoId}`}>
@@ -251,7 +251,7 @@ export default function Pratica() {
       )}
 
       {/* ---- enunciado ---- */}
-      <div className="card" style={{ marginTop: 12 }}>
+      <div className="card mt-4">
         <div className="eyebrow">Enunciado</div>
         <Texto className="enunciado">{ex.enunciado}</Texto>
         {ex.passos.length > 0 && (
@@ -280,7 +280,7 @@ export default function Pratica() {
             </button>
           </div>
         ) : (
-          <p className="dim small" style={{ margin: '12px 0 0' }}>
+          <p className="dim small mt-4">
             {concluida
               ? `Concluída em ${fmtDataCurta(estado.concluidaEm)} · ${estado.historico.length} ${estado.historico.length === 1 ? 'entrega' : 'entregas'}`
               : `Em andamento há ${fmtDuracao(minDesde)} (começou ${fmtDataCurta(estado.iniciadaEm)})`}
@@ -304,7 +304,7 @@ export default function Pratica() {
             )}
           </div>
           {dicasVistas.map((d, i) => (
-            <div key={i} className="bloco" style={{ marginTop: 8 }}>
+            <div key={i} className="bloco mt-2">
               <div className="bloco__label">Dica {i + 1}</div>
               <Texto>{d}</Texto>
             </div>
@@ -328,7 +328,7 @@ export default function Pratica() {
             />
           )}
           {tipo === 'numero' && (
-            <div className="campo__linha" style={{ marginTop: 10 }}>
+            <div className="campo__linha mt-3">
               <input
                 className="input input--lg mono"
                 inputMode="decimal"
@@ -370,7 +370,7 @@ export default function Pratica() {
                   </label>
                 )
               })}
-              <p className="dim small" style={{ margin: '8px 0 0' }}>
+              <p className="dim small mt-2">
                 Nota = proporção marcada × 5 → agora {Math.round((marcados.length / ex.entrega.itens.length) * 5)}.
               </p>
             </div>
@@ -410,18 +410,18 @@ export default function Pratica() {
             )}
           </div>
           {tipo === 'texto' && texto.trim().length > 0 && texto.trim().length < (ex.entrega.minimoChars || 80) && !solucao && (
-            <p className="dim small" style={{ margin: '8px 0 0' }}>
+            <p className="dim small mt-2">
               {texto.trim().length}/{ex.entrega.minimoChars || 80} caracteres — entrega curta demais para comparar com o gabarito.
             </p>
           )}
-          {texto !== rascunhoInicial.current && (tipo === 'texto' || tipo === 'saida') && <p className="dim small" style={{ margin: '6px 0 0' }}>salvando rascunho…</p>}
+          {texto !== rascunhoInicial.current && (tipo === 'texto' || tipo === 'saida') && <p className="dim small mt-1">salvando rascunho…</p>}
         </div>
       )}
 
       {mentor && (
         <div className="card card--flat">
           <div className="eyebrow">Mentor IA</div>
-          {mentor.estado === 'rodando' && <p className="mentor__lendo" style={{ marginTop: 8 }}>Lendo a entrega e comparando com os critérios…</p>}
+          {mentor.estado === 'rodando' && <p className="mentor__lendo mt-2">Lendo a entrega e comparando com os critérios…</p>}
           {mentor.estado === 'erro' && (
             <div className="feedback bad">
               {mentor.dados.codigo === 'sem_key' ? (
@@ -480,7 +480,7 @@ export default function Pratica() {
                 </span>
               </div>
             </div>
-            <div className="acoes" style={{ marginTop: 0 }}>
+            <div className="acoes mt-0">
               <button className="btn btn--sm" onClick={() => setAjustando((v) => !v)}>
                 Ajustar nota
               </button>
@@ -509,12 +509,12 @@ export default function Pratica() {
                 .reverse()
                 .slice(0, 3)
                 .map((h, i) => (
-                  <div key={i} className="bloco" style={{ marginTop: 8 }}>
+                  <div key={i} className="bloco mt-2">
                     <div className="dim small mono">
                       {fmtDataCurta(h.dia)} · nota {h.nota} · {h.auto ? 'corrigida pelo app' : 'auto-avaliação'}
                     </div>
                     {h.resposta && !h.auto && (
-                      <p className="small" style={{ whiteSpace: 'pre-wrap', maxHeight: 160, overflow: 'auto' }}>
+                      <p className="small pre-wrap rolavel">
                         {h.resposta}
                       </p>
                     )}

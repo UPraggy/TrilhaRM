@@ -70,13 +70,13 @@ export default function Treinos() {
       <div className="trn-topo">
         <h1>Treinos Especiais</h1>
       </div>
-      <p className="muted small" style={{ marginTop: 6 }}>
+      <p className="muted small mt-1">
         Um módulo com começo, meio e fim: leitura, desafio no terminal, rodada cronometrada, simulado de entrevista, mini-projeto e a etapa de ensinar. Cada
         etapa tem uma entrega — e a nota vira revisão SM-2 nos termos. Para importar um treino novo, jogue o JSON em <code>content/treinos/</code> e recarregue
         (o prompt pronto para a IA está em <code>content/treinos/PROMPT-MASTER.md</code>).
       </p>
 
-      <div className="card card--2" style={{ marginTop: 12 }}>
+      <div className="card card--2 mt-4">
         <div className="stats">
           <div className="stat">
             <div className="stat__v green">{geral.concluidos}</div>
@@ -102,7 +102,7 @@ export default function Treinos() {
         )}
       </div>
 
-      <div className="filtros" style={{ marginTop: 14 }}>
+      <div className="filtros mt-5">
         <span className="toggle" role="group" aria-label="Status">
           {FILTROS.map((f) => (
             <button key={f.id} className={filtro === f.id ? 'active' : ''} onClick={() => setFiltro(f.id)}>

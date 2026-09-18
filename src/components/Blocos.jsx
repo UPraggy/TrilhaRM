@@ -408,14 +408,14 @@ export function Atividade({ atividade, cursoId, aoMudar }) {
                   </label>
                 )
               })}
-              <p className="dim small" style={{ margin: '8px 0 0' }}>
+              <p className="dim small mt-2">
                 Nota = proporção marcada × 5 → agora {notaChecklistAgora}.
               </p>
             </div>
           )}
 
           {dicasVistas.length > 0 && (
-            <div style={{ marginTop: 10 }}>
+            <div className="mt-3">
               {dicasVistas.map((d, i) => (
                 <p key={i} className="small muted" style={{ margin: '4px 0' }}>
                   <b>Dica {i + 1}:</b> {d}
@@ -493,7 +493,7 @@ export function Atividade({ atividade, cursoId, aoMudar }) {
           <Blocos blocos={solucao} cursoId={cursoId} />
           {ex.criterios && ex.criterios.length > 0 && (
             <>
-              <div className="atv__label" style={{ marginTop: 12 }}>
+              <div className="atv__label mt-4">
                 Critérios de uma boa entrega
               </div>
               <ul className="criterios">
@@ -504,7 +504,7 @@ export function Atividade({ atividade, cursoId, aoMudar }) {
             </>
           )}
           {!concluida && (
-            <div style={{ marginTop: 12 }}>
+            <div className="mt-4">
               <div className="atv__label">{ex.auto ? 'Viu a solução. Que nota você se dá?' : 'Comparando a sua entrega com o gabarito, que nota você se dá?'}</div>
               <Nivel onEscolher={(n) => responder({ resposta: texto || numero || JSON.stringify(marcados), nota: n })} disabled={enviando} />
               <LegendaNiveis />
@@ -520,7 +520,7 @@ export function Atividade({ atividade, cursoId, aoMudar }) {
               Nota <span className={`atv__nota ${classeNivel(estado.ultimaNota)}`}>{fmtNivel(estado.ultimaNota)}</span> · gravada no termo{' '}
               <b>{ex.termos[0] ? ex.termos[0].termo : '—'}</b>
             </p>
-            <div className="acoes" style={{ marginTop: 0 }}>
+            <div className="acoes mt-0">
               <button className="btn btn--sm" onClick={() => setAjustando((v) => !v)}>
                 Ajustar nota
               </button>
@@ -530,7 +530,7 @@ export function Atividade({ atividade, cursoId, aoMudar }) {
             </div>
           </div>
           {ajustando && (
-            <div style={{ marginTop: 10 }}>
+            <div className="mt-3">
               <Nivel selecionado={estado.ultimaNota} onEscolher={(n) => responder({ resposta: (estado.historico || []).at(-1)?.resposta || '', nota: n })} disabled={enviando} />
             </div>
           )}

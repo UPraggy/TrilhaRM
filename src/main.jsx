@@ -4,7 +4,9 @@ import { BrowserRouter } from 'react-router-dom'
 import App from './App.jsx'
 import { StoreProvider } from './store.jsx'
 import { I18nProvider } from './i18n/index.jsx'
+import './styles/tokens.css'
 import './styles.css'
+import './styles/base.css'
 import './v2.css'
 
 ReactDOM.createRoot(document.getElementById('root')).render(

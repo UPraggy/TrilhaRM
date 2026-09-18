@@ -101,7 +101,7 @@ export function MentorFeedback({ dados, onUsarNota, compacto = false }) {
   if (dados.bruto)
     return (
       <div className="mentor">
-        <p className="small" style={{ whiteSpace: 'pre-wrap' }}>
+        <p className="small pre-wrap">
           {dados.bruto}
         </p>
         <p className="dim small">{dados.modelo}</p>
@@ -116,7 +116,7 @@ export function MentorFeedback({ dados, onUsarNota, compacto = false }) {
         )}
         {dados.modelo && !compacto && <span className="dim small mono">{dados.modelo.replace(':free', '')}</span>}
       </div>
-      {dados.feedback && <p className="small" style={{ marginTop: 8 }}>{dados.feedback}</p>}
+      {dados.feedback && <p className="small mt-2">{dados.feedback}</p>}
       {dados.certo && dados.certo.length > 0 && (
         <div>
           <div className="bloco__label" style={{ color: 'var(--green)' }}>Certo</div>
@@ -154,7 +154,7 @@ export function MentorFeedback({ dados, onUsarNota, compacto = false }) {
         </div>
       )}
       {onUsarNota && dados.nivelSugerido != null && (
-        <div className="acoes" style={{ marginTop: 10 }}>
+        <div className="acoes mt-3">
           <button className="btn btn--sm btn--primary" onClick={() => onUsarNota(dados.nivelSugerido)}>
             Usar nível {dados.nivelSugerido} como minha nota
           </button>
@@ -176,7 +176,7 @@ export function Confirmar({ titulo, texto, confirmar = 'Confirmar', perigo, onSi
     <div className="modal-bg" onClick={onNao} role="dialog" aria-modal="true" aria-label={titulo}>
       <div className="modal card" onClick={(e) => e.stopPropagation()}>
         <h2>{titulo}</h2>
-        <p className="muted" style={{ marginTop: 8 }}>
+        <p className="muted mt-2">
           {texto}
         </p>
         <div className="acoes">

@@ -46,7 +46,7 @@ export default function SintomaCausa({ item, pool, onConcluir }) {
       <div className="card">
         <div className="eyebrow">{t('Aconteceu isto em produção')}</div>
         <p className="pergunta sintoma">{item.exemplo}</p>
-        <div className="eyebrow" style={{ marginTop: 14 }}>
+        <div className="eyebrow mt-5">
           {t('Qual conceito explica o que você está vendo?')}
         </div>
         <div className="opcoes">

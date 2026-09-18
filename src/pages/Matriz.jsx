@@ -68,12 +68,12 @@ export default function Matriz() {
   return (
     <div>
       <div className="eyebrow">§29 · Avaliação contínua</div>
-      <h1 style={{ marginTop: 6 }}>Matriz de nível</h1>
-      <p className="muted small" style={{ marginTop: 6 }}>
+      <h1 className="mt-1">Matriz de nível</h1>
+      <p className="muted small mt-1">
         Deck × nível médio, % de termos em nível ≥3 (aplico) e ≥4 (diagnostico), nunca vistos e vencidos hoje.
       </p>
 
-      <div className="card card--2" style={{ marginTop: 12 }}>
+      <div className="card card--2 mt-4">
         <div className="stats">
           <div className="stat">
             <div className="stat__v amber">{s.atual || 0}</div>
@@ -92,8 +92,8 @@ export default function Matriz() {
             <div className="stat__l">avaliações no total</div>
           </div>
         </div>
-        <div style={{ marginTop: 14 }}>
-          <div className="row row--between small dim" style={{ marginBottom: 4 }}>
+        <div className="mt-5">
+          <div className="row row--between small dim mb-1">
             <span>últimos 28 dias</span>
             <span>barra cheia = dia contou (≥ {s.minimoDia || 10})</span>
           </div>

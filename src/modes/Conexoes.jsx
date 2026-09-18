@@ -47,7 +47,7 @@ export default function Conexoes({ item, pool, onConcluir }) {
       <Contexto termo={item} extra={<span className="chip">{t('conexões')}</span>} />
       <div className="card">
         <div className="eyebrow">{t('O que se liga a')}</div>
-        <div className="termo-grande" style={{ marginTop: 6 }}>
+        <div className="termo-grande mt-1">
           {item.termo}
         </div>
         <p className="dim small">{t('Marque todos os relacionados. Marcar o que não se liga também conta.')}</p>

@@ -46,7 +46,7 @@ export default function Quiz({ item, pool, invertido = false, onConcluir }) {
         {invertido ? (
           <>
             <div className="eyebrow">Qual é a definição de</div>
-            <div className="termo-grande" style={{ marginTop: 6 }}>
+            <div className="termo-grande mt-1">
               {item.termo}
             </div>
             {item.termoEN && item.termoEN !== item.termo && <div className="termo-en">{item.termoEN}</div>}
@@ -54,7 +54,7 @@ export default function Quiz({ item, pool, invertido = false, onConcluir }) {
         ) : (
           <>
             <div className="eyebrow">Qual termo é este?</div>
-            <p className="pergunta" style={{ marginTop: 6 }}>
+            <p className="pergunta mt-1">
               {item.definicao}
             </p>
           </>

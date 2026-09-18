@@ -92,11 +92,11 @@ export default function Estudo() {
     return (
       <div className="fim card">
         <div className="eyebrow">{titulo}</div>
-        <h2 style={{ marginTop: 8 }}>{soVencidos ? 'Nada vencido aqui.' : 'Nenhum termo para estudar.'}</h2>
-        <p className="muted" style={{ marginTop: 8 }}>
+        <h2 className="mt-2">{soVencidos ? 'Nada vencido aqui.' : 'Nenhum termo para estudar.'}</h2>
+        <p className="muted mt-2">
           {soVencidos ? 'Volte amanhã ou estude o conjunto todo.' : 'Confira se há decks em content/decks/.'}
         </p>
-        <div className="acoes" style={{ justifyContent: 'center' }}>
+        <div className="acoes text-center">
           {soVencidos && fonte !== 'revisao' && (
             <Link to={`/estudar/${modo}?fonte=${fonte}`} className="btn btn--primary">
               Estudar tudo do deck
@@ -125,11 +125,11 @@ export default function Estudo() {
     return (
       <div className="fim card">
         <div className="eyebrow">{titulo} · sessão concluída</div>
-        <div className="fim__n" style={{ marginTop: 10 }}>
+        <div className="fim__n mt-3">
           {avaliados}
         </div>
         <p className="muted">{avaliados === 1 ? 'avaliação gravada' : 'avaliações gravadas'}{pulados ? ` · ${pulados} pulados` : ''}</p>
-        <div className="stats" style={{ marginTop: 14, textAlign: 'left' }}>
+        <div className="stats mt-5 text-left">
           <div className="stat">
             <div className="stat__v">{media.toFixed(1)}</div>
             <div className="stat__l">nota média</div>
@@ -148,9 +148,9 @@ export default function Estudo() {
           </div>
         </div>
         {avaliados - fortes > 0 && (
-          <div className="card card--flat" style={{ marginTop: 14, textAlign: 'left' }}>
+          <div className="card card--flat mt-5 text-left">
             <div className="eyebrow">Para voltar</div>
-            <div className="rel" style={{ marginTop: 6 }}>
+            <div className="rel mt-1">
               {resultados
                 .filter((r) => r.nota < 3)
                 .map((r) => (
@@ -161,7 +161,7 @@ export default function Estudo() {
             </div>
           </div>
         )}
-        <div className="acoes" style={{ justifyContent: 'center' }}>
+        <div className="acoes text-center">
           <button
             className="btn btn--primary"
             onClick={() => {
@@ -214,7 +214,7 @@ export default function Estudo() {
           <IcoX />
         </button>
         <div style={{ flex: 1 }}>
-          <div className="row row--between small" style={{ marginBottom: 4 }}>
+          <div className="row row--between small mb-1">
             <span className="muted">
               {titulo} · <span className="peri">{nomeModo(atual.modo)}</span>
             </span>

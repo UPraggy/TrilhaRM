@@ -42,7 +42,7 @@ export default function VF({ item, pool, onConcluir }) {
       <Contexto termo={item} extra={<span className="chip">verdadeiro ou falso</span>} />
       <div className="card">
         <div className="eyebrow">A afirmação está certa?</div>
-        <p className="pergunta" style={{ marginTop: 8 }}>
+        <p className="pergunta mt-2">
           <b className="amber">{item.termo}</b>
           {item.termoEN && item.termoEN !== item.termo && <span className="peri small"> ({item.termoEN})</span>} é: <em>{afirmacao.definicao}</em>
         </p>

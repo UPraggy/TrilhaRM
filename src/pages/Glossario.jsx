@@ -94,12 +94,12 @@ export default function Glossario() {
               aria-label="Buscar no glossário"
             />
           </div>
-          <span className="dim small mono" style={{ whiteSpace: 'nowrap' }}>
+          <span className="dim small mono nowrap">
             {filtrados.length}/{termos.length}
           </span>
         </div>
         <div className="filtros">
-          <select className="input" style={{ width: 'auto', minHeight: 32, padding: '4px 8px', fontSize: '0.85rem' }} value={deckF} onChange={(e) => setDeckF(e.target.value)} aria-label="Filtrar por deck">
+          <select className="input btn--mini" value={deckF} onChange={(e) => setDeckF(e.target.value)} aria-label="Filtrar por deck">
             <option value="">todos os decks</option>
             {decks.map((d) => (
               <option key={d.id} value={d.id}>
@@ -107,7 +107,7 @@ export default function Glossario() {
               </option>
             ))}
           </select>
-          <select className="input" style={{ width: 'auto', minHeight: 32, padding: '4px 8px', fontSize: '0.85rem' }} value={nivelF} onChange={(e) => setNivelF(e.target.value)} aria-label="Filtrar por nível">
+          <select className="input btn--mini" value={nivelF} onChange={(e) => setNivelF(e.target.value)} aria-label="Filtrar por nível">
             <option value="">qualquer nível</option>
             <option value="novo">nunca vistos</option>
             {NIVEIS.map((n) => (
@@ -123,7 +123,7 @@ export default function Glossario() {
           )}
         </div>
         {!tagF && tags.length > 0 && (
-          <div className="filtros filtros--fita" style={{ marginTop: 6 }}>
+          <div className="filtros filtros--fita mt-1">
             {tags.slice(0, 14).map((tg) => (
               <button key={tg} className="chip" onClick={() => setTagF(tg)}>
                 #{tg}
@@ -133,7 +133,7 @@ export default function Glossario() {
         )}
       </div>
 
-      <div className="stack-sm" style={{ marginTop: 10 }}>
+      <div className="stack-sm mt-3">
         {filtrados.map((t) => {
           const k = chaveTermo(t)
           const ab = aberto === k
@@ -151,7 +151,7 @@ export default function Glossario() {
               </button>
               {ab && (
                 <div className="gl-item__body">
-                  <div className="row" style={{ marginTop: 10 }}>
+                  <div className="row mt-3">
                     <Link to={`/deck/${t.deckId}`} className="chip chip--peri">
                       {t.deckTitulo}
                     </Link>

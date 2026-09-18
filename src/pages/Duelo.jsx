@@ -45,7 +45,7 @@ export default function Duelo() {
         <h1>{t('Duelo contra o passado')}</h1>
         <Vazio titulo={hist.length ? t('Só uma tentativa até agora') : t('Você ainda não fez esta lição')}>
           {t('O duelo compara você com você mesmo. Refaça esta lição e volte aqui — aí dá para ver, item a item, o que melhorou e o que continua igual.')}
-          <div className="acoes" style={{ marginTop: 12 }}>
+          <div className="acoes mt-4">
             <Link to={`/licao/${moduloId}/${n}`} className="btn btn--primary">
               {hist.length ? t('Refazer a lição') : t('Fazer a lição')}
             </Link>

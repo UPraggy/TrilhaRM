@@ -124,7 +124,7 @@ function EtapaLeitura({ etapa, concluida, enviando, onResponder }) {
         </Secao>
       )}
       {(c.fonte || c.link) && (
-        <p className="trn-dim" style={{ marginTop: 10 }}>
+        <p className="trn-dim mt-3">
           Fonte: {c.fonte || 'link'}
           {c.link && (
             <>
@@ -314,7 +314,7 @@ function EtapaCronometrado({ etapa, gabarito, concluida, enviando, onResponder, 
                   </div>
                 )}
                 {!concluida && (
-                  <label className={`trn-check ${on ? 'on' : ''}`} style={{ marginTop: 8 }}>
+                  <label className={`trn-check ${on ? 'on' : ''}`} className="mt-2">
                     <input type="checkbox" checked={on} onChange={() => setAcertos(on ? acertos.filter((x) => x !== p.id) : [...acertos, p.id])} />
                     <span>Acertei esta</span>
                   </label>
@@ -365,10 +365,10 @@ function EtapaCronometrado({ etapa, gabarito, concluida, enviando, onResponder, 
   return (
     <div>
       <div className={`trn-relogio ${restante === 0 ? 'acabou' : ''}`}>{mmss(restante)}</div>
-      <p className="trn-dim" style={{ marginTop: 8 }}>
+      <p className="trn-dim mt-2">
         Pergunta {i + 1} de {c.perguntas.length} · responda em voz alta ou no papel
       </p>
-      <div className="trn-pergunta" style={{ marginTop: 8 }}>
+      <div className="trn-pergunta mt-2">
         <p className="trn-pergunta__txt">{p.pergunta}</p>
       </div>
       <div className="trn-acoes">
@@ -428,12 +428,12 @@ function EtapaSimulado({ etapa, gabarito, concluida, enviando, onResponder, onRe
       <Secao label="Critérios de avaliação">
         <Itens itens={c.criterios} />
       </Secao>
-      <p className="trn-dim" style={{ marginTop: 10 }}>
+      <p className="trn-dim mt-3">
         Pergunta {i + 1} de {c.perguntas.length} · até {c.minutosPorPergunta} min · responda <b>em voz alta</b> e grave
       </p>
-      <div className="trn-pergunta" style={{ marginTop: 8 }}>
+      <div className="trn-pergunta mt-2">
         <span className={`chip ${p.idioma === 'en' ? 'chip--amber' : 'chip--peri'}`}>{p.idioma === 'en' ? 'EN' : 'PT'}</span>
-        <p className="trn-pergunta__txt" style={{ marginTop: 8 }}>
+        <p className="trn-pergunta__txt mt-2">
           {p.pergunta}
         </p>
         {p.contexto && <p className="trn-pergunta__ctx">{p.contexto}</p>}
@@ -448,12 +448,12 @@ function EtapaSimulado({ etapa, gabarito, concluida, enviando, onResponder, onRe
       )}
 
       {g && (
-        <div className="trn-gabarito" style={{ marginTop: 12 }}>
+        <div className="trn-gabarito mt-4">
           <div className="trn-secao__label">Pontos esperados</div>
           <Itens itens={g.pontosEsperados} />
           {g.respostaModelo && (
             <>
-              <div className="trn-secao__label" style={{ marginTop: 10 }}>
+              <div className="trn-secao__label mt-3">
                 Resposta modelo
               </div>
               <Texto>{g.respostaModelo}</Texto>
@@ -743,7 +743,7 @@ export default function Treino() {
       </div>
       {treino.subtitulo && <p className="muted small">{treino.subtitulo}</p>}
 
-      <div className="card card--2" style={{ marginTop: 12 }}>
+      <div className="card card--2 mt-4">
         <div className="trn-card__meta">
           <span className={`chip mono ${classeNivel(treino.nivel)}`}>nv {treino.nivel}</span>
           <span className="chip chip--peri">{duracaoTreino(treino)}</span>

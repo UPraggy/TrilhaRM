@@ -39,13 +39,13 @@ export default function Curso() {
         </Link>{' '}
         / F{curso.fase}
       </div>
-      <h1 style={{ marginTop: 6 }}>{curso.titulo}</h1>
+      <h1 className="mt-1">{curso.titulo}</h1>
       {curso.descricao && (
-        <p className="muted" style={{ marginTop: 6 }}>
+        <p className="muted mt-1">
           {curso.descricao}
         </p>
       )}
-      <div className="ctx" style={{ marginTop: 10 }}>
+      <div className="ctx mt-3">
         <span className="chip">
           {curso.totalModulos} {curso.totalModulos === 1 ? 'módulo' : 'módulos'}
         </span>
@@ -63,14 +63,14 @@ export default function Curso() {
         </span>
       </div>
 
-      <div className="card card--2" style={{ marginTop: 14 }}>
+      <div className="card card--2 mt-5">
         <div className="row row--between">
           <div className="eyebrow">Progresso</div>
           <span className="dim small mono">
             {p.concluidas}/{p.total} · {p.pct}%
           </span>
         </div>
-        <div style={{ marginTop: 10 }}>
+        <div className="mt-3">
           <Barra valor={p.concluidas} max={p.total} grande cor={p.pct === 100 ? 'green' : ''} />
         </div>
         {continuar && (
@@ -83,7 +83,7 @@ export default function Curso() {
       </div>
 
       {curso.intro && curso.intro.length > 0 && (
-        <div className="card" style={{ marginTop: 14 }}>
+        <div className="card mt-5">
           <Blocos blocos={curso.intro} cursoId={curso.id} />
         </div>
       )}

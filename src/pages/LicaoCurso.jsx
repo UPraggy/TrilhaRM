@@ -101,8 +101,8 @@ export default function Licao() {
         </Link>{' '}
         / {licao.moduloTitulo}
       </div>
-      <h1 style={{ marginTop: 6 }}>{licao.titulo}</h1>
-      <div className="ctx" style={{ marginTop: 8 }}>
+      <h1 className="mt-1">{licao.titulo}</h1>
+      <div className="ctx mt-2">
         <span className="chip mono">
           lição {ctx.indice + 1}/{ctx.total}
         </span>
@@ -114,12 +114,12 @@ export default function Licao() {
         {concluida && <span className="chip chip--peri">concluída</span>}
       </div>
       {prog && (
-        <div style={{ marginTop: 10 }}>
+        <div className="mt-3">
           <Barra valor={prog.concluidas} max={prog.total} cor={prog.pct === 100 ? 'green' : ''} />
         </div>
       )}
 
-      <div className="card" style={{ marginTop: 14 }}>
+      <div className="card mt-5">
         <Blocos
           blocos={licao.blocos}
           atividades={atividades}
@@ -132,7 +132,7 @@ export default function Licao() {
         <div className="row row--between">
           <div>
             <div className="eyebrow">{concluida ? 'Lição concluída' : 'Terminou a lição?'}</div>
-            <p className="dim small" style={{ margin: '6px 0 0' }}>
+            <p className="dim small mt-1">
               {daLicao.length > 0 && feitas < daLicao.length
                 ? `Ainda faltam ${daLicao.length - feitas} de ${daLicao.length} atividades — dá para concluir assim mesmo e voltar depois.`
                 : 'Marcar a lição não avalia termo nenhum: quem vira nota SM-2 é a atividade.'}

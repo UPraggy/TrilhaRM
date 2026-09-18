@@ -38,14 +38,14 @@ export default function Cursos() {
   return (
     <div>
       <div className="eyebrow">§27 · Trilha guiada</div>
-      <h1 style={{ marginTop: 6 }}>Cursos</h1>
-      <p className="muted small" style={{ marginTop: 6 }}>
+      <h1 className="mt-1">Cursos</h1>
+      <p className="muted small mt-1">
         Lições em Markdown com <b>atividades embutidas</b>: a nota de cada atividade vira avaliação SM-2 no termo principal, igual às práticas.
         Para adicionar conteúdo, solte um arquivo <code>.md</code> em <code>content/cursos/</code> — sem restart, sem código.
       </p>
 
       {erros.length > 0 && (
-        <div className="card card--flat" style={{ marginTop: 12 }}>
+        <div className="card card--flat mt-4">
           <div className="eyebrow">Avisos de conteúdo ({erros.length})</div>
           <ul className="criterios">
             {erros.slice(0, 8).map((e, i) => (
@@ -58,7 +58,7 @@ export default function Cursos() {
       )}
 
       {cursos.length > 0 && (
-        <div className="card card--2" style={{ marginTop: 12 }}>
+        <div className="card card--2 mt-4">
           <div className="stats">
             <div className="stat">
               <div className="stat__v green">{feitas}</div>
@@ -77,14 +77,14 @@ export default function Cursos() {
               <div className="stat__l">concluído</div>
             </div>
           </div>
-          <div style={{ marginTop: 12 }}>
+          <div className="mt-4">
             <Barra valor={feitas} max={totalLicoes} grande cor="green" />
           </div>
         </div>
       )}
 
       {cursos.map((c) => (
-        <div key={c.id} className="card" style={{ marginTop: 14 }}>
+        <div key={c.id} className="card mt-5">
           <div className="curso-card__head">
             <span className="chip chip--peri">F{c.fase}</span>
             <Link to={`/curso/${c.id}`} className="curso-card__t">
@@ -95,7 +95,7 @@ export default function Cursos() {
             </span>
           </div>
           {c.descricao && <p className="curso-card__d">{c.descricao}</p>}
-          <div className="ctx" style={{ marginTop: 10 }}>
+          <div className="ctx mt-3">
             <span className="chip">
               {c.totalModulos} {c.totalModulos === 1 ? 'módulo' : 'módulos'}
             </span>
@@ -114,7 +114,7 @@ export default function Cursos() {
               </span>
             ))}
           </div>
-          <div style={{ marginTop: 12 }}>
+          <div className="mt-4">
             <Barra valor={c.progresso.concluidas} max={c.totalLicoes} cor={c.progresso.pct === 100 ? 'green' : ''} />
           </div>
           <div className="acoes">

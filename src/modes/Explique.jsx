@@ -58,7 +58,7 @@ export default function Explique({ item, onConcluir }) {
       <Contexto
         termo={item}
         extra={
-          <span className="toggle" role="group" aria-label="Idioma da pergunta" style={{ marginLeft: 'auto' }}>
+          <span className="toggle" role="group" aria-label="Idioma da pergunta" className="ml-auto">
             <button className={lingua === 'pt' ? 'active' : ''} onClick={() => trocarLingua('pt')}>
               PT
             </button>
@@ -70,12 +70,11 @@ export default function Explique({ item, onConcluir }) {
       />
       <div className="card">
         <div className="eyebrow">Pergunta de entrevista · {item.termo}</div>
-        <p className="pergunta" style={{ marginTop: 8 }}>
+        <p className="pergunta mt-2">
           {pergunta}
         </p>
         <textarea
-          className="textarea"
-          style={{ marginTop: 12 }}
+          className="textarea mt-4"
           placeholder={lingua === 'en' ? 'Answer as you would in the interview…' : 'Responda como responderia na entrevista…'}
           value={texto}
           onChange={(e) => setTexto(e.target.value)}
@@ -97,13 +96,13 @@ export default function Explique({ item, onConcluir }) {
               {item.exemplo}
             </Bloco>
             {texto.trim() && (
-              <div className="acoes" style={{ marginTop: 12 }}>
+              <div className="acoes mt-4">
                 <button className="btn" onClick={pedirMentor} disabled={mentor && mentor.estado === 'rodando'}>
                   <IcoFaisca /> {mentor && mentor.estado === 'rodando' ? 'Mentor lendo…' : 'Avaliar com o mentor (IA)'}
                 </button>
               </div>
             )}
-            {mentor && mentor.estado === 'rodando' && <p className="mentor__lendo" style={{ marginTop: 10 }}>Comparando sua resposta com o gabarito…</p>}
+            {mentor && mentor.estado === 'rodando' && <p className="mentor__lendo mt-3">Comparando sua resposta com o gabarito…</p>}
             {mentor && mentor.estado === 'erro' && (
               <div className="feedback bad">
                 {mentor.dados.codigo === 'sem_key' ? (
@@ -124,18 +123,18 @@ export default function Explique({ item, onConcluir }) {
         )}
       </div>
       {anteriores.length > 0 && (
-        <div className="card card--flat" style={{ marginTop: 12 }}>
+        <div className="card card--flat mt-4">
           <div className="eyebrow">Respostas anteriores ({anteriores.length})</div>
           {anteriores
             .slice()
             .reverse()
             .slice(0, 3)
             .map((r, i) => (
-              <div key={i} className="bloco" style={{ marginTop: 8 }}>
+              <div key={i} className="bloco mt-2">
                 <div className="dim small mono">
                   {fmtDataCurta(r.dia)} · nota {r.nota}
                 </div>
-                <p className="small" style={{ whiteSpace: 'pre-wrap' }}>
+                <p className="small pre-wrap">
                   {r.texto}
                 </p>
                 {r.avaliacaoIA && <MentorFeedback dados={r.avaliacaoIA} compacto />}

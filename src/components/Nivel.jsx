@@ -24,7 +24,7 @@ export default function Nivel({ onEscolher, selecionado, disabled }) {
 
 export function LegendaNiveis() {
   return (
-    <p className="dim small" style={{ marginTop: 8 }}>
+    <p className="dim small mt-2">
       {NIVEIS.map((n, i) => (
         <span key={n.n}>
           <span className="mono">{n.n}</span> {n.rotulo}
