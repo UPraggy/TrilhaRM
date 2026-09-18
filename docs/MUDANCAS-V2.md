@@ -167,3 +167,21 @@ Executada antes da 2 porque tudo depois depende dos módulos existirem de verdad
    comando não quebrar no meio). Conteúdo não deveria precisar evitar isso.
 
 **Verificado a 360 px e a 375 px em 15 telas**: `scrollWidth === clientWidth` em todas.
+
+## Etapa 8 — Testes, deploy e fechamento ✅
+
+- **`tests/xp.test.js`** (21 testes): pesos, bônus de primeira vez, coroas presas em 0..5, e a guarda
+  explícita de que **`nota: null` não é `nota: 0`** — `Number(null) === 0` já mordeu duas vezes nesta
+  casa, e agora há teste.
+- **`tests/licao.test.js`** (20 testes): `distribuir` não perde nem duplica item; `contarNos` com a
+  regressão registrada (**exercício não pode criar nó** — quando criava, a lição vinha com 4 itens em
+  vez de 8–12); `coroasDe` contando termo nunca visto como ZERO; `ordenarTermos` com vencido primeiro;
+  `lacunaDe` e `sequenciaDe` extraindo do próprio conteúdo; escolha de modo determinística por semente.
+- **`tests/pesquisa.test.js`** (16 testes): o que conta como fonte (URL, RFC com número, citação
+  longa), casamento de palavra-chave sem acento e com alternativas por `|`, e — importante — que a
+  mensagem de recusa **não entrega o gabarito** ("faltam 2 pontos", nunca "faltou fillfactor").
+- **`tests/i18n.test.js`** (13 testes): todo `t('…')` existe em `en.json`, tradução vazia reprova, o
+  servidor relê o idioma a cada chamada, e nenhum arquivo que traduz declara lambda com parâmetro `t`.
+- **223 → 293 testes.** `npm run test:conteudo` limpo. `npm run build` ok.
+- Docs atualizados: `AI-GUIA.md` (mapa + as duas armadilhas deste código), `HANDOFF.md` (status e a
+  lista honesta de pendências) e este changelog.

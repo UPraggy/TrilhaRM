@@ -55,15 +55,15 @@ módulo), "camada". `deck` continua sendo o nome do **arquivo** e do id na API �
 | Curso / lição em Markdown | `src/pages/{Cursos,Curso,LicaoCurso}.jsx` · `server/{cursos,markdown}.js` · `src/components/Blocos.jsx` |
 | Treino Especial (chefão) | `src/pages/{Treinos,Treino}.jsx` · `server/{treinos,progresso-treinos}.js` |
 | Entrevista simulada multi-turno | `src/pages/Entrevista.jsx` · `server/entrevista.js` |
-| Diário de erros | `src/pages/DiarioErros.jsx` · `server/diario.js` |
+| Diário de erros | `src/pages/DiarioErros.jsx` · rotas `/api/diario*` em `server/index.js` · dados em `server/progresso.js` |
 | Duelo contra o passado | `src/pages/Duelo.jsx` · `server/licao.js` (histórico) |
 | Revisão espaçada (SM-2) | `server/sm2.js` |
 | Mentor IA (OpenRouter, fila de gratuitos, CA do antivírus) | `server/mentor.js` |
 | Bot do Telegram | `server/telegram.js` · `src/components/ConfigTelegram.jsx` |
 | Cards PNG / QR Code | `server/{png,qrcode,cards}.js` · `GET /api/cards/<nome>.png` |
-| Idioma PT/EN | `src/i18n/{pt,en}.json` + `src/i18n/index.js` (front) · `server/i18n.js` (bot e cards) |
+| Idioma PT/EN | `src/i18n/nucleo.js` (lógica, sem JSX) + `index.jsx` (hook) + `en.json` (dicionário) · `server/i18n.js` (bot e cards) |
 | Estado global do front | `src/store.jsx` · cliente HTTP `src/api.js` |
-| Tokens, classes globais e CSS por tela | `src/styles/tokens.css` · `src/styles/base.css` · `src/styles/*.css` |
+| Tokens, classes globais e CSS por tela | `src/styles/tokens.css` (cores, com o contraste medido) · `src/styles/base.css` (utilitárias, reduced-motion) · `src/styles.css` (legado) · `src/v2.css` (telas novas) |
 | Validar conteúdo | `node scripts/validar-conteudo.mjs` · `node scripts/validar-treinos.mjs` |
 | Deploy no celular | `bash scripts/deploy-celular.sh` (`--status`, `--primeira`) |
 
@@ -88,7 +88,7 @@ npm run build
 | **um treino (chefão)** | `content/treinos/NN-<id>.json` — esquema em `content/treinos/README.md`. |
 | **gerar com outra IA** | `content/PROMPT-MASTER.md` (decks, práticas, pesquisa, módulo) e `content/treinos/PROMPT-MASTER.md`. |
 | **um modo de estudo** | `src/modes/<Nome>.jsx` + entrada em `MODOS` (`src/lib/util.js`) + o caso em `server/licao.js`. |
-| **uma string na interface** | `src/i18n/pt.json` **e** `src/i18n/en.json` (o teste `tests/i18n.test.js` reprova se faltar em um dos dois). |
+| **uma string na interface** | escrevo em português dentro de `t('…')` e acrescento a mesma frase como CHAVE em `src/i18n/en.json`. Não existe `pt.json`: **a chave é o próprio texto em PT** — sem tradução, a tela fica em PT em vez de mostrar a chave crua. `tests/i18n.test.js` reprova chave faltando. |
 
 Depois de mexer em conteúdo: `npm run test:conteudo`. Depois de mexer em código: `npm test` e
 `npm run build`.
@@ -105,6 +105,19 @@ Depois de mexer em conteúdo: `npm run test:conteudo`. Depois de mexer em códig
 - `Number(null) === 0`: já mordeu duas vezes. Validar `null` **explicitamente** antes de converter nota.
 - O gabarito **nunca** sai da API antes da entrega (vale para prática, atividade de curso e etapa de treino).
 
-## Estado atual
+## Estado atual (18/09/2026)
 
-Ver [`MUDANCAS-V2.md`](MUDANCAS-V2.md) — é o changelog narrativo do V2, atualizado a cada etapa.
+**19 módulos · 551 termos · 107 exercícios · 6 cursos (48 lições) · 5 treinos · 104 lições no caminho.**
+293 testes verdes. Interface em PT e EN.
+
+Ver [`MUDANCAS-V2.md`](MUDANCAS-V2.md) (o changelog narrativo, etapa por etapa) e
+[`HANDOFF.md`](HANDOFF.md) (status e **pendências** — o que ficou de fora está listado lá).
+
+## Duas armadilhas deste código em particular
+
+1. **`t` é a função de tradução E o nome que todo mundo dá a um item numa lambda.**
+   `termos.map((t) => …)` dentro de um componente que traduz sombreia a função e quebra a tela.
+   `tests/i18n.test.js` reprova o padrão — se ele acusar, renomeie o parâmetro (`tr`, `termo`, `x`).
+2. **Duas chaves iguais num objeto literal não dão erro: a última vence.** Aconteceu em `src/api.js`
+   (`licaoConcluir` do curso sobrescreveu a da lição) e a lição fechava num 404. Ao acrescentar uma
+   rota, confira se o nome já existe.
