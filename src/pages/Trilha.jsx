@@ -96,6 +96,7 @@ export default function Trilha() {
             key={tr.id}
             type="button"
             className={`chip ${tr.id === trilha.id ? 'chip--on' : ''}`}
+            style={{ '--cor-trilha': tr.cor }}
             onClick={() => {
               setAberta(tr.id)
               if (id) navegar(`/trilha/${tr.id}`)

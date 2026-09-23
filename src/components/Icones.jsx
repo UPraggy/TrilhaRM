@@ -108,3 +108,16 @@ export const IcoRetomar = (p) => (
     <path d="M10 8.5v7l6-3.5z" />
   </svg>
 )
+export const IcoTutor = (p) => (
+  <svg {...base} {...p}>
+    <path d="M21 12a8 8 0 0 1-11.6 7.1L4 20.5l1.4-4.9A8 8 0 1 1 21 12z" />
+    <path d="M9.5 9.6a2.5 2.5 0 0 1 4.9.7c0 1.7-2.4 2.1-2.4 3.4" />
+    <path d="M12 16.6h.01" />
+  </svg>
+)
+export const IcoEnviar = (p) => (
+  <svg {...base} {...p}>
+    <path d="M4 12 20 4l-4 16-4-7z" />
+    <path d="M12 13 20 4" />
+  </svg>
+)

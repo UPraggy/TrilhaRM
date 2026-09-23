@@ -11,6 +11,7 @@ import { criarLicao } from './licao.js'
 import { criarEntrevista } from './entrevista.js'
 import { criarProgresso } from './progresso.js'
 import { carregarEnv, criarMentor } from './mentor.js'
+import { criarLimitador, criarTutor } from './tutor.js'
 import { corrigir, criarPraticas, notaAutomatica, notaChecklist } from './praticas.js'
 import { hojeISO, vencido } from './sm2.js'
 import { faltaParaMeta, resultadoLicao } from './xp.js'
@@ -53,6 +54,8 @@ const telegram = criarTelegram({
 })
 const mentor = criarMentor({ arquivoConfig: ARQ_CONFIG, repo, progresso })
 const entrevistas = criarEntrevista({ estrutura, repo, mentor, progresso })
+const tutor = criarTutor({ mentor, estrutura, progresso })
+const limiteTutor = criarLimitador({ max: 20, janelaMs: 60_000 })
 
 const app = express()
 app.disable('x-powered-by')
@@ -615,6 +618,16 @@ api.get('/mentor/modelos', async (_req, res) => {
 api.post('/mentor/avaliar', async (req, res) => {
   const { deckId, termoId, resposta, idioma } = req.body || {}
   const r = await mentor.avaliar({ deckId, termoId, resposta, idioma })
+  res.status(r.status).json(r.corpo)
+})
+
+// ---- tutor (botão flutuante em toda tela) ---------------------------------
+// body { acao: 'explicar'|'chat', idioma, tela: { rota, titulo, texto, selecao }, mensagens: [{ papel, texto, rota }] }
+// Sem estado no servidor: o histórico vem do front a cada chamada (ver server/tutor.js).
+api.post('/tutor', async (req, res) => {
+  const quem = String(req.get('cf-connecting-ip') || req.ip || 'local')
+  if (!limiteTutor(quem)) return res.status(429).json({ erro: 'rate_limit', mensagem: 'Muitas perguntas seguidas. Espere um minuto.' })
+  const r = await tutor.conversar(req.body)
   res.status(r.status).json(r.corpo)
 })
 

@@ -185,3 +185,27 @@ Executada antes da 2 porque tudo depois depende dos módulos existirem de verdad
 - **223 → 293 testes.** `npm run test:conteudo` limpo. `npm run build` ok.
 - Docs atualizados: `AI-GUIA.md` (mapa + as duas armadilhas deste código), `HANDOFF.md` (status e a
   lista honesta de pendências) e este changelog.
+
+## 23/09/2026 — Tutor, mentor que não chega mais cortado, cor e movimento
+
+- **Tutor em toda tela** (`server/tutor.js` · `src/components/Tutor.jsx` · `POST /api/tutor`). Botão
+  flutuante acima da barra inferior (na lição, só o ícone, acima dos botões de responder). O primeiro
+  toque já **explica a tela**; depois vira chat. Ele "vê" a tela pelo texto visível de
+  `<main id="conteudo">`, pelo que foi digitado nos campos (nunca em Ajustes) e pelo trecho selecionado.
+  Conhece o app (vocabulário, mapa de 23 telas) e o aluno (trilha atual, próxima lição, ofensiva, XP).
+  Usa a mesma fila de gratuitos do mentor, com 25 s por modelo. Servidor **sem estado**: o histórico
+  vem do front (sessionStorage). Limite de 20 perguntas/min por IP (o túnel é público).
+  Em lição ainda não respondida ele explica e dá pista, **sem entregar a resposta**.
+- **Mentor cortado virava JSON cru na tela.** Causa: `max_tokens` 900 e modelos que raciocinam antes de
+  responder (Nemotron) — o JSON parava no meio de `"faltou"`. Correção: 900 → 2000 (prática 2200,
+  entrevista 2000) e `repararJSONCortado()` em `server/mentor.js`, que fecha string/array/objeto e
+  aproveita tudo o que chegou inteiro (`cortada: true` avisa na tela).
+- **Nota do mentor na escala 0–5** (`EscalaMentor` em `Comuns.jsx`): degraus coloridos até a nota, a
+  nota "estala", e Certo/Faltou em blocos verde/âmbar.
+- **Cor e movimento** (`src/styles/motion.css`, importado por último): hover só onde há mouse,
+  `:active` que afunda no toque do celular, entrada em cascata das telas, barras que enchem, cor de
+  cada trilha nos T1–T5 e nos chips da Trilha, notas 0–5 com a cor do nível, ponto no item ativo da
+  barra inferior. `prefers-reduced-motion` desliga tudo.
+- **5 `className` duplicados corrigidos** (DeckPage ×2, Pratica, Treino, Explique) — o botão
+  Mostrar/Ocultar do DeckPage era um botão cru, sem estilo nem hover. `tests/jsx.test.js` agora reprova
+  atributo JSX repetido. **293 → 309 testes.**

@@ -233,7 +233,7 @@ export default function Pratica() {
         <span className="chip">{(TIPOS_ENTREGA[tipo] || {}).nome || tipo}</span>
         <span className="chip">~{ex.tempoMin} min</span>
         {ex.postmortem && <span className="chip chip--rose">failure lab · postmortem</span>}
-        <span className={`chip ${st.classe} ${st.id === 'concluida' ? 'mono' : ''}`} className="ml-auto">
+        <span className={`chip ml-auto ${st.classe} ${st.id === 'concluida' ? 'mono' : ''}`}>
           {st.rotulo}
         </span>
       </div>

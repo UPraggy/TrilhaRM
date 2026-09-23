@@ -97,7 +97,7 @@ export default function DeckPage() {
           <div className="section__head">
             <span className="section__num">§</span>
             <h2>Práticas ({praticaDeck.exercicios.length})</h2>
-            <span className="dim small mono" className="ml-auto">
+            <span className="dim small mono ml-auto">
               {rp.feitas}/{rp.total} feitas
             </span>
           </div>
@@ -131,7 +131,7 @@ export default function DeckPage() {
         <div className="section__head">
           <span className="section__num">§</span>
           <h2>Termos ({lista.length})</h2>
-          <button className="btn btn--sm btn--ghost" className="ml-auto" onClick={() => setMostrarTermos((v) => !v)}>
+          <button className="btn btn--sm btn--ghost ml-auto" onClick={() => setMostrarTermos((v) => !v)}>
             {mostrarTermos ? 'Ocultar' : 'Mostrar'}
           </button>
         </div>

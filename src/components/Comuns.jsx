@@ -1,7 +1,8 @@
 import { useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { useStore } from '../store.jsx'
-import { classeNivel, fmtNivel } from '../lib/util.js'
+import { NIVEIS, classeNivel, fmtNivel } from '../lib/util.js'
+import { useT } from '../i18n/index.jsx'
 
 export function Barra({ valor, max = 100, cor = '', grande = false }) {
   const p = max ? Math.min(100, Math.round((valor / max) * 100)) : 0
@@ -19,9 +20,9 @@ export function Contexto({ termo, extra }) {
         {termo.deckTitulo || termo.deckId}
       </Link>
       {termo.tags &&
-        termo.tags.slice(0, 3).map((t) => (
-          <span key={t} className="chip">
-            {t}
+        termo.tags.slice(0, 3).map((tag) => (
+          <span key={tag} className="chip">
+            {tag}
           </span>
         ))}
       {extra}
@@ -96,30 +97,57 @@ function Inline({ texto }) {
  * Resultado do mentor IA (OpenRouter): classificação, nível sugerido, certo/faltou, feedback, pergunta.
  * `dados.bruto` = o modelo não devolveu JSON. `onUsarNota(n)` mostra o botão "usar nível sugerido".
  */
+/** a nota do mentor desenhada na escala 0–5: os degraus até a nota acendem, a nota pulsa */
+export function EscalaMentor({ nivel }) {
+  const { t } = useT()
+  if (nivel == null) return null
+  return (
+    <div className="escala" role="img" aria-label={t('Nota do mentor: {n} de 5', { n: nivel })}>
+      <div className="escala__topo">
+        <span className="bloco__label">{t('Nota do mentor')}</span>
+        <span className="escala__valor">
+          <span className={`escala__nome ${classeNivel(nivel)}`}>{t((NIVEIS.find((x) => x.n === nivel) || NIVEIS[0]).curto)}</span>
+          <b className={`escala__nota ${classeNivel(nivel)}`}>
+            {nivel}
+            <small>/5</small>
+          </b>
+        </span>
+      </div>
+      <ol className="escala__degraus">
+        {NIVEIS.map((nv) => (
+          <li key={nv.n} data-n={nv.n} className={`${nv.n <= nivel ? 'on' : ''} ${nv.n === nivel ? 'atual' : ''}`} style={{ '--i': nv.n }}>
+            <i />
+            <span title={t(nv.curto)}>{nv.n}</span>
+          </li>
+        ))}
+      </ol>
+    </div>
+  )
+}
+
 export function MentorFeedback({ dados, onUsarNota, compacto = false }) {
+  const { t } = useT()
   if (!dados) return null
   if (dados.bruto)
     return (
-      <div className="mentor">
-        <p className="small pre-wrap">
-          {dados.bruto}
-        </p>
-        <p className="dim small">{dados.modelo}</p>
+      <div className="mentor mentor--anima">
+        <p className="dim small">{t('O mentor respondeu fora do formato esperado. O texto dele:')}</p>
+        <p className="small pre-wrap">{dados.bruto}</p>
+        <p className="dim small mono">{dados.modelo}</p>
       </div>
     )
   return (
-    <div className={`mentor ${compacto ? 'mentor--compacto' : ''}`}>
+    <div className={`mentor mentor--anima ${compacto ? 'mentor--compacto' : ''}`}>
       <div className="row" style={{ gap: 8 }}>
         {dados.classificacao && <span className="chip chip--peri">{dados.classificacao}</span>}
-        {dados.nivelSugerido != null && (
-          <span className={`chip mono ${classeNivel(dados.nivelSugerido)}`}>nível sugerido {dados.nivelSugerido}</span>
-        )}
+        {compacto && dados.nivelSugerido != null && <span className={`chip mono ${classeNivel(dados.nivelSugerido)}`}>{t('nível sugerido')} {dados.nivelSugerido}</span>}
         {dados.modelo && !compacto && <span className="dim small mono">{dados.modelo.replace(':free', '')}</span>}
       </div>
+      {!compacto && <EscalaMentor nivel={dados.nivelSugerido} />}
       {dados.feedback && <p className="small mt-2">{dados.feedback}</p>}
       {dados.certo && dados.certo.length > 0 && (
-        <div>
-          <div className="bloco__label" style={{ color: 'var(--green)' }}>Certo</div>
+        <div className="mentor__bloco mentor__bloco--ok">
+          <div className="bloco__label">{t('Certo')}</div>
           <ul className="mentor__lista ok">
             {dados.certo.map((c, i) => (
               <li key={i}>{c}</li>
@@ -128,8 +156,8 @@ export function MentorFeedback({ dados, onUsarNota, compacto = false }) {
         </div>
       )}
       {dados.faltou && dados.faltou.length > 0 && (
-        <div>
-          <div className="bloco__label" style={{ color: 'var(--amber)' }}>Faltou</div>
+        <div className="mentor__bloco mentor__bloco--falta">
+          <div className="bloco__label">{t('Faltou')}</div>
           <ul className="mentor__lista falta">
             {dados.faltou.map((c, i) => (
               <li key={i}>{c}</li>
@@ -138,7 +166,7 @@ export function MentorFeedback({ dados, onUsarNota, compacto = false }) {
         </div>
       )}
       {dados.correcaoIngles && dados.correcaoIngles.length > 0 && (
-        <div>
+        <div className="mentor__bloco">
           <div className="bloco__label">English</div>
           <ul className="mentor__lista">
             {dados.correcaoIngles.map((c, i) => (
@@ -149,14 +177,15 @@ export function MentorFeedback({ dados, onUsarNota, compacto = false }) {
       )}
       {dados.perguntaAprofundamento && !compacto && (
         <div className="mentor__pergunta">
-          <div className="bloco__label">Para aprofundar</div>
+          <div className="bloco__label">{t('Para aprofundar')}</div>
           <p className="pergunta small">{dados.perguntaAprofundamento}</p>
         </div>
       )}
+      {dados.cortada && <p className="dim small mt-2">{t('A resposta do modelo veio cortada; o que chegou inteiro está acima.')}</p>}
       {onUsarNota && dados.nivelSugerido != null && (
         <div className="acoes mt-3">
           <button className="btn btn--sm btn--primary" onClick={() => onUsarNota(dados.nivelSugerido)}>
-            Usar nível {dados.nivelSugerido} como minha nota
+            {t('Usar nível {n} como minha nota', { n: dados.nivelSugerido })}
           </button>
         </div>
       )}

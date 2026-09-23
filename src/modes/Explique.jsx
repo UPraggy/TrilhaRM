@@ -58,7 +58,7 @@ export default function Explique({ item, onConcluir }) {
       <Contexto
         termo={item}
         extra={
-          <span className="toggle" role="group" aria-label="Idioma da pergunta" className="ml-auto">
+          <span className="toggle ml-auto" role="group" aria-label="Idioma da pergunta">
             <button className={lingua === 'pt' ? 'active' : ''} onClick={() => trocarLingua('pt')}>
               PT
             </button>

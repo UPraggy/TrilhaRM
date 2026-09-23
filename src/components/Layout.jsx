@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom'
 import Logo from './Logo.jsx'
+import Tutor from './Tutor.jsx'
 import { IcoBusca, IcoChama } from './Icones.jsx'
 import { PRINCIPAL, ehImersiva } from '../nav.js'
 import { useStore } from '../store.jsx'
@@ -50,6 +51,7 @@ export default function Layout() {
         <main className="main main--imersivo" id="conteudo">
           <Outlet />
         </main>
+        <Tutor imersivo />
         {aviso && (
           <div className="toast" role="status">
             {aviso}
@@ -106,6 +108,8 @@ export default function Layout() {
           </NavLink>
         ))}
       </nav>
+
+      <Tutor />
 
       {aviso && (
         <div className="toast" role="status">

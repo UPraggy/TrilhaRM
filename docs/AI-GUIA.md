@@ -59,6 +59,8 @@ módulo), "camada". `deck` continua sendo o nome do **arquivo** e do id na API �
 | Duelo contra o passado | `src/pages/Duelo.jsx` · `server/licao.js` (histórico) |
 | Revisão espaçada (SM-2) | `server/sm2.js` |
 | Mentor IA (OpenRouter, fila de gratuitos, CA do antivírus) | `server/mentor.js` |
+| Tutor (botão flutuante: explica a tela + chat) | `server/tutor.js` (contexto do app, do aluno e da tela) · `src/components/Tutor.jsx` · `POST /api/tutor` |
+| Cor e movimento (hover, toque, entradas) | `src/styles/motion.css` (vem por último) |
 | Bot do Telegram | `server/telegram.js` · `src/components/ConfigTelegram.jsx` |
 | Cards PNG / QR Code | `server/{png,qrcode,cards}.js` · `GET /api/cards/<nome>.png` |
 | Idioma PT/EN | `src/i18n/nucleo.js` (lógica, sem JSX) + `index.jsx` (hook) + `en.json` (dicionário) · `server/i18n.js` (bot e cards) |

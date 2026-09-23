@@ -1,0 +1,428 @@
+/* MOTION + COR — a camada que dá vida aos cards e botões. Vem por ÚLTIMO em src/main.jsx.
+ *
+ * Três regras que valem para o arquivo inteiro:
+ *   1. hover só existe onde existe mouse (@media (hover: hover)). No celular o hover "gruda" depois
+ *      do toque; lá o retorno é o :active (afunda e acende na hora do dedo).
+ *   2. só se anima transform e opacity (e cor/borda, que são baratas). Nada de animar width/height:
+ *      no M52 isso engasga.
+ *   3. prefers-reduced-motion desliga tudo (a regra global está em styles/base.css).
+ * Cores: as cinco das trilhas (estrutura.json) viram tokens; cada tela passa a sua em --cor-trilha. */
+
+:root {
+  --t1: #9db1ea;
+  --t2: #eaa94e;
+  --t3: #7bbf5e;
+  --t4: #c98ce0;
+  --t5: #5ec8bf;
+  --mola: cubic-bezier(0.34, 1.56, 0.64, 1); /* passa um pouco do ponto e volta: sensação de toque */
+  --suave: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* ---- entrada das telas ------------------------------------------------------ */
+@keyframes entra {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+}
+@keyframes estala {
+  0% {
+    transform: scale(0.6);
+    opacity: 0;
+  }
+  60% {
+    transform: scale(1.12);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+@keyframes brilho {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--cor, var(--peri)) 0%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 0 6px color-mix(in srgb, var(--cor, var(--peri)) 22%, transparent);
+  }
+}
+@keyframes enche {
+  from {
+    transform: scaleX(0);
+  }
+}
+
+/* cada filho direto da tela entra em cascata (os 8 primeiros; o resto entra junto do 8º) */
+.main > * > *:not(.licao__topo) {
+  animation: entra 0.42s var(--suave) both;
+}
+.main > * > *:nth-child(2) { animation-delay: 0.04s; }
+.main > * > *:nth-child(3) { animation-delay: 0.08s; }
+.main > * > *:nth-child(4) { animation-delay: 0.12s; }
+.main > * > *:nth-child(5) { animation-delay: 0.16s; }
+.main > * > *:nth-child(6) { animation-delay: 0.2s; }
+.main > * > *:nth-child(7) { animation-delay: 0.24s; }
+.main > * > *:nth-child(n + 8) { animation-delay: 0.28s; }
+
+/* barras de progresso enchem da esquerda ao abrir a tela */
+.progress > span,
+.bar > i {
+  transform-origin: left center;
+  animation: enche 0.7s var(--suave) both 0.15s;
+}
+
+/* ---- botões ------------------------------------------------------------------ */
+.btn,
+.chip,
+.nivel,
+.iconbtn,
+.card--link,
+.inicio__trilha-mini,
+.mapa__card {
+  transition:
+    transform 0.18s var(--mola),
+    background-color 0.18s ease,
+    border-color 0.18s ease,
+    color 0.18s ease,
+    box-shadow 0.22s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+.btn:active:not(:disabled),
+.chip:active,
+.nivel:active,
+.iconbtn:active,
+.card--link:active,
+.inicio__trilha-mini:active,
+.mapa__card:active {
+  transform: scale(0.96);
+}
+.btn--primary {
+  background: linear-gradient(135deg, var(--amber-soft), var(--amber) 55%, var(--amber-deep));
+  border-color: transparent;
+  box-shadow: 0 4px 14px rgba(234, 169, 78, 0.22);
+}
+.btn--ok {
+  background: rgba(123, 191, 94, 0.1);
+}
+.btn--bad {
+  background: rgba(197, 64, 42, 0.1);
+}
+/* o botão genérico ganha a cor fria no toque, para não ficar "morto" */
+.btn:not(.btn--primary):not(.btn--ok):not(.btn--bad):not(.btn--danger):active:not(:disabled) {
+  background: rgba(157, 177, 234, 0.14);
+  border-color: var(--peri);
+}
+
+@media (hover: hover) {
+  .btn:hover:not(:disabled) {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
+  }
+  .btn:not(.btn--primary):not(.btn--ok):not(.btn--bad):not(.btn--danger):hover:not(:disabled) {
+    background: rgba(157, 177, 234, 0.1);
+    border-color: var(--peri);
+    color: var(--bone);
+  }
+  .btn--primary:hover:not(:disabled) {
+    background: linear-gradient(135deg, #f8dca8, var(--amber-soft) 50%, var(--amber));
+    box-shadow: 0 8px 22px rgba(234, 169, 78, 0.35);
+  }
+  .btn--ok:hover:not(:disabled) {
+    background: rgba(123, 191, 94, 0.2);
+  }
+  .btn--bad:hover:not(:disabled),
+  .btn--danger:hover:not(:disabled) {
+    background: rgba(197, 64, 42, 0.18);
+  }
+  .chip:hover {
+    transform: translateY(-1px);
+    border-color: var(--cor-trilha, var(--peri));
+    color: var(--bone);
+  }
+  .iconbtn:hover {
+    transform: rotate(-6deg) scale(1.06);
+  }
+  .card--link:hover {
+    transform: translateY(-3px);
+    border-color: color-mix(in srgb, var(--cor-trilha, var(--peri)) 60%, transparent);
+    box-shadow: 0 10px 26px rgba(0, 0, 0, 0.4), 0 0 0 1px color-mix(in srgb, var(--cor-trilha, var(--peri)) 25%, transparent);
+  }
+}
+
+/* ---- as mini-trilhas T1…T5 do Início (o screenshot sem hover) ----------------- */
+.inicio__trilha-mini {
+  --cor: var(--cor-trilha, var(--peri));
+  position: relative;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--cor) 6%, transparent);
+  border-color: color-mix(in srgb, var(--cor) 28%, transparent);
+  text-decoration: none;
+}
+.inicio__trilha-mini b {
+  color: var(--cor);
+  transition: transform 0.2s var(--mola);
+}
+.inicio__trilha-mini.on {
+  background: color-mix(in srgb, var(--cor) 14%, transparent);
+  border-color: var(--cor);
+  color: var(--bone);
+  animation: brilho 2.4s ease-in-out infinite 0.8s;
+}
+.inicio__trilha-mini:focus-visible {
+  outline: 2px solid var(--cor);
+  outline-offset: 2px;
+}
+.inicio__trilha-mini:hover,
+.inicio__trilha-mini:focus-visible {
+  text-decoration: none;
+}
+.inicio__trilha-mini:hover *,
+.inicio__trilha-mini:focus-visible * {
+  text-decoration: none;
+}
+@media (hover: hover) {
+  .inicio__trilha-mini:hover {
+    transform: translateY(-3px);
+    background: color-mix(in srgb, var(--cor) 18%, transparent);
+    border-color: var(--cor);
+    color: var(--bone);
+    box-shadow: 0 8px 20px color-mix(in srgb, var(--cor) 18%, transparent);
+  }
+  .inicio__trilha-mini:hover b {
+    transform: scale(1.15);
+  }
+}
+.inicio__trilha-mini:active {
+  background: color-mix(in srgb, var(--cor) 24%, transparent);
+}
+
+/* os chips de trilha da tela Trilha usam a cor da trilha deles */
+.chip[style*='--cor-trilha'] {
+  border-color: color-mix(in srgb, var(--cor-trilha) 35%, transparent);
+}
+.chip--on[style*='--cor-trilha'] {
+  background: color-mix(in srgb, var(--cor-trilha) 18%, transparent);
+  border-color: var(--cor-trilha);
+  color: var(--bone);
+}
+
+/* ---- cards: um fio de cor no topo que acende no hover/toque ------------------- */
+.card--link {
+  overflow: hidden;
+}
+.card--link > svg:first-child {
+  color: var(--cor-trilha, var(--peri));
+  transition: transform 0.25s var(--mola);
+}
+@media (hover: hover) {
+  .card--link:hover > svg:first-child {
+    transform: scale(1.18) rotate(-4deg);
+  }
+}
+
+/* ---- a escala 0–5 que o aluno toca para se dar nota --------------------------- */
+.nivel[data-n='0'] { --cor: var(--rose-soft); }
+.nivel[data-n='1'] { --cor: #d9774a; }
+.nivel[data-n='2'] { --cor: var(--amber-deep); }
+.nivel[data-n='3'] { --cor: var(--amber); }
+.nivel[data-n='4'] { --cor: #a9c96a; }
+.nivel[data-n='5'] { --cor: var(--green); }
+.nivel {
+  position: relative;
+  overflow: hidden;
+  border-color: color-mix(in srgb, var(--cor, var(--peri)) 30%, transparent);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--cor, var(--peri)) 9%, var(--surface-2)), var(--surface-2));
+}
+.nivel b {
+  color: var(--cor, var(--bone)) !important;
+  transition: transform 0.2s var(--mola);
+}
+.nivel:active {
+  background: color-mix(in srgb, var(--cor, var(--peri)) 26%, var(--surface-2));
+  border-color: var(--cor);
+}
+@media (hover: hover) {
+  .nivel:hover {
+    transform: translateY(-3px);
+    border-color: var(--cor);
+    background: color-mix(in srgb, var(--cor, var(--peri)) 16%, var(--surface-2));
+    box-shadow: 0 8px 18px color-mix(in srgb, var(--cor, var(--peri)) 20%, transparent);
+  }
+  .nivel:hover b {
+    transform: scale(1.25);
+  }
+}
+
+/* ---- o card do mentor ---------------------------------------------------------- */
+.mentor--anima {
+  animation: entra 0.4s var(--suave) both;
+  background:
+    radial-gradient(120% 80% at 0% 0%, rgba(234, 169, 78, 0.08), transparent 60%),
+    radial-gradient(120% 80% at 100% 100%, rgba(157, 177, 234, 0.07), transparent 60%),
+    var(--bg);
+}
+.mentor__bloco {
+  margin-top: 10px;
+  padding: 8px 10px;
+  border-radius: var(--r-sm);
+  border-left: 3px solid var(--peri);
+  background: rgba(157, 177, 234, 0.05);
+}
+.mentor__bloco--ok {
+  border-left-color: var(--green);
+  background: rgba(123, 191, 94, 0.07);
+}
+.mentor__bloco--ok .bloco__label {
+  color: var(--green);
+}
+.mentor__bloco--falta {
+  border-left-color: var(--amber);
+  background: rgba(234, 169, 78, 0.07);
+}
+.mentor__bloco--falta .bloco__label {
+  color: var(--amber);
+}
+.mentor__bloco .mentor__lista {
+  margin-top: 4px;
+}
+
+.escala {
+  margin-top: 12px;
+  padding: 10px 12px 12px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--line);
+  background: rgba(10, 12, 18, 0.6);
+}
+.escala__topo {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+.escala__valor {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.escala__nome {
+  font-weight: 700;
+  font-size: 0.9rem;
+  animation: entra 0.4s var(--suave) both 0.45s;
+}
+.escala__nota {
+  font: 700 1.6rem var(--mono);
+  line-height: 1;
+  animation: estala 0.55s var(--mola) both 0.35s;
+}
+.escala__nota small {
+  font-size: 0.8rem;
+  color: var(--fg-2);
+  margin-left: 2px;
+}
+.escala__degraus {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 4px;
+}
+.escala__degraus li {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  text-align: center;
+}
+.escala__degraus li[data-n='0'] { --cor: var(--rose-soft); }
+.escala__degraus li[data-n='1'] { --cor: #d9774a; }
+.escala__degraus li[data-n='2'] { --cor: var(--amber-deep); }
+.escala__degraus li[data-n='3'] { --cor: var(--amber); }
+.escala__degraus li[data-n='4'] { --cor: #a9c96a; }
+.escala__degraus li[data-n='5'] { --cor: var(--green); }
+.escala__degraus i {
+  display: block;
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(157, 177, 234, 0.12);
+}
+.escala__degraus li.on i {
+  background: var(--cor);
+  transform-origin: left center;
+  animation: enche 0.3s var(--suave) both;
+  animation-delay: calc(var(--i) * 0.07s + 0.1s);
+}
+.escala__degraus li.atual i {
+  box-shadow: 0 0 10px var(--cor);
+}
+.escala__degraus span {
+  font: 600 0.7rem var(--mono);
+  color: var(--fg-3);
+  line-height: 1.1;
+  overflow-wrap: anywhere;
+}
+.escala__degraus li.on span {
+  color: var(--fg-2);
+}
+.escala__degraus li.atual span {
+  color: var(--cor);
+  font-weight: 700;
+}
+
+/* ---- barra inferior: o ícone ativo sobe e ganha um ponto ----------------------- */
+.bottomnav a {
+  position: relative;
+  transition: color 0.2s ease;
+}
+.bottomnav a svg {
+  transition: transform 0.25s var(--mola);
+}
+.bottomnav a.active svg {
+  transform: translateY(-2px) scale(1.12);
+}
+.bottomnav a.active::after {
+  content: '';
+  position: absolute;
+  top: 5px;
+  left: 50%;
+  width: 5px;
+  height: 5px;
+  margin-left: -2.5px;
+  border-radius: 50%;
+  background: var(--amber);
+  animation: estala 0.4s var(--mola) both;
+}
+.bottomnav a:active svg {
+  transform: scale(0.88);
+}
+
+/* ---- tutor: o botão respira de leve para ser achado, sem incomodar ------------- */
+.tutor-fab {
+  --cor: var(--peri);
+  background: linear-gradient(135deg, rgba(157, 177, 234, 0.22), rgba(201, 140, 224, 0.18)), var(--surface-2);
+  animation: estala 0.5s var(--mola) both 0.3s, brilho 3.2s ease-in-out infinite 1.5s;
+  transition: transform 0.2s var(--mola);
+}
+.tutor-fab:active {
+  transform: scale(0.92);
+}
+@media (hover: hover) {
+  .tutor-fab:hover {
+    transform: translateY(-3px) scale(1.04);
+  }
+}
+.tutor__msg {
+  animation: entra 0.3s var(--suave) both;
+}
+.tutor__msg--tutor {
+  border-left: 3px solid var(--peri);
+}
+
+/* os botões de nota 0–5 a 360–420 px: o rótulo encolhe em vez de quebrar no meio da palavra */
+@media (max-width: 420px) {
+  .nivel span {
+    font-size: 0.54rem;
+    letter-spacing: 0;
+    hyphens: auto;
+  }
+}

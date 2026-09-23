@@ -150,7 +150,7 @@ export function criarEntrevista({ estrutura, repo, mentor, progresso }) {
         { role: 'system', content: sessao.idioma === 'en' ? AVALIAR_EN : AVALIAR_PT },
         { role: 'user', content: transcricao },
       ],
-      900,
+      2000,
     )
     if (!rr.ok) {
       // sem avaliação da IA a entrevista ainda vale: fica no histórico para reler

@@ -314,7 +314,7 @@ function EtapaCronometrado({ etapa, gabarito, concluida, enviando, onResponder, 
                   </div>
                 )}
                 {!concluida && (
-                  <label className={`trn-check ${on ? 'on' : ''}`} className="mt-2">
+                  <label className={`trn-check mt-2 ${on ? 'on' : ''}`}>
                     <input type="checkbox" checked={on} onChange={() => setAcertos(on ? acertos.filter((x) => x !== p.id) : [...acertos, p.id])} />
                     <span>Acertei esta</span>
                   </label>

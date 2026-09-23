@@ -1048,3 +1048,261 @@ body.imersivo .main {
   margin-top: 24px;
   justify-content: center;
 }
+
+/* ---- Tutor (src/components/Tutor.jsx) --------------------------------------
+ * Botão flutuante acima da barra inferior; no desktop (sem barra) e na tela cheia, no canto.
+ * O painel é uma folha de baixo no celular e uma coluna à direita no desktop. */
+.tutor-fab {
+  position: fixed;
+  right: 14px;
+  bottom: calc(var(--nav-h) + env(safe-area-inset-bottom, 0px) + 12px);
+  z-index: 30;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: var(--tap);
+  padding: 0 14px 0 12px;
+  border-radius: 999px;
+  border: 1px solid var(--line-2);
+  background: var(--surface-2);
+  color: var(--peri);
+  font: 600 0.9rem var(--display);
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.45);
+  cursor: pointer;
+}
+.tutor-fab:hover {
+  border-color: var(--peri-dim);
+}
+.tutor-fab:focus-visible {
+  outline: 2px solid var(--peri);
+  outline-offset: 2px;
+}
+/* na lição o rodapé tem os botões de responder: o tutor sobe e vira só o ícone */
+.tutor-fab--imersivo {
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 84px);
+  padding: 0;
+  width: var(--tap);
+  justify-content: center;
+}
+.tutor-fab--imersivo .tutor-fab__rotulo {
+  display: none;
+}
+@media (min-width: 760px) {
+  .tutor-fab {
+    bottom: 20px;
+    right: 20px;
+  }
+  .tutor-fab--imersivo {
+    bottom: 20px;
+  }
+}
+
+.tutor-bg {
+  position: fixed;
+  inset: 0;
+  z-index: 55;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-end;
+}
+.tutor {
+  width: 100%;
+  height: min(82vh, 720px);
+  height: min(82dvh, 720px);
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  background: var(--surface);
+  border-top: 1px solid var(--line-2);
+  border-radius: var(--r) var(--r) 0 0;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  animation: sobe 0.16s ease-out;
+}
+@media (min-width: 760px) {
+  .tutor-bg {
+    background: rgba(0, 0, 0, 0.25);
+    padding: 16px;
+    align-items: flex-end;
+  }
+  .tutor {
+    width: 420px;
+    height: min(86vh, 760px);
+    border: 1px solid var(--line-2);
+    border-radius: var(--r);
+    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5);
+  }
+}
+.tutor__topo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 8px 8px 14px;
+  border-bottom: 1px solid var(--line);
+  color: var(--peri);
+}
+.tutor__titulo {
+  color: var(--bone);
+  white-space: nowrap;
+}
+.tutor__topo .btn {
+  white-space: nowrap;
+  flex: 0 0 auto;
+}
+@media (max-width: 420px) {
+  .tutor__onde {
+    display: none;
+  }
+  .tutor__topo .btn {
+    margin-left: auto;
+  }
+}
+.tutor__onde {
+  flex: 1 1 auto;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tutor__conversa {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.tutor__msg {
+  max-width: 100%;
+  min-width: 0;
+  padding: 10px 12px;
+  border-radius: var(--r-sm);
+  line-height: 1.5;
+  font-size: 0.95rem;
+  overflow-wrap: anywhere;
+}
+.tutor__msg p,
+.tutor__msg ul,
+.tutor__msg ol,
+.tutor__msg pre {
+  margin: 0 0 8px;
+}
+.tutor__msg > :last-child {
+  margin-bottom: 0;
+}
+.tutor__msg ul,
+.tutor__msg ol {
+  padding-left: 20px;
+}
+.tutor__msg code {
+  font-family: var(--mono);
+  font-size: 0.88em;
+  color: var(--amber-soft);
+}
+.tutor__msg pre {
+  padding: 8px 10px;
+  border-radius: var(--r-sm);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  overflow-x: auto;
+  max-width: 100%;
+}
+.tutor__msg pre code {
+  color: var(--fg-1);
+  white-space: pre;
+}
+.tutor__msg--eu {
+  align-self: flex-end;
+  max-width: 88%;
+  background: rgba(157, 177, 234, 0.12);
+  border: 1px solid var(--line-2);
+  color: var(--bone);
+}
+.tutor__msg--tutor {
+  align-self: stretch;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  color: var(--fg-1);
+}
+.tutor__msg--pensando p {
+  animation: pulsa 1.2s ease-in-out infinite;
+}
+@keyframes pulsa {
+  50% {
+    opacity: 0.45;
+  }
+}
+.tutor__modelo {
+  display: block;
+  margin-top: 6px;
+  font-size: 0.7rem;
+  color: var(--fg-2);
+  overflow-wrap: anywhere;
+}
+.tutor__erro {
+  padding: 10px 12px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--rose);
+  color: var(--rose-soft);
+  font-size: 0.9rem;
+}
+.tutor__erro p {
+  margin: 0 0 4px;
+}
+.tutor__selecao {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 14px;
+  padding: 4px 4px 4px 10px;
+  border-radius: var(--r-sm);
+  border: 1px dashed var(--line-2);
+  min-width: 0;
+}
+.tutor__selecao-txt {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--fg-1);
+}
+.tutor__acoes {
+  display: flex;
+  gap: 8px;
+  padding: 8px 14px 0;
+}
+.tutor__form {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  padding: 8px 14px 12px;
+}
+.tutor__campo {
+  flex: 1 1 auto;
+  min-width: 0;
+  resize: none;
+  max-height: 140px;
+  padding: 10px 12px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--line-2);
+  background: var(--bg);
+  color: var(--bone);
+  font: inherit;
+  font-size: 1rem; /* 16px: abaixo disso o Safari/Chrome do celular dá zoom ao focar */
+}
+.tutor__campo:focus {
+  outline: none;
+  border-color: var(--peri);
+}
+.tutor__enviar {
+  flex: 0 0 auto;
+  width: var(--tap);
+  min-height: var(--tap);
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}

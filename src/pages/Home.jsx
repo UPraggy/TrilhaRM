@@ -154,7 +154,7 @@ export default function Home() {
       <ul className="inicio__trilhas">
         {estrutura.trilhas.map((tr) => (
           <li key={tr.id}>
-            <Link to={`/trilha/${tr.id}`} className={`inicio__trilha-mini ${tr.id === trilhaAtual.id ? 'on' : ''}`}>
+            <Link to={`/trilha/${tr.id}`} className={`inicio__trilha-mini ${tr.id === trilhaAtual.id ? 'on' : ''}`} style={{ '--cor-trilha': tr.cor }}>
               <b>T{tr.numero}</b>
               <div className="progress">
                 <span style={{ width: `${tr.progresso.pct}%`, background: tr.cor }} />

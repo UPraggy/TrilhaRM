@@ -55,6 +55,8 @@ export const api = {
   salvarConfig: (patch) => req('/api/config', { method: 'PUT', body: JSON.stringify(patch) }),
   listarModelos: () => req('/api/mentor/modelos'),
   avaliarComMentor: (corpo) => req('/api/mentor/avaliar', { method: 'POST', body: JSON.stringify(corpo) }),
+  // tutor: explica a tela e conversa (server/tutor.js). O histórico vai inteiro a cada chamada.
+  tutor: (corpo) => req('/api/tutor', { method: 'POST', body: JSON.stringify(corpo) }),
   // práticas (exercícios resolvidos fora do app)
   praticas: () => req('/api/praticas'),
   pratica: (deckId, exId) => req(`/api/praticas/${encodeURIComponent(deckId)}/${encodeURIComponent(exId)}`),

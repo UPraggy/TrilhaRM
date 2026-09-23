@@ -158,6 +158,45 @@ export function extrairJSON(texto) {
       }
     }
   }
+  // chegou ao fim sem fechar: o modelo foi cortado pelo max_tokens (os de raciocínio gastam a cota
+  // pensando). Antes isto virava o JSON cru na tela; agora salvamos o que veio inteiro.
+  return repararJSONCortado(limpo.slice(ini))
+}
+
+/** fecha string, arrays e objetos abertos de um JSON cortado no meio; marca `_cortado: true` */
+export function repararJSONCortado(texto) {
+  let candidato = String(texto || '')
+  for (let tentativa = 0; tentativa < 60 && candidato.length > 1; tentativa++) {
+    const pilha = []
+    let emStr = false
+    let esc = false
+    for (const c of candidato) {
+      if (emStr) {
+        if (esc) esc = false
+        else if (c === '\\') esc = true
+        else if (c === '"') emStr = false
+        continue
+      }
+      if (c === '"') emStr = true
+      else if (c === '{' || c === '[') pilha.push(c)
+      else if (c === '}' || c === ']') pilha.pop()
+    }
+    let fechado = candidato
+    if (esc) fechado = fechado.slice(0, -1)
+    if (emStr) fechado += '…"'
+    fechado = fechado.replace(/[\s,]+$/, '')
+    if (fechado.endsWith(':')) fechado += 'null'
+    fechado += pilha.reverse().map((c) => (c === '{' ? '}' : ']')).join('')
+    try {
+      const obj = JSON.parse(fechado)
+      if (obj && typeof obj === 'object' && !Array.isArray(obj)) return { ...obj, _cortado: true }
+    } catch {
+      /* recua até a vírgula anterior e tenta de novo */
+    }
+    const corte = candidato.lastIndexOf(',')
+    if (corte <= 0) break
+    candidato = candidato.slice(0, corte)
+  }
   return null
 }
 
@@ -172,6 +211,7 @@ function normalizarAvaliacao(obj) {
     feedback: typeof obj.feedback === 'string' ? obj.feedback.trim() : '',
     perguntaAprofundamento: typeof obj.perguntaAprofundamento === 'string' ? obj.perguntaAprofundamento.trim() : '',
     correcaoIngles: lista(obj.correcaoIngles, 3),
+    cortada: Boolean(obj._cortado),
   }
 }
 
@@ -353,7 +393,7 @@ export function criarMentor({ arquivoConfig, repo, progresso }) {
         { role: 'system', content: SYSTEM_PROMPT },
         { role: 'user', content: montarPromptUsuario(termo, texto, lingua, c.idiomaFeedback) },
       ],
-      900,
+      2000, // 900 cortava o JSON no meio nos modelos que raciocinam antes de responder
     )
     if (!rr.ok) return rr.resposta
     const modelo = rr.modelo // qual gratuito respondeu de fato (a fila pode ter trocado)
@@ -376,7 +416,7 @@ export function criarMentor({ arquivoConfig, repo, progresso }) {
    * Chamada genérica ao chat/completions. Devolve { ok:true, conteudo, uso, modelo } ou
    * { ok:false, resposta:{ status, corpo } } já no formato que o router repassa.
    */
-  async function completarNoModelo(modelo, messages, maxTokens) {
+  async function completarNoModelo(modelo, messages, maxTokens, timeoutMs = TIMEOUT_AVALIAR_MS) {
     const { key } = keyAtual()
     if (!key) return { ok: false, resposta: { status: 400, corpo: { erro: 'sem_key', mensagem: 'Configure a key do OpenRouter em Configurações.' } } }
     const body = { model: modelo, messages, temperature: 0.3, max_tokens: maxTokens }
@@ -395,17 +435,17 @@ export function criarMentor({ arquivoConfig, repo, progresso }) {
           },
           body: JSON.stringify(body),
         },
-        TIMEOUT_AVALIAR_MS,
+        timeoutMs,
       )
     } catch (e) {
       const timeout = e.name === 'AbortError'
-      console.warn('[mentor] falha de rede ao chamar o OpenRouter:', timeout ? 'timeout 60s' : e.message)
+      console.warn('[mentor] falha de rede ao chamar o OpenRouter:', timeout ? `timeout ${Math.round(timeoutMs / 1000)}s (${modelo})` : e.message)
       if (!timeout) console.warn('[mentor] detalhe:', e.cause ? (e.cause.code || e.cause.message || String(e.cause)) : 'sem cause', '| proxy:', process.env.HTTPS_PROXY || process.env.https_proxy || process.env.HTTP_PROXY || process.env.http_proxy || 'nenhum', '| CA:', process.env.NODE_EXTRA_CA_CERTS || 'padrao')
       return {
         ok: false,
         resposta: {
           status: 502,
-          corpo: { erro: timeout ? 'timeout' : 'rede', mensagem: timeout ? 'O mentor demorou mais de 60 s e a chamada foi cancelada.' : `Sem resposta do OpenRouter: ${e.message}` },
+          corpo: { erro: timeout ? 'timeout' : 'rede', mensagem: timeout ? `O modelo demorou mais de ${Math.round(timeoutMs / 1000)} s e a chamada foi cancelada.` : `Sem resposta do OpenRouter: ${e.message}` },
         },
       }
     }
@@ -455,14 +495,14 @@ export function criarMentor({ arquivoConfig, repo, progresso }) {
    * com modelo fixo, tenta ele primeiro e so cai para a fila se o provedor estiver fora do ar.
    * Devolve { ok:true, conteudo, uso, modelo, tentativas } ou { ok:false, resposta }.
    */
-  async function completar(messages, maxTokens = 900) {
+  async function completar(messages, maxTokens = 900, { timeoutMs } = {}) {
     const c = carregar()
     const escolhido = c.modelo || MODELO_PADRAO
     const fila = await filaDeModelos(escolhido)
     let ultima = null
     const tentativas = []
     for (const m of fila) {
-      const r = await completarNoModelo(m, messages, maxTokens)
+      const r = await completarNoModelo(m, messages, maxTokens, timeoutMs)
       if (r.ok) return { ...r, tentativas }
       tentativas.push({ modelo: m, erro: (r.resposta && r.resposta.corpo && r.resposta.corpo.erro) || 'falha' })
       ultima = r

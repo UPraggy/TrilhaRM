@@ -8,6 +8,7 @@ import './styles/tokens.css'
 import './styles.css'
 import './styles/base.css'
 import './v2.css'
+import './styles/motion.css'
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
