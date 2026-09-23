@@ -5,10 +5,12 @@ import { useStore } from '../store.jsx'
 import { META_XP_DIA } from '../lib/xp.js'
 import { IcoChama } from '../components/Icones.jsx'
 import { useT } from '../i18n/index.jsx'
+import { useSessao } from '../sessao.jsx'
 
 export default function Perfil() {
   const { progresso, resumo, estrutura, resumoPraticas } = useStore()
   const { t } = useT()
+  const { usuario, sair } = useSessao()
   const s = progresso.streak || {}
   const xpHoje = s.xpHoje || 0
   const faltaXp = Math.max(0, META_XP_DIA - xpHoje)
@@ -22,6 +24,24 @@ export default function Perfil() {
   return (
     <div className="page perfil">
       <h1>{t('Perfil')}</h1>
+
+      {usuario && (
+        <div className="perfil__conta">
+          <span className="perfil__avatar" aria-hidden="true">
+            {usuario.nome.slice(0, 1).toUpperCase()}
+          </span>
+          <div className="perfil__quem">
+            <b>{usuario.nome}</b>
+            <span className="dim small mono">
+              @{usuario.login}
+              {usuario.papel === 'dono' ? ` · ${t('dono do app')}` : ''}
+            </span>
+          </div>
+          <button type="button" className="btn btn--sm btn--ghost" onClick={sair}>
+            {t('Sair')}
+          </button>
+        </div>
+      )}
 
       <div className="perfil__hoje">
         <div className={`perfil__streak ${s.atual > 0 ? 'on' : ''}`}>

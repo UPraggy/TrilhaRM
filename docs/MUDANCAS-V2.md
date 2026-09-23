@@ -209,3 +209,26 @@ Executada antes da 2 porque tudo depois depende dos módulos existirem de verdad
 - **5 `className` duplicados corrigidos** (DeckPage ×2, Pratica, Treino, Explique) — o botão
   Mostrar/Ocultar do DeckPage era um botão cru, sem estilo nem hover. `tests/jsx.test.js` agora reprova
   atributo JSX repetido. **293 → 309 testes.**
+
+## 23/09/2026 (noite) — Contas: cadastro e login por pessoa
+
+- **Cada pessoa tem a própria trajetória** (progresso, XP, ofensiva, diário, entrevistas, práticas,
+  treinos). Nenhum módulo foi reescrito: `progresso` e `progTreinos` viraram **procuradores**
+  (`server/por-usuario.js`) que, via `AsyncLocalStorage`, apontam para o progresso de quem fez a
+  requisição. Dono → `data/progresso.json` (o de sempre, **nada migra**); outros →
+  `data/usuarios/<id>/`. Fora de requisição (bot do Telegram) o procurador cai no dono.
+- **`server/contas.js`**: senha com scrypt + sal; sessão = token de 32 bytes em cookie `HttpOnly`,
+  `SameSite=Lax`, `Secure` atrás do túnel; no disco só o SHA-256 do token. Login errado dá a mesma
+  resposta (e o mesmo custo) para usuário inexistente. Trocar a senha derruba as outras sessões.
+  10 tentativas/min por IP.
+- **Primeira conta = dono** e herda o progresso existente. Como o túnel é público, ela exige o
+  **código do dono**: gerado no boot sem contas, gravado em `data/codigo-dono.txt`, no log do PM2 e
+  mandado no chat do bot. Depois dele o cadastro fica aberto; o dono fecha em Ajustes.
+- **Só o dono** mexe na key/modelo do OpenRouter e no bot (`soDono` no servidor; a tela também
+  esconde). Os outros usam o mentor e o tutor com a key dele. `/api/cards/*.png` segue aberto (o
+  Telegram busca a imagem sem cookie) e mostra a trajetória do dono.
+- Front: `src/sessao.jsx` (porta de entrada Entrar/Criar conta; remonta o app pela `key` ao trocar
+  de conta), conta + Sair no Perfil, `ConfigContas.jsx` (trocar senha; lista de contas e
+  cadastro aberto/fechado para o dono). A conversa do tutor é por pessoa.
+- ⚠️ **`.gitignore` ganhou `data/usuarios/`** — `data/*.json` não pegava a subpasta, e o repo é
+  público. **313 → 319 testes** (`tests/contas.test.js` + o isolamento em `tests/api.test.js`).

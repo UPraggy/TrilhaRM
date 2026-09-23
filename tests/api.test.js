@@ -75,11 +75,15 @@ function subir(dir, porta) {
   })
 }
 
+let cookie = '' // sessão do dono de teste (criada no before); `semCookie: true` testa a porta fechada
+
 async function api(caminho, opcoes = {}) {
-  const r = await fetch(base + caminho, {
-    ...opcoes,
-    headers: opcoes.body ? { 'content-type': 'application/json', ...(opcoes.headers || {}) } : opcoes.headers,
-  })
+  const { semCookie, ...resto } = opcoes
+  const headers = { ...(resto.body ? { 'content-type': 'application/json' } : {}), ...(resto.headers || {}) }
+  if (cookie && !semCookie) headers.cookie = cookie
+  const r = await fetch(base + caminho, { ...resto, headers })
+  const set = r.headers.get('set-cookie')
+  if (set && !semCookie) cookie = set.split(';')[0]
   const texto = await r.text()
   let corpo = null
   try {
@@ -109,6 +113,11 @@ before(async () => {
   filho = await subir(raizTemp, porta)
   filho.removeAllListeners('exit')
   base = `http://127.0.0.1:${porta}/api`
+  // a primeira conta exige o código do dono que o servidor gravou ao subir
+  const codigo = fs.readFileSync(path.join(raizTemp, 'data', 'codigo-dono.txt'), 'utf8').trim()
+  const r = await post('/auth/cadastrar', { nome: 'Dono Teste', login: 'dono', senha: 'senha-de-teste-1', codigo })
+  assert.equal(r.status, 201, JSON.stringify(r.corpo))
+  assert.ok(cookie.startsWith('trilha_sessao='))
 })
 
 after(async () => {
@@ -324,5 +333,56 @@ describe('isolamento do data/', () => {
 
   test('o data/progresso.json do projeto continua intocado', () => {
     assert.equal(marcaDoArquivo(ARQ_PROGRESSO_REAL), marcaProgressoReal)
+  })
+})
+
+describe('contas — cada pessoa com a própria trajetória', () => {
+  test('sem sessão a API fecha (401), mas saúde e estado das contas ficam abertos', async () => {
+    assert.equal((await api('/progresso', { semCookie: true })).status, 401)
+    assert.equal((await api('/saude', { semCookie: true })).status, 200)
+    const e = await api('/auth/estado', { semCookie: true })
+    assert.equal(e.corpo.temContas, true)
+    assert.equal(e.corpo.precisaCodigo, false)
+  })
+
+  test('segunda conta começa do zero e não enxerga nem mexe no progresso do dono', async () => {
+    const antes = (await api('/progresso')).corpo
+    const donoCookie = cookie
+    const r = await api('/auth/cadastrar', { method: 'POST', body: JSON.stringify({ nome: 'Aluna', login: 'aluna', senha: 'outra-senha-1' }) })
+    assert.equal(r.status, 201)
+    assert.equal(r.corpo.usuario.papel, 'aluno')
+    const dela = (await api('/progresso')).corpo
+    assert.deepEqual(dela.termos, {})
+    assert.equal(dela.xp.total, 0)
+    // ela avalia um termo; o dono não pode ver isso
+    const decks = (await api('/decks')).corpo.decks
+    const deck = (await api(`/decks/${decks[0].id}`)).corpo
+    const av = await api('/progresso/avaliar', { method: 'POST', body: JSON.stringify({ deckId: deck.id, termoId: deck.termos[0].id, nota: 4, modo: 'flashcards' }) })
+    assert.equal(av.status, 200)
+    assert.equal(Object.keys((await api('/progresso')).corpo.termos).length, 1)
+    // não-dono não mexe na config global nem no bot
+    assert.equal((await api('/telegram')).status, 403)
+    assert.equal((await api('/config')).corpo.soLeitura, true)
+    cookie = donoCookie
+    const depois = (await api('/progresso')).corpo
+    assert.deepEqual(Object.keys(depois.termos), Object.keys(antes.termos))
+  })
+
+  test('login errado não diz se o usuário existe; login certo abre sessão', async () => {
+    const a = await api('/auth/entrar', { method: 'POST', semCookie: true, body: JSON.stringify({ login: 'aluna', senha: 'errada-errada' }) })
+    const b = await api('/auth/entrar', { method: 'POST', semCookie: true, body: JSON.stringify({ login: 'ninguem', senha: 'errada-errada' }) })
+    assert.equal(a.status, 401)
+    assert.equal(b.status, 401)
+    assert.equal(a.corpo.erro, b.corpo.erro)
+    const c = await api('/auth/entrar', { method: 'POST', semCookie: true, body: JSON.stringify({ login: 'ALUNA', senha: 'outra-senha-1' }) })
+    assert.equal(c.status, 200)
+    assert.equal(c.corpo.usuario.login, 'aluna')
+  })
+
+  test('o dono fecha o cadastro e ninguém novo entra', async () => {
+    assert.equal((await api('/auth/cadastro', { method: 'PUT', body: JSON.stringify({ aberto: false }) })).corpo.cadastroAberto, false)
+    const r = await api('/auth/cadastrar', { method: 'POST', semCookie: true, body: JSON.stringify({ nome: 'Intruso', login: 'intruso', senha: 'qualquer-coisa' }) })
+    assert.equal(r.status, 403)
+    await api('/auth/cadastro', { method: 'PUT', body: JSON.stringify({ aberto: true }) })
   })
 })

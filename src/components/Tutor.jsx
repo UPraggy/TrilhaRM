@@ -3,6 +3,7 @@ import { Link, useLocation } from 'react-router-dom'
 import { IcoEnviar, IcoTutor, IcoX } from './Icones.jsx'
 import { api } from '../api.js'
 import { useT } from '../i18n/index.jsx'
+import { useSessao } from '../sessao.jsx'
 
 // O tutor: botão flutuante em TODA tela (inclusive dentro da lição). Um toque explica o que está na
 // tela; o chat continua a conversa. Quem responde é server/tutor.js, pela mesma fila de modelos
@@ -16,18 +17,18 @@ const MAX_GUARDADAS = 30
 const MAX_TELA = 7000
 const SELECAO_VALE_MS = 90_000
 
-function lerSessao() {
+function lerSessao(chave) {
   try {
-    const v = JSON.parse(sessionStorage.getItem(CHAVE_SESSAO) || '[]')
+    const v = JSON.parse(sessionStorage.getItem(chave) || '[]')
     return Array.isArray(v) ? v : []
   } catch {
     return []
   }
 }
 
-function gravarSessao(msgs) {
+function gravarSessao(chave, msgs) {
   try {
-    sessionStorage.setItem(CHAVE_SESSAO, JSON.stringify(msgs.slice(-MAX_GUARDADAS)))
+    sessionStorage.setItem(chave, JSON.stringify(msgs.slice(-MAX_GUARDADAS)))
   } catch {
     /* sem storage a conversa vale até fechar a aba */
   }
@@ -99,8 +100,11 @@ export function TextoRico({ texto }) {
 export default function Tutor({ imersivo = false }) {
   const { t, idioma } = useT()
   const { pathname } = useLocation()
+  const { usuario } = useSessao()
+  // uma conversa por pessoa: duas contas no mesmo celular não leem a conversa uma da outra
+  const chave = `${CHAVE_SESSAO}.${usuario ? usuario.id : 'anon'}`
   const [aberto, setAberto] = useState(false)
-  const [mensagens, setMensagens] = useState(lerSessao)
+  const [mensagens, setMensagens] = useState(() => lerSessao(chave))
   const [rascunho, setRascunho] = useState('')
   const [rodando, setRodando] = useState(null) // null | 'explicar' | 'chat'
   const [erro, setErro] = useState(null) // { codigo, mensagem }
@@ -108,7 +112,7 @@ export default function Tutor({ imersivo = false }) {
   const fimRef = useRef(null)
   const campoRef = useRef(null)
 
-  useEffect(() => gravarSessao(mensagens), [mensagens])
+  useEffect(() => gravarSessao(chave, mensagens), [chave, mensagens])
 
   // guarda o último trecho selecionado DENTRO da tela: no celular, tocar no botão limpa a seleção
   useEffect(() => {

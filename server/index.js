@@ -9,7 +9,8 @@ import { criarRepositorio } from './decks.js'
 import { criarEstrutura } from './estrutura.js'
 import { criarLicao } from './licao.js'
 import { criarEntrevista } from './entrevista.js'
-import { criarProgresso } from './progresso.js'
+import { criarContas, publico, tokenDoCookie, COOKIE, SESSAO_DIAS } from './contas.js'
+import { criarPorUsuario, DONO } from './por-usuario.js'
 import { carregarEnv, criarMentor } from './mentor.js'
 import { criarLimitador, criarTutor } from './tutor.js'
 import { corrigir, criarPraticas, notaAutomatica, notaChecklist } from './praticas.js'
@@ -17,7 +18,6 @@ import { hojeISO, vencido } from './sm2.js'
 import { faltaParaMeta, resultadoLicao } from './xp.js'
 import { criarTelegram } from './telegram.js'
 import { criarTreinos } from './treinos.js'
-import { criarProgressoTreinos } from './progresso-treinos.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const RAIZ = path.resolve(__dirname, '..')
@@ -27,16 +27,20 @@ const PORT = (argPorta > -1 && Number(process.argv[argPorta + 1])) || Number(pro
 const MAX_ITENS_RESPOSTA = 40
 const DIST = path.join(RAIZ, 'dist')
 const CONTEUDO = path.join(RAIZ, 'content')
-const ARQ_PROGRESSO = path.join(RAIZ, 'data', 'progresso.json')
+const DIR_DADOS = path.join(RAIZ, 'data')
 const ARQ_CONFIG = path.join(RAIZ, 'data', 'config.json')
 
 carregarEnv(path.join(RAIZ, '.env')) // OPENROUTER_API_KEY etc. (não sobrescreve o ambiente)
 const repo = criarRepositorio(CONTEUDO)
 const praticas = criarPraticas(CONTEUDO, repo)
 const cursos = criarCursos(CONTEUDO, repo)
-const progresso = criarProgresso(ARQ_PROGRESSO)
+// uma trajetória por pessoa: `progresso` e `progTreinos` são PROCURADORES que apontam para quem está
+// logado nesta requisição (server/por-usuario.js). O dono continua em data/progresso.json.
+const contas = criarContas({ dir: DIR_DADOS })
+const porUsuario = criarPorUsuario({ dirDados: DIR_DADOS })
+const progresso = porUsuario.progresso
 const treinos = criarTreinos(CONTEUDO, repo)
-const progTreinos = criarProgressoTreinos(progresso, { arquivo: path.join(RAIZ, 'data', 'progresso-treinos.json') })
+const progTreinos = porUsuario.progTreinos
 // Trilha -> Módulo -> Lição: amarra deck + curso + práticas + treino por tema (content/estrutura.json)
 const estrutura = criarEstrutura(CONTEUDO, { repo, cursos, praticas, treinos, progresso })
 const licoes = criarLicao({ estrutura, repo, cursos, praticas, progresso })
@@ -54,11 +58,12 @@ const telegram = criarTelegram({
 })
 const mentor = criarMentor({ arquivoConfig: ARQ_CONFIG, repo, progresso })
 const entrevistas = criarEntrevista({ estrutura, repo, mentor, progresso })
-const tutor = criarTutor({ mentor, estrutura, progresso })
+const tutor = criarTutor({ mentor, estrutura, progresso, nomeDoAluno: () => (contas.obter(porUsuario.usuarioAtual()) || {}).nome || '' })
 const limiteTutor = criarLimitador({ max: 20, janelaMs: 60_000 })
 
 const app = express()
 app.disable('x-powered-by')
+app.set('trust proxy', 'loopback') // o cloudflared fala com o Express pelo 127.0.0.1: req.secure passa a valer
 app.use(express.json({ limit: '256kb' }))
 
 // ---- API ---------------------------------------------------------------
@@ -78,6 +83,71 @@ api.get('/saude', (_req, res) => {
     erros: [...repo.erros(), ...praticas.erros(), ...treinos.erros(), ...cursos.erros(), ...estrutura.erros()],
   })
 })
+
+// ---- contas: cadastro, login e sessão (server/contas.js) --------------------
+const limiteLogin = criarLimitador({ max: 10, janelaMs: 60_000 })
+const ipDe = (req) => String(req.get('cf-connecting-ip') || req.ip || 'local')
+
+function gravarCookie(req, res, token) {
+  const seguro = req.secure || req.get('x-forwarded-proto') === 'https'
+  res.set(
+    'Set-Cookie',
+    `${COOKIE}=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${token ? SESSAO_DIAS * 86400 : 0}${seguro ? '; Secure' : ''}`,
+  )
+}
+
+api.get('/auth/estado', (_req, res) => res.json(contas.estado()))
+
+api.get('/auth/eu', (req, res) => {
+  const u = contas.daSessao(tokenDoCookie(req.get('cookie')))
+  if (!u) return res.status(401).json({ erro: 'sem_sessao', ...contas.estado() })
+  res.json({ usuario: publico(u) })
+})
+
+api.post('/auth/cadastrar', (req, res) => {
+  if (!limiteLogin(ipDe(req))) return res.status(429).json({ erro: 'muitas tentativas; espere um minuto' })
+  const r = contas.cadastrar(req.body || {})
+  if (!r.ok) return res.status(r.status).json({ erro: r.erro })
+  gravarCookie(req, res, r.token)
+  res.status(201).json({ usuario: r.usuario })
+})
+
+api.post('/auth/entrar', (req, res) => {
+  if (!limiteLogin(ipDe(req))) return res.status(429).json({ erro: 'muitas tentativas; espere um minuto' })
+  const r = contas.entrar(req.body || {})
+  if (!r.ok) return res.status(r.status).json({ erro: r.erro })
+  gravarCookie(req, res, r.token)
+  res.json({ usuario: r.usuario })
+})
+
+api.post('/auth/sair', (req, res) => {
+  contas.sair(tokenDoCookie(req.get('cookie')))
+  gravarCookie(req, res, '')
+  res.json({ ok: true })
+})
+
+// daqui para baixo, só com sessão. Os cards PNG ficam abertos: o Telegram busca a imagem pela URL
+// do túnel sem cookie nenhum (e eles mostram a trajetória do dono, que é quem tem o bot).
+api.use((req, res, next) => {
+  if (req.path.startsWith('/cards/')) return porUsuario.como(DONO, next)
+  const u = contas.daSessao(tokenDoCookie(req.get('cookie')))
+  if (!u) return res.status(401).json({ erro: 'sem_sessao', mensagem: 'Entre na sua conta.' })
+  req.usuario = u
+  porUsuario.como(u.id, next)
+})
+
+const soDono = (req, res, next) => (req.usuario && req.usuario.papel === 'dono' ? next() : res.status(403).json({ erro: 'só o dono do app pode mudar isto' }))
+
+api.post('/auth/senha', (req, res) => {
+  const r = contas.trocarSenha(req.usuario.id, req.body || {})
+  if (!r.ok) return res.status(r.status).json({ erro: r.erro })
+  gravarCookie(req, res, r.token)
+  res.json({ ok: true })
+})
+
+api.get('/auth/usuarios', soDono, (_req, res) => res.json({ usuarios: contas.listar(), cadastroAberto: contas.estado().cadastroAberto }))
+
+api.put('/auth/cadastro', soDono, (req, res) => res.json({ cadastroAberto: contas.definirCadastroAberto(Boolean(req.body && req.body.aberto)) }))
 
 api.get('/decks', (_req, res) => {
   const decks = repo.listar().map((d) => ({
@@ -596,13 +666,19 @@ api.post('/cursos/:id/atividade/:atvId/mentor', async (req, res) => {
 
 // ---- config + mentor IA (OpenRouter) -------------------------------------
 // A key nunca sai inteira: GET devolve só temKey/keyMascarada/origemKey.
-api.get('/config', (_req, res) => {
-  res.json(mentor.obterConfig())
+api.get('/config', (req, res) => {
+  const c = mentor.obterConfig()
+  // quem não é o dono só precisa saber se o mentor/tutor funciona — nem a key mascarada sai
+  if (req.usuario.papel !== 'dono') return res.json({ temKey: c.temKey, modelo: c.modelo, idiomaFeedback: c.idiomaFeedback, idioma: c.idioma, soLeitura: true })
+  res.json(c)
 })
 
 // body { openrouterKey?, modelo?, idiomaFeedback?, idioma? } - key vazia/omitida mantém; "__apagar__" remove
 // `idioma` é a língua da INTERFACE e vale também para o bot e os cards (ver server/i18n.js)
 api.put('/config', (req, res) => {
+  // o idioma da interface é por aparelho (localStorage); o do servidor vale para o bot e os cards, que
+  // são do dono. Quem não é o dono recebe ok sem mexer em nada — o I18nProvider chama isto sempre.
+  if (req.usuario.papel !== 'dono') return res.json({ ok: true, config: { soLeitura: true } })
   const { openrouterKey, modelo, idiomaFeedback, idioma } = req.body || {}
   const r = mentor.salvarConfig({ openrouterKey, modelo, idiomaFeedback, idioma })
   if (!r.ok) return res.status(400).json({ erro: r.erro })
@@ -757,12 +833,12 @@ api.get('/tunnel', (_req, res) => {
 
 // ---- bot do Telegram ------------------------------------------------------
 // A API nunca devolve o token inteiro (so `tokenMascarado`) e o bot so atende o chat conectado.
-api.get('/telegram', (_req, res) => {
+api.get('/telegram', soDono, (_req, res) => {
   res.json(telegram.obterConfig())
 })
 
 // body { telegramToken?, lembrete?, avisos?, chat? } - "__apagar__" no token remove e para o bot
-api.put('/telegram', async (req, res) => {
+api.put('/telegram', soDono, async (req, res) => {
   const { telegramToken, lembrete, avisos, chat } = req.body || {}
   const r = await telegram.salvarConfig({ telegramToken, lembrete, avisos, chat })
   if (!r.ok) return res.status(400).json({ erro: r.erro })
@@ -770,17 +846,17 @@ api.put('/telegram', async (req, res) => {
 })
 
 // religar depois de corrigir o token (o 409 para o polling de proposito)
-api.post('/telegram/iniciar', async (_req, res) => {
+api.post('/telegram/iniciar', soDono, async (_req, res) => {
   const r = await telegram.iniciar()
   res.json({ ok: Boolean(r.ok), config: telegram.obterConfig() })
 })
 
-api.post('/telegram/parar', async (_req, res) => {
+api.post('/telegram/parar', soDono, async (_req, res) => {
   await telegram.parar()
   res.json({ ok: true, config: telegram.obterConfig() })
 })
 
-api.post('/telegram/teste', async (_req, res) => {
+api.post('/telegram/teste', soDono, async (_req, res) => {
   res.json(await telegram.enviarTeste())
 })
 
@@ -830,13 +906,19 @@ if (fs.existsSync(DIST)) {
   })
 }
 
+// gerado ANTES de ouvir a porta: quem espera o servidor subir já encontra o arquivo
+const codigo = contas.codigoDono()
 const server = app.listen(PORT, '0.0.0.0', () => {
   const erros = repo.erros()
   console.log(`[trilharm] http://localhost:${PORT}  decks=${repo.listar().length}  dist=${fs.existsSync(DIST) ? 'sim' : 'não'}`)
   if (erros.length) console.warn('[trilharm] avisos de conteúdo:\n  - ' + erros.join('\n  - '))
+  if (codigo) console.log(`[trilharm] nenhuma conta ainda. Código do dono para criar a primeira: ${codigo} (também em data/codigo-dono.txt)`)
   telegram.iniciar().then((r) => {
     if (r.ok) console.log('[trilharm] telegram: ligado')
     else console.log('[trilharm] telegram:', r.erro || 'não ligou')
+    // o dono cria a conta pelo celular: o código chega no chat do bot, que já é dele
+    if (r.ok && codigo) telegram.enviar(`🔑 <b>Trilha RM agora tem contas.</b>
+Código do dono para criar a primeira conta (ela herda o seu progresso): <code>${codigo}</code>`).catch(() => {})
   })
 })
 
@@ -844,7 +926,7 @@ function desligar(sinal) {
   console.log(`[trilharm] ${sinal} - encerrando`)
   telegram.parar() // para o long polling e aborta o fetch pendente (senao o proximo boot pega 409)
   server.close(() => {
-    Promise.all([progresso.aguardarEscrita(), mentor.aguardarEscrita(), telegram.aguardarEscrita()]).then(() => process.exit(0))
+    Promise.all([porUsuario.aguardarEscrita(), mentor.aguardarEscrita(), telegram.aguardarEscrita()]).then(() => process.exit(0))
   })
   setTimeout(() => process.exit(0), 3000).unref()
 }

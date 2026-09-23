@@ -1306,3 +1306,148 @@ body.imersivo .main {
   align-items: center;
   justify-content: center;
 }
+
+/* ---- Entrada: entrar / criar conta (src/sessao.jsx) ------------------------ */
+.entrada {
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  padding: 24px 16px calc(24px + env(safe-area-inset-bottom, 0px));
+  background:
+    radial-gradient(90% 60% at 10% 0%, rgba(157, 177, 234, 0.14), transparent 60%),
+    radial-gradient(80% 60% at 100% 100%, rgba(201, 140, 224, 0.12), transparent 60%),
+    radial-gradient(60% 40% at 90% 10%, rgba(234, 169, 78, 0.1), transparent 60%),
+    var(--bg);
+}
+.entrada--carregando {
+  background: var(--bg);
+}
+.entrada__cartao {
+  width: 100%;
+  max-width: 400px;
+  min-width: 0;
+  display: grid;
+  gap: 14px;
+  padding: 22px 18px;
+  border-radius: var(--r);
+  border: 1px solid var(--line-2);
+  background: rgba(17, 19, 28, 0.92);
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.45);
+  animation: sobe 0.35s var(--suave, ease-out) both;
+}
+.entrada__marca {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.entrada__titulo {
+  margin: 4px 0 0;
+  font-size: 1.5rem;
+}
+.entrada__cartao p {
+  margin: 0;
+}
+.entrada__abas {
+  justify-self: start;
+}
+.entrada__abas button {
+  min-height: 38px;
+  padding: 0 16px;
+  font-size: 0.9rem;
+}
+.entrada__campo {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+.entrada__campo span {
+  font-size: 0.8rem;
+  letter-spacing: 0.04em;
+  color: var(--fg-2);
+}
+.entrada__campo input {
+  width: 100%;
+  min-width: 0;
+  min-height: var(--tap);
+  padding: 0 12px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--line-2);
+  background: var(--bg);
+  color: var(--bone);
+  font: inherit;
+  font-size: 1rem; /* 16px: sem zoom automático ao focar no celular */
+  transition: border-color 0.18s ease, box-shadow 0.18s ease;
+}
+.entrada__campo input:focus {
+  outline: none;
+  border-color: var(--peri);
+  box-shadow: 0 0 0 3px rgba(157, 177, 234, 0.18);
+}
+.entrada__erro {
+  padding: 8px 10px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--rose);
+  color: var(--rose-soft);
+  font-size: 0.9rem;
+}
+
+/* ---- conta no Perfil e lista de contas em Ajustes -------------------------- */
+.perfil__conta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 8px 0 16px;
+  padding: 12px 14px;
+  border-radius: var(--r);
+  border: 1px solid var(--line);
+  background: linear-gradient(135deg, rgba(157, 177, 234, 0.08), rgba(201, 140, 224, 0.06));
+  min-width: 0;
+}
+.perfil__avatar {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--peri), #c98ce0);
+  color: #0a0c12;
+  font: 700 1.1rem var(--display);
+}
+.perfil__avatar--sm {
+  width: 28px;
+  height: 28px;
+  font-size: 0.8rem;
+}
+.perfil__quem {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+.perfil__quem b,
+.perfil__quem span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.contas {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+.contas li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.contas li b {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

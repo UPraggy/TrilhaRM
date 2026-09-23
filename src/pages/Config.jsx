@@ -1,16 +1,21 @@
 import { useEffect, useState } from 'react'
 import { useStore } from '../store.jsx'
 import ConfigTelegram from '../components/ConfigTelegram.jsx'
+import ConfigContas from '../components/ConfigContas.jsx'
+import { useSessao } from '../sessao.jsx'
 import { obterConfig, salvarConfig, listarModelos, avaliarComMentor } from '../api.js'
 import { useT } from '../i18n/index.jsx'
 
 /**
- * /config - Mentor IA (OpenRouter): key (mascarada), modelo gratuito, idioma do feedback e teste.
- * Sem senha: o app roda atrás do túnel do dono. A key fica só em data/config.json no servidor.
+ * /config - Conta (senha; contas e cadastro para o dono) e, só para o dono, o Mentor IA (OpenRouter:
+ * key mascarada, modelo gratuito, idioma do feedback, teste) e o bot. A key fica em data/config.json.
  */
 export default function Config() {
   const { termos, mostrarAviso } = useStore()
   const { t, idioma, trocar, idiomas } = useT()
+  const { usuario } = useSessao()
+  // a key do OpenRouter, o modelo e o bot são do app inteiro: só o dono mexe (o servidor também barra)
+  const ehDono = Boolean(usuario && usuario.papel === 'dono')
   const [config, setConfig] = useState(null)
   const [erroConfig, setErroConfig] = useState(null)
   const [modelos, setModelos] = useState({ modelos: [], fallback: false, carregando: true })
@@ -100,6 +105,17 @@ export default function Config() {
         </div>
       </div>
 
+      <ConfigContas mostrarAviso={mostrarAviso} />
+
+      {!ehDono && (
+        <p className="dim small mt-5">
+          {t('O mentor, o tutor e o bot do Telegram são configurados pelo dono do app.')}{' '}
+          {config && (config.temKey ? t('O mentor está ligado.') : t('O mentor ainda está sem key.'))}
+        </p>
+      )}
+
+      {ehDono && (
+        <>
       <h2 className="secao">Mentor IA (OpenRouter)</h2>
       <p className="muted small mt-1">
         No modo Explique e nas práticas de texto, um modelo gratuito lê sua resposta, compara com o gabarito e sugere o nível 0–5. No modo automático o app tenta os gratuitos em ordem até um responder — é o que mais funciona, porque os modelos livres vivem saturando.
@@ -229,8 +245,10 @@ export default function Config() {
       <ConfigTelegram mostrarAviso={mostrarAviso} />
 
       <p className="dim small mt-5">
-        Esta tela não tem senha — o app roda atrás do túnel do dono. A key nunca é devolvida inteira pela API (só os 4 últimos caracteres).
+        {t('Só a conta do dono vê esta parte. A key nunca é devolvida inteira pela API (só os 4 últimos caracteres).')}
       </p>
+        </>
+      )}
     </div>
   )
 }

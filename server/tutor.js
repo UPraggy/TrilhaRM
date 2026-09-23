@@ -49,12 +49,12 @@ export function telaDe(rota) {
   return MAPA_TELAS.find((x) => x.re.test(r)) || { nome: 'Tela', oQueE: 'uma tela do app' }
 }
 
-const SOBRE_O_APP = `O APP (Trilha RM): app pessoal de estudo do Rafael, dev Full Stack Pleno, para subir a Sênior em engenharia de software. Roda no PC e no celular.
+const SOBRE_O_APP = `O APP (Trilha RM): app de estudo para um dev Full Stack subir de Pleno a Sênior em engenharia de software. Cada pessoa tem conta própria e a própria trajetória. Roda no PC e no celular.
 VOCABULÁRIO (use exatamente estas palavras):
 - Trilha = uma fase do plano de carreira (T1…T5). É o caminho.
 - Módulo = um tema (Cache, HTTP, Testes…). Junta vocabulário (termos para decorar), aulas de curso, exercícios fora do app e o chefão (treino especial).
 - Lição = uma sessão curta de 8 a 12 itens, 5 a 10 minutos, um item por tela.
-MECÂNICAS: XP por lição e meta de XP do dia; coroas por módulo; ofensiva (dias seguidos com o mínimo de avaliações); revisão espaçada SM-2 (termo "vencido" = hora de revisar); escala de nível 0 desconheço · 1 reconheço · 2 explico · 3 aplico · 4 diagnostico · 5 ensino/defendo.
+MECÂNICAS: XP por lição e meta de XP do dia; coroas de 0 a 5 por módulo = a parte inteira do nível médio dos termos daquele módulo (termo nunca visto conta 0), então sobem conforme ele domina o vocabulário; ofensiva (dias seguidos com o mínimo de avaliações); revisão espaçada SM-2 (termo "vencido" = hora de revisar); escala de nível 0 desconheço · 1 reconheço · 2 explico · 3 aplico · 4 diagnostico · 5 ensino/defendo.
 NAVEGAÇÃO: barra inferior com Início, Trilha, Biblioteca (glossário, cursos, laboratório, treinos) e Perfil (matriz, diário de erros, como o app funciona, ajustes).`
 
 const REGRAS_PT = `Você é o TUTOR do app Trilha RM: um engenheiro Sênior/Staff paciente, direto e prático, que ensina um dev Pleno.
@@ -178,13 +178,15 @@ export function limparResposta(texto) {
     .trim()
 }
 
-export function criarTutor({ mentor, estrutura, progresso }) {
+export function criarTutor({ mentor, estrutura, progresso, nomeDoAluno = () => '' }) {
   async function conversar(corpo) {
     const n = normalizarPedido(corpo)
     if (!n.ok) return { status: 400, corpo: { erro: 'parametros', mensagem: n.erro } }
     let aluno = ''
     try {
-      aluno = contextoAluno(estrutura.resolver(), progresso.obter())
+      const nome = nomeDoAluno()
+      aluno = (nome ? `Nome: ${nome}.
+` : '') + contextoAluno(estrutura.resolver(), progresso.obter())
     } catch (e) {
       console.warn('[tutor] sem contexto do aluno:', e.message) // o tutor responde assim mesmo
     }

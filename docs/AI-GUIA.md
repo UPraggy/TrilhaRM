@@ -11,7 +11,7 @@ App pessoal de estudo do Rafael para subir de nível em engenharia de software (
 PM2 + túnel Cloudflare), com bot do Telegram e mentor IA gratuito (OpenRouter).
 
 **Stack:** React 18 + Vite 5 (JSX puro, sem TypeScript) · Express 4 · Node ≥ 20 · zero banco de dados —
-**todo conteúdo é arquivo em `content/`** e todo progresso é `data/progresso.json`.
+**todo conteúdo é arquivo em `content/`** e o progresso é um arquivo por pessoa (`data/progresso.json` do dono, `data/usuarios/<id>/` das outras contas).
 
 ## Vocabulário (três palavras, e só três)
 
@@ -64,6 +64,8 @@ módulo), "camada". `deck` continua sendo o nome do **arquivo** e do id na API �
 | Bot do Telegram | `server/telegram.js` · `src/components/ConfigTelegram.jsx` |
 | Cards PNG / QR Code | `server/{png,qrcode,cards}.js` · `GET /api/cards/<nome>.png` |
 | Idioma PT/EN | `src/i18n/nucleo.js` (lógica, sem JSX) + `index.jsx` (hook) + `en.json` (dicionário) · `server/i18n.js` (bot e cards) |
+| Contas, login e sessão | `server/contas.js` · rotas `/api/auth/*` em `server/index.js` · `src/sessao.jsx` · `src/components/ConfigContas.jsx` |
+| Um progresso por pessoa (procurador + AsyncLocalStorage) | `server/por-usuario.js` — dono em `data/progresso.json`, os outros em `data/usuarios/<id>/` |
 | Estado global do front | `src/store.jsx` · cliente HTTP `src/api.js` |
 | Tokens, classes globais e CSS por tela | `src/styles/tokens.css` (cores, com o contraste medido) · `src/styles/base.css` (utilitárias, reduced-motion) · `src/styles.css` (legado) · `src/v2.css` (telas novas) |
 | Validar conteúdo | `node scripts/validar-conteudo.mjs` · `node scripts/validar-treinos.mjs` |

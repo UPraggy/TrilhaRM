@@ -4,6 +4,7 @@ import { BrowserRouter } from 'react-router-dom'
 import App from './App.jsx'
 import { StoreProvider } from './store.jsx'
 import { I18nProvider } from './i18n/index.jsx'
+import { Sessao } from './sessao.jsx'
 import './styles/tokens.css'
 import './styles.css'
 import './styles/base.css'
@@ -14,9 +15,11 @@ ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <BrowserRouter>
       <I18nProvider>
-        <StoreProvider>
-          <App />
-        </StoreProvider>
+        <Sessao>
+          <StoreProvider>
+            <App />
+          </StoreProvider>
+        </Sessao>
       </I18nProvider>
     </BrowserRouter>
   </React.StrictMode>,

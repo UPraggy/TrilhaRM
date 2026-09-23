@@ -17,12 +17,23 @@ async function req(url, opts) {
     e.status = r.status
     e.codigo = dados && dados.erro ? dados.erro : null
     e.dados = dados
+    // sessão vencida ou ausente: a porta de entrada (src/sessao.jsx) volta para a tela de login
+    if (r.status === 401 && e.codigo === 'sem_sessao' && !String(url).startsWith('/api/auth/')) window.dispatchEvent(new Event('trilha:sem-sessao'))
     throw e
   }
   return dados
 }
 
 export const api = {
+  // contas (server/contas.js). O cookie de sessão é HttpOnly: o front nunca vê o token.
+  authEstado: () => req('/api/auth/estado'),
+  authEu: () => req('/api/auth/eu'),
+  authCadastrar: (corpo) => req('/api/auth/cadastrar', { method: 'POST', body: JSON.stringify(corpo) }),
+  authEntrar: (corpo) => req('/api/auth/entrar', { method: 'POST', body: JSON.stringify(corpo) }),
+  authSair: () => req('/api/auth/sair', { method: 'POST', body: '{}' }),
+  authSenha: (corpo) => req('/api/auth/senha', { method: 'POST', body: JSON.stringify(corpo) }),
+  authUsuarios: () => req('/api/auth/usuarios'),
+  authCadastro: (aberto) => req('/api/auth/cadastro', { method: 'PUT', body: JSON.stringify({ aberto }) }),
   decks: () => req('/api/decks'),
   deck: (id) => req(`/api/decks/${encodeURIComponent(id)}`),
   termos: () => req('/api/termos'),
