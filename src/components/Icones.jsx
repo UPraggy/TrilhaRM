@@ -108,11 +108,11 @@ export const IcoRetomar = (p) => (
     <path d="M10 8.5v7l6-3.5z" />
   </svg>
 )
+// balão de conversa com uma faísca no meio: "alguém que explica", na mesma língua do ícone do mentor
 export const IcoTutor = (p) => (
   <svg {...base} {...p}>
-    <path d="M21 12a8 8 0 0 1-11.6 7.1L4 20.5l1.4-4.9A8 8 0 1 1 21 12z" />
-    <path d="M9.5 9.6a2.5 2.5 0 0 1 4.9.7c0 1.7-2.4 2.1-2.4 3.4" />
-    <path d="M12 16.6h.01" />
+    <path d="M5 4h14a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-7l-4.5 3.5V17H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z" />
+    <path d="M12 7.2l.9 2.2 2.2.9-2.2.9-.9 2.2-.9-2.2-2.2-.9 2.2-.9z" fill="currentColor" stroke="none" />
   </svg>
 )
 export const IcoEnviar = (p) => (
