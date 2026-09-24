@@ -1451,3 +1451,22 @@ body.imersivo .main {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.entrada__tg {
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: var(--r-sm);
+  border: 1px solid rgba(94, 200, 191, 0.45);
+  background: rgba(94, 200, 191, 0.08);
+  color: var(--fg-1);
+}
+.toast--tg {
+  bottom: auto;
+  top: 16px;
+  z-index: 70;
+  max-width: min(92vw, 420px);
+  border-color: rgba(123, 191, 94, 0.6);
+  cursor: pointer;
+}
+.toast--erro {
+  border-color: var(--rose);
+}

@@ -54,6 +54,11 @@ const telegram = criarTelegram({
   treinos,
   progresso,
   progTreinos,
+  // cada chat do Telegram pertence a uma conta: o bot atende "como" ela (mesmo procurador de progresso)
+  comoUsuario: (id, fn) => porUsuario.como(id, fn),
+  nomeDoUsuario: (id) => (contas.obter(id) || {}).nome || '',
+  usuarioExiste: (id) => Boolean(contas.obter(id)),
+  cadastroAberto: () => contas.estado().cadastroAberto,
   porta: PORT,
 })
 const mentor = criarMentor({ arquivoConfig: ARQ_CONFIG, repo, progresso })
@@ -833,6 +838,27 @@ api.get('/tunnel', (_req, res) => {
 
 // ---- bot do Telegram ------------------------------------------------------
 // A API nunca devolve o token inteiro (so `tokenMascarado`) e o bot so atende o chat conectado.
+// ---- o Telegram de CADA pessoa (qualquer conta logada) -----------------------
+// ligar pelo link do /start (bot -> app) ou pelo botão Conectar Telegram (app -> bot)
+api.get('/telegram/meu', (req, res) => {
+  const c = telegram.obterConfig()
+  res.json({ bot: c.bot ? c.bot.username : null, ligado: c.estado === 'ligado', chats: telegram.chatsDoUsuario(req.usuario.id) })
+})
+
+api.post('/telegram/vincular', async (req, res) => {
+  const r = await telegram.vincularPorToken(String((req.body && req.body.token) || ''), req.usuario.id)
+  if (!r.ok) return res.status(400).json({ erro: r.erro })
+  res.json({ ok: true, chats: telegram.chatsDoUsuario(req.usuario.id) })
+})
+
+api.post('/telegram/codigo', (req, res) => {
+  const r = telegram.codigoParaApp(req.usuario.id)
+  if (!r.ok) return res.status(409).json({ erro: r.erro })
+  res.json(r)
+})
+
+api.delete('/telegram/meu', (req, res) => res.json({ desligados: telegram.desligarChatsDoUsuario(req.usuario.id) }))
+
 api.get('/telegram', soDono, (_req, res) => {
   res.json(telegram.obterConfig())
 })

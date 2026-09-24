@@ -232,3 +232,19 @@ Executada antes da 2 porque tudo depois depende dos módulos existirem de verdad
   cadastro aberto/fechado para o dono). A conversa do tutor é por pessoa.
 - ⚠️ **`.gitignore` ganhou `data/usuarios/`** — `data/*.json` não pegava a subpasta, e o repo é
   público. **313 → 319 testes** (`tests/contas.test.js` + o isolamento em `tests/api.test.js`).
+
+## 23/09/2026 (noite) — Bot do Telegram para todas as contas
+
+- **Qualquer pessoa pode dar `/start` no bot.** Chat que ainda não é de ninguém recebe o passo a passo
+  e um botão **Criar conta ou entrar** com um link de uso único (`/?vincular=TOKEN`, 30 min). Quem abre
+  o link e entra (ou cria a conta) liga aquele chat à própria conta, e o bot responde "Conectado como
+  Fulano". O caminho inverso também existe: **Ajustes → Telegram → Conectar Telegram** gera
+  `t.me/<bot>?start=TOKEN`.
+- `data/telegram.json` foi para a **v2**: `chats: { chatId → { usuarioId, lembrete, avisos, enviados, … } }`.
+  O chat antigo é migrado sozinho para a conta do dono, com lembrete, offset e histórico de avisos
+  (`migrarEstado`). Cada chat roda "como" a sua conta (`comoChat` = contexto do chat + o procurador de
+  progresso de `server/por-usuario.js`): comandos, cards, lembrete diário, ofensiva em risco e o
+  "deck dominado" usam o progresso de quem é dono do chat, no horário **dele**.
+- `/desconectar` desliga o chat. Grupo é ignorado (progresso é pessoal). A tela de bot do dono
+  continua sendo só dele; as rotas novas `/api/telegram/{meu,vincular,codigo}` são de qualquer conta.
+- `tests/telegram.test.js` (7 cenários, Telegram falso). **319 → 326 testes.**

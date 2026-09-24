@@ -459,5 +459,17 @@
   "O mentor, o tutor e o bot do Telegram são configurados pelo dono do app.": "The mentor, the tutor and the Telegram bot are set up by the app owner.",
   "O mentor está ligado.": "The mentor is on.",
   "O mentor ainda está sem key.": "The mentor has no key yet.",
-  "Só a conta do dono vê esta parte. A key nunca é devolvida inteira pela API (só os 4 últimos caracteres).": "Only the owner account sees this part. The API never returns the full key (only the last 4 characters)."
+  "Só a conta do dono vê esta parte. A key nunca é devolvida inteira pela API (só os 4 últimos caracteres).": "Only the owner account sees this part. The API never returns the full key (only the last 4 characters).",
+  "Telegram conectado à conta de {nome}. Volte ao chat do bot.": "Telegram connected to {nome}'s account. Go back to the bot chat.",
+  "Você veio do bot do Telegram: assim que entrar (ou criar a conta), aquele chat fica ligado a ela.": "You came from the Telegram bot: as soon as you sign in (or create the account), that chat is linked to it.",
+  "Telegram desligado desta conta.": "Telegram disconnected from this account.",
+  "conectado": "connected",
+  "O bot fala com você e mostra o SEU progresso.": "The bot talks to you and shows YOUR progress.",
+  "lembrete às": "reminder at",
+  "Desconectar": "Disconnect",
+  "Conecte o bot @{bot} para receber a tarefa do dia, lembretes e acompanhar o seu progresso pelo Telegram.": "Connect the @{bot} bot to get the daily task, reminders and follow your progress on Telegram.",
+  "Conectar Telegram": "Connect Telegram",
+  "Já mandei o /start": "I've sent /start",
+  "Se o Telegram não abriu, toque aqui:": "If Telegram didn't open, tap here:",
+  "O bot do Telegram está desligado agora.": "The Telegram bot is off right now."
 }

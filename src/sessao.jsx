@@ -7,6 +7,30 @@ import { api } from './api.js'
 import { useT } from './i18n/index.jsx'
 
 const Ctx = createContext(null)
+const CHAVE_VINCULO = 'trilharm.vincular'
+
+// O link que o bot manda no /start abre o app com ?vincular=TOKEN. Guardamos o token e limpamos a URL
+// na hora (antes de qualquer tela): ele sobrevive ao cadastro/login e não fica no histórico nem em print.
+;(() => {
+  try {
+    const url = new URL(window.location.href)
+    const token = url.searchParams.get('vincular')
+    if (!token) return
+    sessionStorage.setItem(CHAVE_VINCULO, token)
+    url.searchParams.delete('vincular')
+    window.history.replaceState(null, '', url.pathname + url.search + url.hash)
+  } catch {
+    /* sem storage: a pessoa usa o botão Conectar Telegram em Ajustes */
+  }
+})()
+
+function vinculoPendente() {
+  try {
+    return sessionStorage.getItem(CHAVE_VINCULO)
+  } catch {
+    return null
+  }
+}
 
 export function useSessao() {
   return useContext(Ctx) || { usuario: null, sair: () => {} }
@@ -14,6 +38,29 @@ export function useSessao() {
 
 export function Sessao({ children }) {
   const [estado, setEstado] = useState({ carregando: true, usuario: null, contas: null })
+  const [avisoTg, setAvisoTg] = useState(null)
+  const { t } = useT()
+
+  // entrou (ou criou a conta) vindo do link do bot: liga aquele chat a esta conta
+  useEffect(() => {
+    const token = estado.usuario && vinculoPendente()
+    if (!token) return
+    try {
+      sessionStorage.removeItem(CHAVE_VINCULO)
+    } catch {
+      /* ok */
+    }
+    api
+      .telegramVincular(token)
+      .then(() => setAvisoTg({ ok: true, texto: t('Telegram conectado à conta de {nome}. Volte ao chat do bot.', { nome: estado.usuario.nome }) }))
+      .catch((e) => setAvisoTg({ ok: false, texto: e.message }))
+  }, [estado.usuario, t])
+
+  useEffect(() => {
+    if (!avisoTg) return undefined
+    const tm = setTimeout(() => setAvisoTg(null), 7000)
+    return () => clearTimeout(tm)
+  }, [avisoTg])
 
   const conferir = useCallback(async () => {
     try {
@@ -48,6 +95,12 @@ export function Sessao({ children }) {
   return (
     <Ctx.Provider value={{ usuario: estado.usuario, sair }}>
       <Fragment key={estado.usuario.id}>{children}</Fragment>
+      {avisoTg && (
+        <div className={`toast toast--tg ${avisoTg.ok ? '' : 'toast--erro'}`} role="status" onClick={() => setAvisoTg(null)}>
+          {avisoTg.ok ? '✅ ' : '⚠️ '}
+          {avisoTg.texto}
+        </div>
+      )}
     </Ctx.Provider>
   )
 }
@@ -86,6 +139,9 @@ function Entrada({ contas, aoEntrar }) {
           </span>
         </div>
         <h1 className="entrada__titulo">{modo === 'entrar' ? t('Entrar') : primeira ? t('Criar a conta do dono') : t('Criar conta')}</h1>
+        {vinculoPendente() && !primeira && (
+          <p className="entrada__tg small">{t('Você veio do bot do Telegram: assim que entrar (ou criar a conta), aquele chat fica ligado a ela.')}</p>
+        )}
         <p className="dim small">
           {primeira
             ? t('Esta é a primeira conta: ela herda todo o progresso que já existe no app. Use o código do dono que chegou no bot do Telegram (ou está em data/codigo-dono.txt).')

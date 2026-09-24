@@ -21,6 +21,8 @@
 // - Desde os cards: as mensagens principais vão como sendPhoto (PNG gerado por server/cards.js) com
 //   o texto na legenda (limite 1024). Se a imagem falhar por QUALQUER motivo — geração, rede, 400 do
 //   Telegram — cai para o sendMessage de antes. O bot nunca fica mudo por causa de uma imagem.
+import { AsyncLocalStorage } from 'node:async_hooks'
+import crypto from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
 import { cardHoje, cardLink, cardMatriz, cardOfensiva, cardSugestao, cardTreino } from './cards.js'
@@ -56,10 +58,12 @@ export const COMANDOS = [
   { command: 'ofensiva', description: 'dias e quantas avaliações faltam hoje' },
   { command: 'lembrete', description: 'define o horário do lembrete (HH:MM)' },
   { command: 'parar', description: 'pausa os avisos automáticos' },
+  { command: 'desconectar', description: 'desliga este chat da sua conta' },
   { command: 'ajuda', description: 'lista os comandos' },
 ]
 
 const TIPOS_SUGESTAO = ['pratica', 'treino', 'curso']
+const VINCULO_MS = 30 * 60 * 1000 // link de conexão (chat <-> conta) vale 30 min e uma vez só
 
 /** escape do parse_mode HTML do Telegram (só estes três importam) */
 export function esc(v) {
@@ -102,22 +106,68 @@ export function horarioValido(txt) {
   return { h: Number(m[1]), m: Number(m[2]), texto: `${String(Number(m[1])).padStart(2, '0')}:${m[2]}` }
 }
 
+// v2 (contas): o que era "O chat" virou um mapa de chats, cada um preso a uma conta do app.
 function estadoVazio() {
   return {
-    versao: 1,
+    versao: 2,
     offset: 0,
-    chatId: null,
+    ultimaUrl: null,
+    urlMudouEm: null,
+    chats: {}, // chatId -> chatVazio() + usuarioId
+    vinculos: {}, // token do /start -> { chatId, expira }  (bot -> app: o link abre o app e liga)
+    codigosApp: {}, // token -> { usuarioId, expira }       (app -> bot: t.me/<bot>?start=TOKEN)
+  }
+}
+
+/** o estado de UM chat — tudo o que antes era global e é, na verdade, de uma pessoa */
+export function chatVazio() {
+  return {
+    usuarioId: null,
     chatNome: '',
     conectadoEm: null,
     lembrete: LEMBRETE_PADRAO,
     avisos: true,
-    ultimaUrl: null,
-    urlMudouEm: null,
     dia: null,
     enviados: {}, // lembrete | risco | parabens | sugestao (tipo)
     ultimoTipoSugestao: null,
     decksFortes: [], // decks que já renderam parabéns de 70%
   }
+}
+
+/** telegram.json v1 (um chat só, do dono) -> v2. Nada se perde: lembrete, avisos e histórico vão juntos. */
+export function migrarEstado(bruto) {
+  const e = { ...estadoVazio(), ...(bruto && typeof bruto === 'object' ? bruto : {}) }
+  if (!e.chats || typeof e.chats !== 'object') e.chats = {}
+  if (e.chatId !== null && e.chatId !== undefined && e.chatId !== '') {
+    const id = String(e.chatId)
+    if (!e.chats[id]) {
+      e.chats[id] = {
+        ...chatVazio(),
+        usuarioId: 'dono',
+        chatNome: e.chatNome || '',
+        conectadoEm: e.conectadoEm || null,
+        lembrete: e.lembrete || LEMBRETE_PADRAO,
+        avisos: e.avisos !== false,
+        dia: e.dia || null,
+        enviados: e.enviados && typeof e.enviados === 'object' ? e.enviados : {},
+        ultimoTipoSugestao: e.ultimoTipoSugestao || null,
+        decksFortes: Array.isArray(e.decksFortes) ? e.decksFortes : [],
+      }
+    }
+  }
+  for (const k of ['chatId', 'chatNome', 'conectadoEm', 'lembrete', 'avisos', 'dia', 'enviados', 'ultimoTipoSugestao', 'decksFortes']) delete e[k]
+  for (const [id, c] of Object.entries(e.chats)) {
+    const n = { ...chatVazio(), ...(c && typeof c === 'object' ? c : {}) }
+    if (!horarioValido(n.lembrete)) n.lembrete = LEMBRETE_PADRAO
+    if (!n.enviados || typeof n.enviados !== 'object') n.enviados = {}
+    if (!Array.isArray(n.decksFortes)) n.decksFortes = []
+    n.avisos = n.avisos !== false
+    e.chats[id] = n
+  }
+  if (!e.vinculos || typeof e.vinculos !== 'object') e.vinculos = {}
+  if (!e.codigosApp || typeof e.codigosApp !== 'object') e.codigosApp = {}
+  e.versao = 2
+  return e
 }
 
 function minutos(d) {
@@ -134,6 +184,11 @@ export function criarTelegram({
   treinos,
   progresso,
   progTreinos = null,
+  // contas: cada chat roda "como" a pessoa dona dele (server/por-usuario.js); sem contas, tudo é do dono
+  comoUsuario = (_id, fn) => fn(),
+  nomeDoUsuario = () => '',
+  usuarioExiste = () => true,
+  cadastroAberto = () => true,
   porta = 8790,
   apiBase = API_TELEGRAM,
   fetchImpl = null,
@@ -159,25 +214,158 @@ export function criarTelegram({
   let timerTick = null
   let esperaAtual = null
   const controladores = new Set()
+  const ctxChat = new AsyncLocalStorage() // qual chat está sendo atendido nesta cadeia de awaits
   const buscar = (...a) => (fetchImpl || globalThis.fetch)(...a)
 
   // ---- estado (data/telegram.json) ---------------------------------------
   function carregarEstado() {
     if (st) return st
+    let bruto = null
     try {
-      const bruto = JSON.parse(fs.readFileSync(arquivoEstado, 'utf8'))
-      st = { ...estadoVazio(), ...(bruto && typeof bruto === 'object' ? bruto : {}) }
+      bruto = JSON.parse(fs.readFileSync(arquivoEstado, 'utf8'))
     } catch (e) {
       if (e.code !== 'ENOENT') log('telegram.json ilegível, começando do zero:', e.message)
-      st = estadoVazio()
     }
+    const eraV1 = Boolean(bruto && bruto.chatId !== undefined && !bruto.chats)
+    st = migrarEstado(bruto)
     if (!Number.isFinite(st.offset)) st.offset = 0
-    if (st.chatId !== null && st.chatId !== undefined) st.chatId = String(st.chatId)
-    if (!horarioValido(st.lembrete)) st.lembrete = LEMBRETE_PADRAO
-    if (!st.enviados || typeof st.enviados !== 'object') st.enviados = {}
-    if (!Array.isArray(st.decksFortes)) st.decksFortes = []
-    st.avisos = st.avisos !== false
+    if (eraV1) {
+      log('telegram.json migrado para v2 (um chat por conta); o chat antigo ficou com a conta do dono')
+      salvarEstado()
+    }
     return st
+  }
+
+  // ---- chats e contas ------------------------------------------------------
+  const chatAtualId = () => (ctxChat.getStore() && ctxChat.getStore().chatId) || null
+
+  /** o estado do chat atendido agora (ou de `chatId`) */
+  function estadoChat(chatId = chatAtualId()) {
+    const e = carregarEstado()
+    if (!chatId) return chatVazio() // fora de um chat: leitura neutra, nada é gravado
+    if (!e.chats[chatId]) e.chats[chatId] = chatVazio()
+    return e.chats[chatId]
+  }
+
+  function chatsLigados() {
+    return Object.entries(carregarEstado().chats)
+      .filter(([, c]) => c.usuarioId && usuarioExiste(c.usuarioId))
+      .map(([id, c]) => ({ id, ...c }))
+  }
+
+  /** o chat do dono: destino padrão de avisos do servidor (código do dono, teste) */
+  function chatDoDono() {
+    const c = chatsLigados().find((x) => x.usuarioId === 'dono')
+    return c ? c.id : null
+  }
+
+  /** atende `fn` como o chat `chatId` E como a conta dona dele (o progresso muda junto) */
+  function comoChat(chatId, fn) {
+    const c = carregarEstado().chats[chatId]
+    return ctxChat.run({ chatId }, () => (c && c.usuarioId ? comoUsuario(c.usuarioId, fn) : fn()))
+  }
+
+  function faxinaTokens() {
+    const e = carregarEstado()
+    const agoraMs = Date.now()
+    for (const mapa of [e.vinculos, e.codigosApp]) for (const [k, v] of Object.entries(mapa)) if (!v || v.expira < agoraMs) delete mapa[k]
+  }
+
+  /** bot -> app: token que vai no link do /start; quem abrir logado liga o chat à própria conta */
+  function novoVinculo(chatId) {
+    faxinaTokens()
+    const e = carregarEstado()
+    for (const [k, v] of Object.entries(e.vinculos)) if (v.chatId === chatId) delete e.vinculos[k] // um link vivo por chat
+    const token = crypto.randomBytes(18).toString('base64url')
+    e.vinculos[token] = { chatId, expira: Date.now() + VINCULO_MS }
+    salvarEstado()
+    return token
+  }
+
+  function ligarChat(chatId, usuarioId, nomeChat) {
+    const e = carregarEstado()
+    const atual = e.chats[chatId] || chatVazio()
+    // outra conta no mesmo chat começa limpa: lembrete e "já avisei hoje" eram da pessoa anterior
+    const base = atual.usuarioId && atual.usuarioId !== usuarioId ? chatVazio() : atual
+    e.chats[chatId] = { ...base, usuarioId, chatNome: nomeChat || base.chatNome || '', conectadoEm: new Date().toISOString(), avisos: true }
+    salvarEstado()
+  }
+
+  async function boasVindas(chatId) {
+    await comoChat(chatId, async () => {
+      const nome = nomeDoUsuario(estadoChat().usuarioId)
+      const pan = panorama()
+      const h = textoHoje(pan)
+      await enviarCard(
+        () => pngHoje(pan),
+        `✅ <b>Conectado${nome ? ` como ${esc(nome)}` : ''}.</b>\nDaqui em diante eu mostro o SEU progresso, mando a tarefa do dia e aviso quando a ofensiva estiver em risco.\n\n${h.texto}`,
+        { botoes: h.botoes },
+      )
+    })
+  }
+
+  /** chamado pela API (POST /api/telegram/vincular) depois que a pessoa entrou/criou a conta */
+  async function vincularPorToken(token, usuarioId) {
+    faxinaTokens()
+    const e = carregarEstado()
+    const v = e.vinculos[String(token || '')]
+    if (!v) return { ok: false, erro: 'link de conexão vencido ou já usado — mande /start para o bot de novo' }
+    delete e.vinculos[token]
+    ligarChat(v.chatId, usuarioId, (e.chats[v.chatId] || {}).chatNome)
+    log('chat ligado a uma conta:', v.chatId)
+    await boasVindas(v.chatId)
+    return { ok: true }
+  }
+
+  /** app -> bot: link t.me/<bot>?start=TOKEN que a pessoa abre no celular (Ajustes → Conectar Telegram) */
+  function codigoParaApp(usuarioId) {
+    if (!bot || !bot.username) return { ok: false, erro: 'o bot não está ligado agora' }
+    faxinaTokens()
+    const e = carregarEstado()
+    const token = crypto.randomBytes(18).toString('base64url') // 24 caracteres: cabe no limite de 64 do start
+    e.codigosApp[token] = { usuarioId, expira: Date.now() + VINCULO_MS }
+    salvarEstado()
+    return { ok: true, link: `https://t.me/${bot.username}?start=${token}`, bot: bot.username, expiraEm: new Date(Date.now() + VINCULO_MS).toISOString() }
+  }
+
+  function chatsDoUsuario(usuarioId) {
+    return chatsLigados()
+      .filter((c) => c.usuarioId === usuarioId)
+      .map((c) => ({ id: c.id, nome: c.chatNome, desde: c.conectadoEm, lembrete: c.lembrete, avisos: c.avisos }))
+  }
+
+  function desligarChatsDoUsuario(usuarioId) {
+    const e = carregarEstado()
+    let n = 0
+    for (const c of Object.values(e.chats)) {
+      if (c.usuarioId !== usuarioId) continue
+      c.usuarioId = null
+      n += 1
+    }
+    if (n) salvarEstado()
+    return n
+  }
+
+  /** o chat ainda não é de ninguém: passo a passo + link que liga o chat à conta que abrir */
+  async function onboarding(chatId) {
+    const token = novoVinculo(chatId)
+    const caminho = `/?vincular=${encodeURIComponent(token)}`
+    const url = link(caminho)
+    const aberto = cadastroAberto()
+    const passos = [
+      '👋 <b>Oi! Eu sou o bot do Trilha RM.</b>',
+      'Para eu acompanhar o <b>seu</b> estudo, este chat precisa estar ligado a uma conta:',
+      '',
+      `1. Toque em <b>${aberto ? 'Criar conta ou entrar' : 'Entrar'}</b> aqui embaixo.`,
+      aberto
+        ? '2. Crie a sua conta (nome, usuário e senha) — ou entre, se já tem uma.'
+        : '2. Entre com a sua conta. (O cadastro de contas novas está fechado pelo dono do app.)',
+      '3. Pronto: eu volto aqui com o seu progresso e a tarefa do dia.',
+      '',
+      '⏱ O link vale 30 minutos. Se vencer, mande /start de novo.',
+    ]
+    const b = botao(aberto ? 'Criar conta ou entrar' : 'Entrar', caminho)
+    await enviar(passos.join('\n') + (b ? '' : `\n\n<a href="${esc(url)}">${esc(url)}</a>`), { chatId, botoes: b ? [[b]] : null })
   }
 
   function escreverAtomico(arquivo, dir, conteudo, modo) {
@@ -324,7 +512,7 @@ export function criarTelegram({
   }
 
   async function enviar(texto, { botoes = null, chatId = null } = {}) {
-    const destino = chatId || carregarEstado().chatId
+    const destino = chatId || chatAtualId() || chatDoDono()
     if (!destino) return { ok: false, codigo: 0, erro: 'sem chat conectado' }
     const corpo = {
       chat_id: destino,
@@ -340,7 +528,7 @@ export function criarTelegram({
   }
 
   async function enviarFoto(png, legenda, { botoes = null, chatId = null } = {}) {
-    const destino = chatId || carregarEstado().chatId
+    const destino = chatId || chatAtualId() || chatDoDono()
     if (!destino) return { ok: false, codigo: 0, erro: 'sem chat conectado' }
     const campos = {
       chat_id: destino,
@@ -586,7 +774,7 @@ export function criarTelegram({
     const ordem = tipoForcado
       ? [tipoForcado]
       : (() => {
-          const i = TIPOS_SUGESTAO.indexOf(carregarEstado().ultimoTipoSugestao)
+          const i = TIPOS_SUGESTAO.indexOf(estadoChat().ultimoTipoSugestao)
           const gira = TIPOS_SUGESTAO.slice(i + 1).concat(TIPOS_SUGESTAO.slice(0, i + 1))
           return i < 0 ? TIPOS_SUGESTAO : gira
         })()
@@ -713,7 +901,7 @@ export function criarTelegram({
 
   function textoAjuda() {
     const linhas = COMANDOS.map((c) => `/${c.command} — ${esc(c.description)}`)
-    const e = carregarEstado()
+    const e = estadoChat()
     return {
       texto:
         `🤖 <b>Trilha RM</b>\n${linhas.join('\n')}\n\n` +
@@ -834,16 +1022,22 @@ export function criarTelegram({
 
   // ---- comandos -----------------------------------------------------------
   async function executarComando(cmd, args) {
-    const e = carregarEstado()
+    const e = estadoChat()
     if (cmd === 'start') {
       e.avisos = true
       salvarEstado()
+      const nome = nomeDoUsuario(e.usuarioId)
       const pan = panorama()
       const h = textoHoje(pan)
-      await enviarCard(() => pngHoje(pan), `👋 Conectado. Eu aviso quando a URL do túnel mudar e mando a tarefa do dia.\n\n${h.texto}`, {
+      await enviarCard(() => pngHoje(pan), `👋 ${nome ? `Oi, ${esc(nome)}. ` : ''}Conectado. Eu aviso quando a URL do túnel mudar e mando a tarefa do dia.\n\n${h.texto}`, {
         botoes: h.botoes,
       })
       return
+    }
+    if (cmd === 'desconectar') {
+      e.usuarioId = null
+      salvarEstado()
+      return void (await enviar('👋 Chat desligado da sua conta. O seu progresso continua no app. Mande /start para ligar de novo (a esta ou a outra conta).'))
     }
     if (cmd === 'ajuda' || cmd === 'help' || cmd === 'menu') {
       const a = textoAjuda()
@@ -908,17 +1102,22 @@ export function criarTelegram({
   }
 
   // ---- updates ------------------------------------------------------------
+  const ligado = (chatId) => {
+    const c = chatId && carregarEstado().chats[chatId]
+    return Boolean(c && c.usuarioId && usuarioExiste(c.usuarioId))
+  }
+
   async function processarUpdate(u) {
     if (!u || typeof u !== 'object') return
-    const e = carregarEstado()
 
     if (u.callback_query) {
       const q = u.callback_query
       const chatId = q.message && q.message.chat ? String(q.message.chat.id) : null
       await chamar('answerCallbackQuery', { callback_query_id: q.id })
-      if (!e.chatId || chatId !== e.chatId) return // chat estranho: silêncio
+      if (!chatId) return
+      if (!ligado(chatId)) return void (await onboarding(chatId))
       const dado = String(q.data || '')
-      if (dado.startsWith('cmd:')) await executarComando(dado.slice(4).toLowerCase(), '')
+      if (dado.startsWith('cmd:')) await comoChat(chatId, () => executarComando(dado.slice(4).toLowerCase(), ''))
       return
     }
 
@@ -930,25 +1129,35 @@ export function criarTelegram({
     const cmd = m ? m[1].toLowerCase() : null
     const args = m ? String(m[2] || '').trim() : ''
 
-    // sem chat conectado: só o /start do primeiro que falar conecta
-    if (!e.chatId) {
-      if (cmd !== 'start') return
-      e.chatId = chatId
-      e.chatNome = String(msg.from ? msg.from.first_name || msg.from.username || '' : msg.chat.title || '').slice(0, 80)
-      e.conectadoEm = new Date().toISOString()
-      salvarEstado()
-      log('chat conectado:', chatId)
-      await executarComando('start', '')
-      return
+    // grupo não entra: o bot fala de progresso pessoal, e num grupo todo mundo leria o de um só
+    if (msg.chat.type && msg.chat.type !== 'private') return
+    const nomeChat = String(msg.from ? msg.from.first_name || msg.from.username || '' : '').slice(0, 80)
+    const e = carregarEstado()
+    if (!e.chats[chatId]) e.chats[chatId] = { ...chatVazio(), chatNome: nomeChat }
+    ultimaAtividade = new Date().toISOString()
+
+    // /start TOKEN vindo do botão "Conectar Telegram" do app: liga este chat à conta que gerou o token
+    if (cmd === 'start' && args) {
+      faxinaTokens()
+      const c = e.codigosApp[args]
+      if (c && usuarioExiste(c.usuarioId)) {
+        delete e.codigosApp[args]
+        ligarChat(chatId, c.usuarioId, nomeChat)
+        log('chat ligado a uma conta (pelo app):', chatId)
+        return void (await boasVindas(chatId))
+      }
     }
 
-    if (chatId !== e.chatId) return // qualquer outro chat é ignorado em silêncio
-    ultimaAtividade = new Date().toISOString()
-    if (!cmd) {
-      const a = textoAjuda()
-      return void (await enviar(a.texto, { botoes: a.botoes }))
-    }
-    await executarComando(cmd, args)
+    // chat que ainda não é de ninguém: qualquer mensagem recebe o passo a passo para criar a conta
+    if (!ligado(chatId)) return void (await onboarding(chatId))
+
+    await comoChat(chatId, async () => {
+      if (!cmd) {
+        const a = textoAjuda()
+        return void (await enviar(a.texto, { botoes: a.botoes }))
+      }
+      await executarComando(cmd, args)
+    })
   }
 
   // ---- tick (1x por minuto): túnel + tarefas proativas ---------------------
@@ -966,14 +1175,16 @@ export function criarTelegram({
     e.ultimaUrl = u
     e.urlMudouEm = new Date().toISOString()
     salvarEstado()
-    if (!e.chatId) return false
-    if (!u) {
-      if (!anterior) return false
-      await enviar('⚠️ O túnel caiu — sem URL pública no momento. Aviso quando voltar.')
-      return true
+    const chats = chatsLigados()
+    if (!chats.length) return false
+    if (!u && !anterior) return false
+    for (const c of chats) {
+      await comoChat(c.id, async () => {
+        if (!u) return void (await enviar('⚠️ O túnel caiu — sem URL pública no momento. Aviso quando voltar.'))
+        const l = textoLink()
+        await enviarCard(pngLink, `🔄 <b>URL nova do túnel</b>\n${l.texto.split('\n').slice(1).join('\n')}`, { botoes: l.botoes })
+      })
     }
-    const l = textoLink()
-    await enviarCard(pngLink, `🔄 <b>URL nova do túnel</b>\n${l.texto.split('\n').slice(1).join('\n')}`, { botoes: l.botoes })
     return true
   }
 
@@ -982,86 +1193,94 @@ export function criarTelegram({
     tickando = true
     const feito = []
     try {
-      const e = carregarEstado()
-      const dia = hojeISO(quando)
-      if (e.dia !== dia) {
-        e.dia = dia
-        e.enviados = {}
-        salvarEstado()
-      }
       reconciliarToken()
-      if (await avisarUrlNova(e)) feito.push('url')
-      if (!e.chatId || !e.avisos) return { feito }
-
-      const agoraMin = minutos(quando)
-      const alvo = horarioValido(e.lembrete)
-      const pan = panorama()
-
-      // 1. lembrete diário (a partir do horário; se o app estava desligado, manda quando voltar)
-      if (alvo && !e.enviados.lembrete && agoraMin >= alvo.h * 60 + alvo.m) {
-        const h = textoHoje(pan)
-        const r = await enviarCard(() => pngHoje(pan), `⏰ <b>Hora de estudar</b>\n\n${h.texto}`, { botoes: h.botoes })
-        if (r.ok) {
-          e.enviados.lembrete = true
-          if (h.tipo) {
-            e.ultimoTipoSugestao = h.tipo
-            e.enviados.sugestao = h.tipo
-          }
-          salvarEstado()
-          feito.push('lembrete')
-        }
-      }
-
-      // 2. ofensiva: parabéns quando fecha o dia, alerta quando está em risco
-      const s = pan.streak || {}
-      const minimo = s.minimoDia || 10
-      const hoje = s.avaliacoesHoje || 0
-      if (hoje >= minimo) {
-        if (!e.enviados.parabens) {
-          const r = await enviar(`🎉 <b>Dia fechado!</b> ${hoje}/${minimo} avaliações — ofensiva em <b>${s.atual || 0}</b> dia(s).`)
-          if (r.ok) {
-            e.enviados.parabens = true
-            salvarEstado()
-            feito.push('parabens')
-          }
-        }
-      } else if (!e.enviados.risco && quando.getHours() >= HORA_RISCO) {
-        const falta = minimo - hoje
-        const caminho = pan.vencidos ? '/estudar/misto?fonte=revisao' : '/estudar/misto?fonte=tudo'
-        const r = await enviarCard(
-          () => pngOfensiva(pan),
-          `⚠️ <b>Ofensiva em risco</b>\nFaltam <b>${falta}</b> avaliações para fechar o dia (${hoje}/${minimo}).` + rodapeLink(caminho),
-          { botoes: [[botao('Salvar a ofensiva', caminho)].filter(Boolean)] },
-        )
-        if (r.ok) {
-          e.enviados.risco = true
-          salvarEstado()
-          feito.push('risco')
-        }
-      }
-
-      // 3. deck que passou de 70% em nível >= 3 (uma vez por deck)
-      for (const d of pan.decks) {
-        if (d.pct3 < PCT_DECK_FORTE || e.decksFortes.includes(d.id)) continue
-        const caminho = `/deck/${encodeURIComponent(d.id)}`
-        const r = await enviar(
-          `🏆 <b>${esc(d.titulo)}</b> passou de ${PCT_DECK_FORTE}%: <b>${d.pct3}%</b> dos ${d.total} termos em nível ≥3 ` +
-            `(nível médio ${d.nivelMedio.toFixed(1)}). Hora de puxar para o 4 — diagnosticar, não só aplicar.` +
-            rodapeLink(caminho),
-          { botoes: [[botao('Abrir o deck', caminho)].filter(Boolean)] },
-        )
-        if (r.ok) {
-          e.decksFortes.push(d.id)
-          salvarEstado()
-          feito.push(`deck:${d.id}`)
-        }
-      }
+      if (await avisarUrlNova(carregarEstado())) feito.push('url')
+      // cada chat ligado recebe os avisos da PRÓPRIA conta, no horário que ELE escolheu
+      const chats = chatsLigados()
+      for (const c of chats) await comoChat(c.id, () => tickChat(quando, feito, chats.length > 1 ? `${c.id}:` : ''))
       return { feito }
     } catch (err) {
       log('erro no tick:', err.message)
       return { erro: err.message }
     } finally {
       tickando = false
+    }
+  }
+
+  /** os avisos proativos de UM chat (roda dentro de comoChat) */
+  async function tickChat(quando, feito, prefixo) {
+    const marca = (x) => feito.push(prefixo + x)
+    const e = estadoChat()
+    const dia = hojeISO(quando)
+    if (e.dia !== dia) {
+      e.dia = dia
+      e.enviados = {}
+      salvarEstado()
+    }
+    if (!e.avisos) return
+
+    const agoraMin = minutos(quando)
+    const alvo = horarioValido(e.lembrete)
+    const pan = panorama()
+
+    // 1. lembrete diário (a partir do horário; se o app estava desligado, manda quando voltar)
+    if (alvo && !e.enviados.lembrete && agoraMin >= alvo.h * 60 + alvo.m) {
+      const h = textoHoje(pan)
+      const r = await enviarCard(() => pngHoje(pan), `⏰ <b>Hora de estudar</b>\n\n${h.texto}`, { botoes: h.botoes })
+      if (r.ok) {
+        e.enviados.lembrete = true
+        if (h.tipo) {
+          e.ultimoTipoSugestao = h.tipo
+          e.enviados.sugestao = h.tipo
+        }
+        salvarEstado()
+        marca('lembrete')
+      }
+    }
+
+    // 2. ofensiva: parabéns quando fecha o dia, alerta quando está em risco
+    const s = pan.streak || {}
+    const minimo = s.minimoDia || 10
+    const hoje = s.avaliacoesHoje || 0
+    if (hoje >= minimo) {
+      if (!e.enviados.parabens) {
+        const r = await enviar(`🎉 <b>Dia fechado!</b> ${hoje}/${minimo} avaliações — ofensiva em <b>${s.atual || 0}</b> dia(s).`)
+        if (r.ok) {
+          e.enviados.parabens = true
+          salvarEstado()
+          marca('parabens')
+        }
+      }
+    } else if (!e.enviados.risco && quando.getHours() >= HORA_RISCO) {
+      const falta = minimo - hoje
+      const caminho = pan.vencidos ? '/estudar/misto?fonte=revisao' : '/estudar/misto?fonte=tudo'
+      const r = await enviarCard(
+        () => pngOfensiva(pan),
+        `⚠️ <b>Ofensiva em risco</b>\nFaltam <b>${falta}</b> avaliações para fechar o dia (${hoje}/${minimo}).` + rodapeLink(caminho),
+        { botoes: [[botao('Salvar a ofensiva', caminho)].filter(Boolean)] },
+      )
+      if (r.ok) {
+        e.enviados.risco = true
+        salvarEstado()
+        marca('risco')
+      }
+    }
+
+    // 3. deck que passou de 70% em nível >= 3 (uma vez por deck)
+    for (const d of pan.decks) {
+      if (d.pct3 < PCT_DECK_FORTE || e.decksFortes.includes(d.id)) continue
+      const caminho = `/deck/${encodeURIComponent(d.id)}`
+      const r = await enviar(
+        `🏆 <b>${esc(d.titulo)}</b> passou de ${PCT_DECK_FORTE}%: <b>${d.pct3}%</b> dos ${d.total} termos em nível ≥3 ` +
+          `(nível médio ${d.nivelMedio.toFixed(1)}). Hora de puxar para o 4 — diagnosticar, não só aplicar.` +
+          rodapeLink(caminho),
+        { botoes: [[botao('Abrir o deck', caminho)].filter(Boolean)] },
+      )
+      if (r.ok) {
+        e.decksFortes.push(d.id)
+        salvarEstado()
+        marca(`deck:${d.id}`)
+      }
     }
   }
 
@@ -1202,6 +1421,8 @@ export function criarTelegram({
   // ---- config para a tela ------------------------------------------------
   function obterConfig() {
     const e = carregarEstado()
+    const idDono = chatDoDono()
+    const cd = idDono ? e.chats[idDono] : chatVazio()
     const { token, origem } = tokenAtual()
     return {
       temToken: Boolean(token),
@@ -1212,9 +1433,10 @@ export function criarTelegram({
       conflito: status === 'conflito',
       dica409: status === 'conflito' ? MSG_409 : null,
       bot: bot ? { id: bot.id, username: bot.username } : null,
-      chat: e.chatId ? { id: e.chatId, nome: e.chatNome, desde: e.conectadoEm } : null,
-      lembrete: e.lembrete,
-      avisos: e.avisos,
+      chat: idDono ? { id: idDono, nome: cd.chatNome, desde: cd.conectadoEm } : null,
+      lembrete: cd.lembrete,
+      avisos: cd.avisos,
+      chatsLigados: chatsLigados().length,
       tunnel: { url: urlDoTunel(), mudouEm: e.urlMudouEm },
       ultimaAtividade,
       rodando: lacoAtivo,
@@ -1226,7 +1448,9 @@ export function criarTelegram({
    * Trocar o token reinicia o polling; apagar o token para o bot.
    */
   async function salvarConfig(patch = {}) {
-    const e = carregarEstado()
+    // lembrete, avisos e "desconectar chat" desta tela são do chat do DONO (é a tela dele)
+    const idDono = chatDoDono()
+    const e = idDono ? carregarEstado().chats[idDono] : chatVazio()
     let reiniciar = false
     if (patch.telegramToken !== undefined && patch.telegramToken !== null) {
       const t = String(patch.telegramToken).trim()
@@ -1255,10 +1479,8 @@ export function criarTelegram({
       e.avisos = Boolean(patch.avisos)
       salvarEstado()
     }
-    if (patch.chat === '__apagar__') {
-      e.chatId = null
-      e.chatNome = ''
-      e.conectadoEm = null
+    if (patch.chat === '__apagar__' && idDono) {
+      e.usuarioId = null
       salvarEstado()
     }
     if (reiniciar) {
@@ -1272,8 +1494,7 @@ export function criarTelegram({
   }
 
   async function enviarTeste() {
-    const e = carregarEstado()
-    if (!e.chatId) return { ok: false, erro: 'nenhum chat conectado: mande /start para o bot no Telegram' }
+    if (!chatDoDono()) return { ok: false, erro: 'nenhum chat ligado à conta do dono: mande /start para o bot no Telegram' }
     const l = textoLink()
     const r = await enviarCard(pngLink, `✅ <b>Teste do Trilha RM</b>\nSe você está lendo isso, o bot está ligado.\n\n${l.texto}`, {
       botoes: l.botoes,
@@ -1292,6 +1513,10 @@ export function criarTelegram({
     cards: NOMES_CARDS,
     obterConfig,
     salvarConfig,
+    vincularPorToken,
+    codigoParaApp,
+    chatsDoUsuario,
+    desligarChatsDoUsuario,
     comandos: COMANDOS,
     estado: () => status,
     aguardarEscrita: () => filaEscrita,
@@ -1305,6 +1530,8 @@ export function criarTelegram({
       sugestaoDoDia,
       processarUpdate,
       carregarEstado,
+      comoChat,
+      estadoChat,
       ultimos28,
       fasesDaMatriz,
       pngLink,

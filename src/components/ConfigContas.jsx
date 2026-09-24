@@ -10,6 +10,35 @@ export default function ConfigContas({ mostrarAviso }) {
   const ehDono = usuario && usuario.papel === 'dono'
   const [senhas, setSenhas] = useState({ atual: '', nova: '' })
   const [lista, setLista] = useState(null)
+  const [tg, setTg] = useState(null) // { bot, ligado, chats }
+  const [linkTg, setLinkTg] = useState(null)
+
+  const recarregarTg = () => api.telegramMeu().then(setTg).catch(() => setTg(null))
+  useEffect(() => {
+    recarregarTg()
+  }, [])
+
+  const conectarTg = async () => {
+    try {
+      const r = await api.telegramCodigo()
+      setLinkTg(r.link)
+      // no celular abre o app do Telegram direto no bot, já com o /start do código
+      window.open(r.link, '_blank', 'noopener')
+    } catch (err) {
+      mostrarAviso(err.message, 4000)
+    }
+  }
+
+  const desconectarTg = async () => {
+    try {
+      await api.telegramDesligar()
+      setLinkTg(null)
+      recarregarTg()
+      mostrarAviso(t('Telegram desligado desta conta.'))
+    } catch (err) {
+      mostrarAviso(err.message, 4000)
+    }
+  }
 
   useEffect(() => {
     if (ehDono) api.authUsuarios().then(setLista).catch(() => setLista(null))
@@ -38,6 +67,53 @@ export default function ConfigContas({ mostrarAviso }) {
   return (
     <>
       <h2 className="secao">{t('Conta')}</h2>
+      {tg && (
+        <div className="card stack-sm">
+          <div className="row row--between">
+            <h2>Telegram</h2>
+            {tg.chats.length > 0 && <span className="chip chip--green">{t('conectado')}</span>}
+          </div>
+          {tg.chats.length > 0 ? (
+            <>
+              <p className="dim small">
+                {t('O bot fala com você e mostra o SEU progresso.')} {tg.chats.map((c) => c.nome || c.id).join(', ')} · {t('lembrete às')} {tg.chats[0].lembrete}
+              </p>
+              <div className="acoes">
+                <button type="button" className="btn btn--sm btn--ghost" onClick={desconectarTg}>
+                  {t('Desconectar')}
+                </button>
+              </div>
+            </>
+          ) : tg.bot && tg.ligado ? (
+            <>
+              <p className="dim small">
+                {t('Conecte o bot @{bot} para receber a tarefa do dia, lembretes e acompanhar o seu progresso pelo Telegram.', { bot: tg.bot })}
+              </p>
+              <div className="acoes">
+                <button type="button" className="btn btn--primary" onClick={conectarTg}>
+                  {t('Conectar Telegram')}
+                </button>
+                {linkTg && (
+                  <button type="button" className="btn btn--sm btn--ghost" onClick={recarregarTg}>
+                    {t('Já mandei o /start')}
+                  </button>
+                )}
+              </div>
+              {linkTg && (
+                <p className="dim small">
+                  {t('Se o Telegram não abriu, toque aqui:')}{' '}
+                  <a href={linkTg} target="_blank" rel="noopener noreferrer">
+                    {linkTg}
+                  </a>
+                </p>
+              )}
+            </>
+          ) : (
+            <p className="dim small">{t('O bot do Telegram está desligado agora.')}</p>
+          )}
+        </div>
+      )}
+
       <form className="card stack-sm" onSubmit={trocar}>
         <h2>{t('Trocar senha')}</h2>
         <label className="entrada__campo">
